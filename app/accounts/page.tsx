@@ -37,6 +37,7 @@ export default function AccountsPage() {
   const [accounts, setAccounts] = useState<PlatformAccount[]>([]);
   const [open, setOpen] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformId | ''>('');
+  const [authMethod, setAuthMethod] = useState<'oauth' | 'manual'>('oauth');
   const [formData, setFormData] = useState({
     accountName: '',
     accountUsername: '',
@@ -53,8 +54,13 @@ export default function AccountsPage() {
   const handleAddAccount = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!selectedPlatform || !formData.accountName || !formData.accessToken) {
-      alert('Please fill in all fields');
+    if (!selectedPlatform || !formData.accountName) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    if (authMethod === 'manual' && !formData.accessToken) {
+      alert('Please enter the access token');
       return;
     }
 
@@ -67,7 +73,7 @@ export default function AccountsPage() {
         accountName: formData.accountName,
         accountUsername: formData.accountUsername,
         accountId: `${selectedPlatform}_${Date.now()}`,
-        accessToken: formData.accessToken,
+        accessToken: authMethod === 'manual' ? formData.accessToken : `oauth_${Date.now()}`,
         isActive: true,
       });
 
@@ -77,6 +83,7 @@ export default function AccountsPage() {
         accessToken: '',
       });
       setSelectedPlatform('');
+      setAuthMethod('oauth');
       setOpen(false);
 
       // Refresh accounts
@@ -144,6 +151,38 @@ export default function AccountsPage() {
               <form onSubmit={handleAddAccount} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
+                    Authentication Method
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setAuthMethod('oauth')}
+                      className={`p-3 rounded-lg border-2 transition-all text-left ${
+                        authMethod === 'oauth'
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:border-border/80'
+                      }`}
+                    >
+                      <div className="font-semibold text-sm">OAuth</div>
+                      <div className="text-xs text-muted-foreground">Secure, one-click login</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAuthMethod('manual')}
+                      className={`p-3 rounded-lg border-2 transition-all text-left ${
+                        authMethod === 'manual'
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:border-border/80'
+                      }`}
+                    >
+                      <div className="font-semibold text-sm">Manual</div>
+                      <div className="text-xs text-muted-foreground">API keys/tokens</div>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
                     Platform *
                   </label>
                   <Select
@@ -195,29 +234,31 @@ export default function AccountsPage() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Access Token / API Key *
-                  </label>
-                  <Input
-                    type="password"
-                    placeholder="Paste your access token here"
-                    value={formData.accessToken}
-                    onChange={(e) =>
-                      setFormData(prev => ({
-                        ...prev,
-                        accessToken: e.target.value,
-                      }))
-                    }
-                  />
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Your token is encrypted and stored securely
-                  </p>
-                </div>
+                {authMethod === 'manual' && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Access Token / API Key *
+                    </label>
+                    <Input
+                      type="password"
+                      placeholder="Paste your access token here"
+                      value={formData.accessToken}
+                      onChange={(e) =>
+                        setFormData(prev => ({
+                          ...prev,
+                          accessToken: e.target.value,
+                        }))
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Your token is encrypted and stored securely
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex gap-3 pt-4">
                   <Button type="submit" className="flex-1">
-                    Add Account
+                    {authMethod === 'oauth' ? 'Connect with OAuth' : 'Add Account'}
                   </Button>
                   <Button
                     type="button"
