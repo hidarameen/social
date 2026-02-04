@@ -5,8 +5,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { StatCard } from '@/components/common/stat-card';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { db, type Task } from '@/lib/db';
-import { taskProcessor } from '@/lib/services/task-processor';
+import { Button } from '@/components/ui/button';
 import {
   BarChart3,
   TrendingUp,
@@ -26,47 +25,62 @@ export default function AnalyticsPage() {
   });
 
   const [taskStats, setTaskStats] = useState<any[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<'taskName' | 'successRate' | 'totalExecutions' | 'failed'>('successRate');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const pageSize = 50;
 
   useEffect(() => {
-    const users = Array.from((db as any).users.values());
-    const user = users[0];
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(
+          `/api/analytics?limit=${pageSize}&offset=0&search=${encodeURIComponent(searchTerm)}&sortBy=${sortBy}&sortDir=${sortDir}`
+        );
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load analytics');
+        if (cancelled) return;
 
-    if (user) {
-      const userTasks = db.getUserTasks(user.id);
-      const allExecutions = userTasks.flatMap(t => db.getTaskExecutions(t.id));
+        setStats({
+          totalExecutions: data.totals.executions,
+          successfulExecutions: data.totals.successfulExecutions,
+          failedExecutions: data.totals.failedExecutions,
+          successRate: data.totals.executions > 0
+            ? ((data.totals.successfulExecutions / data.totals.executions) * 100).toFixed(2)
+            : '0',
+          averageExecutionTime: '245ms',
+        });
 
-      const successful = allExecutions.filter(e => e.status === 'success').length;
-      const failed = allExecutions.filter(e => e.status === 'failed').length;
-      const total = allExecutions.length;
-
-      setStats({
-        totalExecutions: total,
-        successfulExecutions: successful,
-        failedExecutions: failed,
-        successRate: total > 0 ? ((successful / total) * 100).toFixed(2) : '0',
-        averageExecutionTime: '245ms',
-      });
-
-      // Stats per task
-      const stats = userTasks.map(task => {
-        const executions = db.getTaskExecutions(task.id);
-        const successful = executions.filter(e => e.status === 'success').length;
-        return {
-          taskId: task.id,
-          taskName: task.name,
-          totalExecutions: executions.length,
-          successful,
-          failed: executions.length - successful,
-          successRate:
-            executions.length > 0
-              ? ((successful / executions.length) * 100).toFixed(0)
-              : 0,
-        };
-      });
-
-      setTaskStats(stats);
+        setTaskStats(data.taskStats || []);
+        setOffset(data.nextOffset || 0);
+        setHasMore(Boolean(data.hasMore));
+      } catch (error) {
+        console.error('[v0] AnalyticsPage: Error loading analytics:', error);
+      }
     }
-  }, []);
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchTerm, sortBy, sortDir]);
+
+  const handleLoadMore = async () => {
+    try {
+      const res = await fetch(
+        `/api/analytics?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(searchTerm)}&sortBy=${sortBy}&sortDir=${sortDir}`
+      );
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load analytics');
+      const next = [...taskStats, ...(data.taskStats || [])];
+      setTaskStats(next);
+      setOffset(data.nextOffset || offset);
+      setHasMore(Boolean(data.hasMore));
+    } catch (error) {
+      console.error('[v0] AnalyticsPage: Error loading more analytics:', error);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -116,12 +130,51 @@ export default function AnalyticsPage() {
           />
         </div>
 
+        <div className="mb-6 flex justify-end">
+          <Button
+            variant="outline"
+            onClick={() => {
+              window.location.href = '/api/analytics/export';
+            }}
+          >
+            Export CSV
+          </Button>
+        </div>
+
         {/* Task Performance Table */}
         <Card>
           <CardHeader>
             <CardTitle>Performance by Task</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <input
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  placeholder="Search tasks..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                <select
+                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={`${sortBy}:${sortDir}`}
+                  onChange={(e) => {
+                    const [by, dir] = e.target.value.split(':') as any;
+                    setSortBy(by);
+                    setSortDir(dir);
+                  }}
+                >
+                  <option value="successRate:desc">Success Rate (High)</option>
+                  <option value="successRate:asc">Success Rate (Low)</option>
+                  <option value="totalExecutions:desc">Total Runs (High)</option>
+                  <option value="totalExecutions:asc">Total Runs (Low)</option>
+                  <option value="failed:desc">Failures (High)</option>
+                  <option value="failed:asc">Failures (Low)</option>
+                  <option value="taskName:asc">Task (A→Z)</option>
+                  <option value="taskName:desc">Task (Z→A)</option>
+                </select>
+              </div>
+            </div>
             {taskStats.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-muted-foreground">
@@ -180,6 +233,13 @@ export default function AnalyticsPage() {
                     ))}
                   </tbody>
                 </table>
+                {hasMore && (
+                  <div className="mt-4 flex justify-center">
+                    <Button variant="outline" onClick={handleLoadMore}>
+                      Load More
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

@@ -2,8 +2,7 @@
 
 import React from "react"
 
-import { useState } from 'react'
-import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -43,7 +42,35 @@ export default function AccountsPage() {
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [formData, setFormData] = useState({ username: '', accessToken: '' })
 
-  const handleAddAccount = (e: React.FormEvent) => {
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const res = await fetch('/api/accounts?limit=50&offset=0')
+        const data = await res.json()
+        if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load accounts')
+        if (cancelled) return
+        setAccounts(
+          (data.accounts || []).map((a: any) => ({
+            id: a.id,
+            platform: a.platformId,
+            platformName: platforms.find(p => p.id === a.platformId)?.name || a.platformId,
+            username: a.accountUsername,
+            status: a.isActive ? 'connected' : 'paused',
+            connectedAt: new Date(a.createdAt).toLocaleDateString(),
+          }))
+        )
+      } catch (error) {
+        console.error('[Dashboard Accounts] Load error:', error)
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleAddAccount = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!formData.username.trim()) {
@@ -51,24 +78,49 @@ export default function AccountsPage() {
       return
     }
 
-    const platform = platforms.find(p => p.id === selectedPlatform)
-    const newAccount = {
-      id: crypto.randomUUID(),
-      platform: selectedPlatform,
-      platformName: platform?.name || 'Unknown',
-      username: formData.username,
-      status: 'connected',
-      connectedAt: new Date().toLocaleDateString(),
-    }
+    try {
+      const res = await fetch('/api/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platformId: selectedPlatform,
+          accountName: formData.username,
+          accountUsername: formData.username,
+          accountId: `${selectedPlatform}_${Date.now()}`,
+          accessToken: formData.accessToken || 'manual',
+          isActive: true,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to add account')
 
-    setAccounts([...accounts, newAccount])
-    setFormData({ username: '', accessToken: '' })
-    setShowAddDialog(false)
+      setAccounts(prev => [
+        {
+          id: data.account.id,
+          platform: data.account.platformId,
+          platformName: platforms.find(p => p.id === data.account.platformId)?.name || data.account.platformId,
+          username: data.account.accountUsername,
+          status: data.account.isActive ? 'connected' : 'paused',
+          connectedAt: new Date(data.account.createdAt).toLocaleDateString(),
+        },
+        ...prev,
+      ])
+      setFormData({ username: '', accessToken: '' })
+      setShowAddDialog(false)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to add account')
+    }
   }
 
   const handleRemoveAccount = (id: string) => {
     if (confirm('Are you sure you want to remove this account?')) {
-      setAccounts(accounts.filter(a => a.id !== id))
+      fetch(`/api/accounts/${id}`, { method: 'DELETE' })
+        .then(res => res.json())
+        .then(data => {
+          if (!data.success) throw new Error(data.error || 'Failed to remove account')
+          setAccounts(accounts.filter(a => a.id !== id))
+        })
+        .catch(error => alert(error instanceof Error ? error.message : 'Failed to remove account'))
     }
   }
 

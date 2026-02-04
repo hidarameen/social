@@ -23,21 +23,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { db, type PlatformAccount, type User } from '@/lib/db/index';
+import type { PlatformAccount } from '@/lib/db';
 import { platformConfigs } from '@/lib/platforms/handlers';
 import { type PlatformId } from '@/lib/platforms/types';
 import { Plus, Trash2, CheckCircle, AlertCircle } from 'lucide-react';
-
-function getFirstUser(): User | undefined {
-  const users = Array.from((db as any).users.values()) as User[];
-  return users[0];
-}
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<PlatformAccount[]>([]);
   const [open, setOpen] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformId | ''>('');
   const [authMethod, setAuthMethod] = useState<'oauth' | 'manual'>('oauth');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<'createdAt' | 'platformId' | 'isActive' | 'accountName'>('createdAt');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const pageSize = 50;
   const [formData, setFormData] = useState({
     accountName: '',
     accountUsername: '',
@@ -48,6 +49,30 @@ export default function AccountsPage() {
     chatId: '', // For Telegram
     channelId: '', // For YouTube
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(
+          `/api/accounts?limit=${pageSize}&offset=0&search=${encodeURIComponent(searchTerm)}&sortBy=${sortBy}&sortDir=${sortDir}`
+        );
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load accounts');
+        if (!cancelled) {
+          setAccounts(data.accounts || []);
+          setOffset(data.nextOffset || 0);
+          setHasMore(Boolean(data.hasMore));
+        }
+      } catch (error) {
+        console.error('[v0] AccountsPage: Error loading accounts:', error);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchTerm, sortBy, sortDir]);
 
   const handleAddAccount = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,21 +87,20 @@ export default function AccountsPage() {
       return;
     }
 
-    const user = getFirstUser();
+    const credentials: any = {};
+    if (authMethod === 'manual') {
+      credentials.accessToken = formData.accessToken;
+      credentials.apiKey = formData.apiKey;
+      credentials.apiSecret = formData.apiSecret;
+      credentials.pageId = formData.pageId;
+      credentials.chatId = formData.chatId;
+      credentials.channelId = formData.channelId;
+    }
 
-    if (user) {
-      const credentials: any = {};
-      if (authMethod === 'manual') {
-        credentials.accessToken = formData.accessToken;
-        credentials.apiKey = formData.apiKey;
-        credentials.apiSecret = formData.apiSecret;
-        credentials.pageId = formData.pageId;
-        credentials.chatId = formData.chatId;
-        credentials.channelId = formData.channelId;
-      }
-
-      db.createAccount({
-        userId: user.id,
+    fetch(`/api/accounts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         platformId: selectedPlatform,
         accountName: formData.accountName,
         accountUsername: formData.accountUsername,
@@ -84,42 +108,73 @@ export default function AccountsPage() {
         accessToken: authMethod === 'manual' ? formData.accessToken : `oauth_${Date.now()}`,
         credentials,
         isActive: true,
-      });
-
-      setFormData({
-        accountName: '',
-        accountUsername: '',
-        accessToken: '',
-        apiKey: '',
-        apiSecret: '',
-        pageId: '',
-        chatId: '',
-        channelId: '',
-      });
-      setSelectedPlatform('');
-      setAuthMethod('oauth');
-      setOpen(false);
-
-      // Refresh accounts
-      const updatedAccounts = db.getUserAccounts(user.id);
-      setAccounts(updatedAccounts);
-    }
+      }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.success) throw new Error(data.error || 'Failed to create account');
+        setFormData({
+          accountName: '',
+          accountUsername: '',
+          accessToken: '',
+          apiKey: '',
+          apiSecret: '',
+          pageId: '',
+          chatId: '',
+          channelId: '',
+        });
+        setSelectedPlatform('');
+        setAuthMethod('oauth');
+        setOpen(false);
+        setAccounts(prev => [data.account, ...prev]);
+      })
+      .catch(error => alert(error instanceof Error ? error.message : 'Failed to create account'));
   };
 
   const handleDeleteAccount = (accountId: string) => {
     if (confirm('Are you sure you want to delete this account?')) {
-      db.deleteAccount(accountId);
-      setAccounts(accounts.filter(a => a.id !== accountId));
+      fetch(`/api/accounts/${accountId}`, { method: 'DELETE' })
+        .then(res => res.json())
+        .then(data => {
+          if (!data.success) throw new Error(data.error || 'Failed to delete account');
+          setAccounts(accounts.filter(a => a.id !== accountId));
+        })
+        .catch(error => alert(error instanceof Error ? error.message : 'Failed to delete account'));
     }
   };
 
   const handleToggleStatus = (account: PlatformAccount) => {
-    db.updateAccount(account.id, { isActive: !account.isActive });
-    setAccounts(
-      accounts.map(a =>
-        a.id === account.id ? { ...a, isActive: !a.isActive } : a
-      )
-    );
+    fetch(`/api/accounts/${account.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive: !account.isActive }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.success) throw new Error(data.error || 'Failed to update account');
+        setAccounts(
+          accounts.map(a =>
+            a.id === account.id ? { ...a, isActive: !a.isActive } : a
+          )
+        );
+      })
+      .catch(error => alert(error instanceof Error ? error.message : 'Failed to update account'));
+  };
+
+  const handleLoadMore = async () => {
+    try {
+      const res = await fetch(
+        `/api/accounts?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(searchTerm)}&sortBy=${sortBy}&sortDir=${sortDir}`
+      );
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load accounts');
+      const next = [...accounts, ...(data.accounts || [])];
+      setAccounts(next);
+      setOffset(data.nextOffset || offset);
+      setHasMore(Boolean(data.hasMore));
+    } catch (error) {
+      console.error('[v0] AccountsPage: Error loading more accounts:', error);
+    }
   };
 
   const platformAccountsMap = platformConfigs;
@@ -354,6 +409,35 @@ export default function AccountsPage() {
             </DialogContent>
           </Dialog>
         </div>
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            placeholder="Search accounts..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <Select
+            value={`${sortBy}:${sortDir}`}
+            onValueChange={(value: string) => {
+              const [by, dir] = value.split(':') as any;
+              setSortBy(by);
+              setSortDir(dir);
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="createdAt:desc">Date (Newest)</SelectItem>
+              <SelectItem value="createdAt:asc">Date (Oldest)</SelectItem>
+              <SelectItem value="platformId:asc">Platform (A→Z)</SelectItem>
+              <SelectItem value="platformId:desc">Platform (Z→A)</SelectItem>
+              <SelectItem value="accountName:asc">Name (A→Z)</SelectItem>
+              <SelectItem value="accountName:desc">Name (Z→A)</SelectItem>
+              <SelectItem value="isActive:desc">Active First</SelectItem>
+              <SelectItem value="isActive:asc">Inactive First</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
         {accounts.length === 0 ? (
           <Card>
@@ -443,6 +527,13 @@ export default function AccountsPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+        {hasMore && (
+          <div className="mt-6 flex justify-center">
+            <Button variant="outline" onClick={handleLoadMore}>
+              Load More
+            </Button>
           </div>
         )}
       </main>

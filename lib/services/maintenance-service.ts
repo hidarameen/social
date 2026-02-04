@@ -13,9 +13,9 @@ export class MaintenanceService {
 
     let deletedCount = 0;
 
-    const allTasks = Array.from((db as any).tasks.values());
+    const allTasks = await db.getAllTasks();
     for (const task of allTasks) {
-      const executions = db.getTaskExecutions(task.id);
+      const executions = await db.getTaskExecutions(task.id);
       const toDelete = executions.filter(e => e.executedAt < cutoffDate);
       
       for (const exec of toDelete) {
@@ -41,11 +41,11 @@ export class MaintenanceService {
   async rebuildStatistics(): Promise<void> {
     console.log('[Maintenance] Rebuilding statistics...');
     
-    const users = Array.from((db as any).users.values());
+    const users = await db.getAllUsers();
     for (const user of users) {
-      const tasks = db.getUserTasks(user.id);
-      const accounts = db.getUserAccounts(user.id);
-      
+      const tasks = await db.getUserTasks(user.id);
+      const accounts = await db.getUserAccounts(user.id);
+
       console.log(`[Maintenance] User ${user.id}: ${tasks.length} tasks, ${accounts.length} accounts`);
     }
   }
@@ -56,7 +56,7 @@ export class MaintenanceService {
   async checkExpiredTokens(): Promise<string[]> {
     const expiredTokens: string[] = [];
     
-    const allAccounts = Array.from((db as any).accounts.values());
+    const allAccounts = await db.getAllAccounts();
     for (const account of allAccounts) {
       // في الإنتاج: تحقق من صلاحية التوكنات
       if (Math.random() > 0.9) {
@@ -73,9 +73,9 @@ export class MaintenanceService {
   async refreshCache(): Promise<void> {
     console.log('[Maintenance] Refreshing cache...');
     
-    const users = Array.from((db as any).users.values());
+    const users = await db.getAllUsers();
     for (const user of users) {
-      const tasks = db.getUserTasks(user.id);
+      const tasks = await db.getUserTasks(user.id);
       // إعادة بناء الذاكرة المؤقتة للمهام النشطة
       for (const task of tasks.filter(t => t.status === 'active')) {
         console.log(`[Cache] Cached task: ${task.name}`);
@@ -103,10 +103,12 @@ export class MaintenanceService {
     const metrics: Record<string, any> = {};
 
     // فحص قاعدة البيانات
-    const users = Array.from((db as any).users.values());
+    const users = await db.getAllUsers();
     const totalUsers = users.length;
-    const totalTasks = Array.from((db as any).tasks.values()).length;
-    const totalAccounts = Array.from((db as any).accounts.values()).length;
+    const allTasks = await db.getAllTasks();
+    const totalTasks = allTasks.length;
+    const allAccounts = await db.getAllAccounts();
+    const totalAccounts = allAccounts.length;
 
     metrics.totalUsers = totalUsers;
     metrics.totalTasks = totalTasks;
@@ -114,8 +116,8 @@ export class MaintenanceService {
 
     // فحص التنفيذات الفاشلة
     let failedExecutions = 0;
-    for (const [, task] of (db as any).tasks) {
-      const executions = db.getTaskExecutions(task.id);
+    for (const task of allTasks) {
+      const executions = await db.getTaskExecutions(task.id);
       failedExecutions += executions.filter(e => e.status === 'failed').length;
     }
 
@@ -126,9 +128,7 @@ export class MaintenanceService {
     }
 
     // فحص الحسابات غير النشطة
-    const inactiveAccounts = Array.from((db as any).accounts.values()).filter(
-      a => !a.isActive
-    ).length;
+    const inactiveAccounts = allAccounts.filter(a => !a.isActive).length;
 
     metrics.inactiveAccounts = inactiveAccounts;
 

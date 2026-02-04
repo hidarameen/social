@@ -5,9 +5,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { db, type Task } from '@/lib/db';
-import { taskProcessor } from '@/lib/services/task-processor';
-import { advancedProcessingService } from '@/lib/services/advanced-processing';
+import type { Task } from '@/lib/db';
 import {
   Play,
   Pause,
@@ -34,50 +32,54 @@ export default function TaskDetailPage() {
   const [performanceReport, setPerformanceReport] = useState<any>(null);
 
   useEffect(() => {
-    const currentTask = db.getTask(taskId);
-    if (!currentTask) {
-      router.push('/tasks');
-      return;
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/tasks/${taskId}/details`);
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load task');
+        if (cancelled) return;
+        setTask(data.task);
+        setStats(data.stats);
+        setExecutions(
+          (data.executions || []).sort(
+            (a: any, b: any) => new Date(b.executedAt).getTime() - new Date(a.executedAt).getTime()
+          )
+        );
+        setErrorAnalysis(data.errorAnalysis || []);
+        setFailurePrediction(data.failurePrediction || null);
+        setPerformanceReport(data.performanceReport || null);
+      } catch (error) {
+        console.error('[v0] TaskDetail: Error loading task details:', error);
+        router.push('/tasks');
+      }
     }
-
-    setTask(currentTask);
-
-    // جلب الإحصائيات
-    const taskStats = taskProcessor.getExecutionStats(taskId);
-    setStats(taskStats);
-
-    // جلب التنفيذات
-    const taskExecutions = db.getTaskExecutions(taskId);
-    setExecutions(
-      taskExecutions.sort((a, b) => b.executedAt.getTime() - a.executedAt.getTime())
-    );
-
-    // تحليل الأخطاء
-    const errors = advancedProcessingService.analyzeErrors(currentTask);
-    setErrorAnalysis(errors);
-
-    // توقع الفشل
-    const prediction = advancedProcessingService.predictFailure(currentTask);
-    setFailurePrediction(prediction);
-
-    // تقرير الأداء
-    const report = advancedProcessingService.generatePerformanceReport(currentTask);
-    setPerformanceReport(report);
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [taskId, router]);
 
   const handleRunTask = async () => {
     if (!task) return;
 
     try {
-      const executions = await taskProcessor.processTask(taskId);
-      alert(`Task executed! ${executions.length} transfer(s) completed.`);
-      
-      // تحديث البيانات
-      const updated = db.getTask(taskId);
-      setTask(updated);
-      
-      const updatedExecutions = db.getTaskExecutions(taskId);
-      setExecutions(updatedExecutions.sort((a, b) => b.executedAt.getTime() - a.executedAt.getTime()));
+      const res = await fetch(`/api/tasks/${taskId}/run`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to run task');
+      alert(`Task executed! ${data.executions.length} transfer(s) completed.`);
+
+      const detailsRes = await fetch(`/api/tasks/${taskId}/details`);
+      const details = await detailsRes.json();
+      if (detailsRes.ok && details.success) {
+        setTask(details.task);
+        setStats(details.stats);
+        setExecutions(
+          (details.executions || []).sort(
+            (a: any, b: any) => new Date(b.executedAt).getTime() - new Date(a.executedAt).getTime()
+          )
+        );
+      }
     } catch (error) {
       alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -87,14 +89,28 @@ export default function TaskDetailPage() {
     if (!task) return;
 
     const newStatus = task.status === 'active' ? 'paused' : 'active';
-    db.updateTask(taskId, { status: newStatus as any });
-    setTask({ ...task, status: newStatus as any });
+    fetch(`/api/tasks/${taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.success) throw new Error(data.error || 'Failed to update task');
+        setTask({ ...task, status: newStatus as any });
+      })
+      .catch(error => alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`));
   };
 
   const handleDelete = () => {
     if (confirm('Delete this task? This action cannot be undone.')) {
-      db.deleteTask(taskId);
-      router.push('/tasks');
+      fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
+        .then(res => res.json())
+        .then(data => {
+          if (!data.success) throw new Error(data.error || 'Failed to delete task');
+          router.push('/tasks');
+        })
+        .catch(error => alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`));
     }
   };
 

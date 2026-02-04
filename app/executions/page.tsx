@@ -13,9 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { db, type TaskExecution, type Task } from '@/lib/db';
 import { Search, Filter, Download, RefreshCw, ChevronDown } from 'lucide-react';
-import { useState as useStateHook } from 'react';
 
 interface ExpandedExecution extends TaskExecution {
   taskName?: string;
@@ -27,32 +25,37 @@ export default function ExecutionsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'failed'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'executedAt' | 'status' | 'taskName'>('executedAt');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const pageSize = 50;
 
   useEffect(() => {
-    const users = Array.from((db as any).users.values());
-    const user = users[0];
-
-    if (user) {
-      const userTasks = db.getUserTasks(user.id);
-      const allExecutions: ExpandedExecution[] = [];
-
-      userTasks.forEach(task => {
-        const taskExecutions = db.getTaskExecutions(task.id);
-        taskExecutions.forEach(exec => {
-          allExecutions.push({
-            ...exec,
-            taskName: task.name,
-          });
-        });
-      });
-
-      const sorted = allExecutions.sort(
-        (a, b) => b.executedAt.getTime() - a.executedAt.getTime()
-      );
-      setExecutions(sorted);
-      setFilteredExecutions(sorted);
+    let cancelled = false;
+    async function load() {
+      try {
+        const statusParam = statusFilter === 'all' ? '' : `&status=${statusFilter}`;
+        const res = await fetch(
+          `/api/executions?limit=${pageSize}&offset=0&search=${encodeURIComponent(searchTerm)}${statusParam}&sortBy=${sortBy}&sortDir=${sortDir}`
+        );
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load executions');
+        if (cancelled) return;
+        const list = (data.executions || []) as ExpandedExecution[];
+        setExecutions(list);
+        setFilteredExecutions(list);
+        setOffset(data.nextOffset || 0);
+        setHasMore(Boolean(data.hasMore));
+      } catch (error) {
+        console.error('[v0] ExecutionsPage: Error loading executions:', error);
+      }
     }
-  }, []);
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchTerm, statusFilter, sortBy, sortDir]);
 
   useEffect(() => {
     let filtered = executions;
@@ -66,38 +69,41 @@ export default function ExecutionsPage() {
       );
     }
 
-    // Status filter
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(e => e.status === statusFilter);
-    }
-
     setFilteredExecutions(filtered);
   }, [searchTerm, statusFilter, executions]);
 
   const handleRefresh = () => {
-    // Refresh executions
-    const users = Array.from((db as any).users.values());
-    const user = users[0];
-
-    if (user) {
-      const userTasks = db.getUserTasks(user.id);
-      const allExecutions: ExpandedExecution[] = [];
-
-      userTasks.forEach(task => {
-        const taskExecutions = db.getTaskExecutions(task.id);
-        taskExecutions.forEach(exec => {
-          allExecutions.push({
-            ...exec,
-            taskName: task.name,
-          });
-        });
+    const statusParam = statusFilter === 'all' ? '' : `&status=${statusFilter}`;
+    fetch(`/api/executions?limit=${pageSize}&offset=0&search=${encodeURIComponent(searchTerm)}${statusParam}&sortBy=${sortBy}&sortDir=${sortDir}`)
+      .then(res => res.json())
+      .then(data => {
+        if (!data.success) throw new Error(data.error || 'Failed to load executions');
+        const list = (data.executions || []) as ExpandedExecution[];
+        setExecutions(list);
+        setFilteredExecutions(list);
+        setOffset(data.nextOffset || 0);
+        setHasMore(Boolean(data.hasMore));
+      })
+      .catch(error => {
+        console.error('[v0] ExecutionsPage: Error refreshing executions:', error);
       });
+  };
 
-      const sorted = allExecutions.sort(
-        (a, b) => b.executedAt.getTime() - a.executedAt.getTime()
+  const handleLoadMore = async () => {
+    try {
+      const statusParam = statusFilter === 'all' ? '' : `&status=${statusFilter}`;
+      const res = await fetch(
+        `/api/executions?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(searchTerm)}${statusParam}&sortBy=${sortBy}&sortDir=${sortDir}`
       );
-      setExecutions(sorted);
-      setFilteredExecutions(sorted);
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load executions');
+      const next = [...executions, ...(data.executions || [])];
+      setExecutions(next);
+      setFilteredExecutions(next);
+      setOffset(data.nextOffset || offset);
+      setHasMore(Boolean(data.hasMore));
+    } catch (error) {
+      console.error('[v0] ExecutionsPage: Error loading more executions:', error);
     }
   };
 
@@ -128,7 +134,12 @@ export default function ExecutionsPage() {
               <RefreshCw size={18} className="mr-2" />
               Refresh
             </Button>
-            <Button variant="outline">
+            <Button
+              variant="outline"
+              onClick={() => {
+                window.location.href = '/api/executions/export';
+              }}
+            >
               <Download size={18} className="mr-2" />
               Export
             </Button>
@@ -173,7 +184,7 @@ export default function ExecutionsPage() {
             <CardTitle>Filters</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Search
@@ -204,6 +215,32 @@ export default function ExecutionsPage() {
                     <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="success">Successful</SelectItem>
                     <SelectItem value="failed">Failed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Sort By
+                </label>
+                <Select
+                  value={`${sortBy}:${sortDir}`}
+                  onValueChange={(value: string) => {
+                    const [by, dir] = value.split(':') as any;
+                    setSortBy(by);
+                    setSortDir(dir);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="executedAt:desc">Date (Newest)</SelectItem>
+                    <SelectItem value="executedAt:asc">Date (Oldest)</SelectItem>
+                    <SelectItem value="status:asc">Status (A→Z)</SelectItem>
+                    <SelectItem value="status:desc">Status (Z→A)</SelectItem>
+                    <SelectItem value="taskName:asc">Task (A→Z)</SelectItem>
+                    <SelectItem value="taskName:desc">Task (Z→A)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -330,6 +367,13 @@ export default function ExecutionsPage() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        )}
+        {hasMore && (
+          <div className="mt-6 flex justify-center">
+            <Button variant="outline" onClick={handleLoadMore}>
+              Load More
+            </Button>
           </div>
         )}
       </main>

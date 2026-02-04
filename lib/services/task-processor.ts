@@ -7,19 +7,20 @@ export class TaskProcessor {
    * معالج المهام الشامل - ينقل المحتوى من مصدر إلى هدف واحد أو أكثر
    */
   async processTask(taskId: string): Promise<TaskExecution[]> {
-    const task = db.getTask(taskId);
+    const task = await db.getTask(taskId);
     if (!task) throw new Error('Task not found');
 
     const executions: TaskExecution[] = [];
+    let failures = 0;
 
     // الحصول على حسابات المصدر والهدف
-    const sourceAccounts = task.sourceAccounts
-      .map(id => db.getAccount(id))
-      .filter(Boolean) as PlatformAccount[];
+    const sourceAccounts = (
+      await Promise.all(task.sourceAccounts.map(id => db.getAccount(id)))
+    ).filter(Boolean) as PlatformAccount[];
 
-    const targetAccounts = task.targetAccounts
-      .map(id => db.getAccount(id))
-      .filter(Boolean) as PlatformAccount[];
+    const targetAccounts = (
+      await Promise.all(task.targetAccounts.map(id => db.getAccount(id)))
+    ).filter(Boolean) as PlatformAccount[];
 
     if (sourceAccounts.length === 0 || targetAccounts.length === 0) {
       throw new Error('Source or target accounts not found');
@@ -36,7 +37,7 @@ export class TaskProcessor {
           );
           executions.push(execution);
         } catch (error) {
-          const execution = db.createExecution({
+          const execution = await db.createExecution({
             taskId,
             sourceAccount: sourceAccount.id,
             targetAccount: targetAccount.id,
@@ -47,12 +48,18 @@ export class TaskProcessor {
             executedAt: new Date(),
           });
           executions.push(execution);
+          failures += 1;
         }
       }
     }
 
     // تحديث آخر تنفيذ للمهمة
-    db.updateTask(taskId, { lastExecuted: new Date() });
+    await db.updateTask(taskId, {
+      lastExecuted: new Date(),
+      executionCount: task.executionCount + executions.length,
+      failureCount: task.failureCount + failures,
+      lastError: failures > 0 ? 'One or more executions failed' : undefined,
+    });
 
     return executions;
   }
@@ -148,9 +155,8 @@ export class TaskProcessor {
    */
   async processRecurringTasks(): Promise<void> {
     // هذا سيتم تشغيله بواسطة cron job في الإنتاج
-    const allTasks = db['tasks']; // نفاذ داخلي للقائمة
-
-    for (const [, task] of allTasks) {
+    const allTasks = await db.getAllTasks();
+    for (const task of allTasks) {
       if (task.status !== 'active' || task.executionType !== 'recurring') continue;
 
       const shouldExecute = this.shouldExecuteRecurring(task);
@@ -209,8 +215,8 @@ export class TaskProcessor {
   /**
    * الحصول على إحصائيات التنفيذ
    */
-  getExecutionStats(taskId: string) {
-    const executions = db.getTaskExecutions(taskId);
+  async getExecutionStats(taskId: string) {
+    const executions = await db.getTaskExecutions(taskId);
     
     // التحقق من أن executions هو مصفوفة
     if (!Array.isArray(executions)) {

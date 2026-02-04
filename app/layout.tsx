@@ -2,6 +2,7 @@ import React from "react"
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import Providers from './providers'
 import { Toaster } from 'sonner'
 import './globals.css'
 
@@ -52,7 +53,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`font-sans antialiased`}>
-        {children}
+        <Providers>{children}</Providers>
         <Toaster richColors />
         <Analytics />
       </body>

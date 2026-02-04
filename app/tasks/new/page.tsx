@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { db, type PlatformAccount } from '@/lib/db';
+import type { PlatformAccount } from '@/lib/db';
 import { platformConfigs } from '@/lib/platforms/handlers';
 import { ArrowRight, Save } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -38,18 +38,21 @@ export default function CreateTaskPage() {
   const [selectedTargetPlatform, setSelectedTargetPlatform] = useState('');
 
   useEffect(() => {
-    console.log('[v0] CreateTaskPage: Component mounted');
-    const users = Array.from((db as any).users.values());
-    console.log('[v0] CreateTaskPage: Found users:', users.length);
-    const user = users[0];
-    if (user) {
-      console.log('[v0] CreateTaskPage: User found:', user.id);
-      const userAccounts = db.getUserAccounts(user.id);
-      console.log('[v0] CreateTaskPage: User accounts:', userAccounts.length);
-      setAccounts(userAccounts);
-    } else {
-      console.warn('[v0] CreateTaskPage: No users found in database');
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/accounts`);
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load accounts');
+        if (!cancelled) setAccounts(data.accounts || []);
+      } catch (error) {
+        console.error('[v0] CreateTaskPage: Error loading accounts:', error);
+      }
     }
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const sourcePlatformAccounts = accounts.filter(
@@ -70,15 +73,11 @@ export default function CreateTaskPage() {
       return;
     }
 
-    const users = Array.from((db as any).users.values());
-    console.log('[v0] handleSubmit: Users found:', users.length);
-    const user = users[0];
-
-    if (user) {
-      console.log('[v0] handleSubmit: Creating task for user:', user.id);
-      try {
-        const taskId = db.createTask({
-          userId: user.id,
+    try {
+      const res = await fetch(`/api/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           name: formData.name,
           description: formData.description,
           sourceAccounts: formData.sourceAccounts,
@@ -88,14 +87,13 @@ export default function CreateTaskPage() {
           executionType: formData.executionType,
           scheduleTime: formData.scheduleTime ? new Date(formData.scheduleTime) : undefined,
           recurringPattern: formData.recurringPattern,
-        });
-        console.log('[v0] handleSubmit: Task created successfully:', taskId);
-        router.push('/tasks');
-      } catch (error) {
-        console.error('[v0] handleSubmit: Error creating task:', error);
-      }
-    } else {
-      console.error('[v0] handleSubmit: No user found');
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to create task');
+      router.push('/tasks');
+    } catch (error) {
+      console.error('[v0] handleSubmit: Error creating task:', error);
     }
   };
 

@@ -6,7 +6,14 @@ import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { db, type Task } from '@/lib/db';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import type { Task } from '@/lib/db';
 import { Plus, Search, Edit2, Trash2, Play, Pause, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 
@@ -14,23 +21,35 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [filteredTasks, setFilteredTasks] = useState<Task[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<'createdAt' | 'status' | 'name'>('createdAt');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const pageSize = 50;
 
   useEffect(() => {
-    console.log('[v0] TasksPage: Component mounted');
-    const users = Array.from((db as any).users.values());
-    console.log('[v0] TasksPage: Found users:', users.length);
-    const user = users[0];
-
-    if (user) {
-      console.log('[v0] TasksPage: Loading tasks for user:', user.id);
-      const userTasks = db.getUserTasks(user.id);
-      console.log('[v0] TasksPage: Tasks loaded:', userTasks.length);
-      setTasks(userTasks);
-      setFilteredTasks(userTasks);
-    } else {
-      console.warn('[v0] TasksPage: No users found');
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(
+          `/api/tasks?limit=${pageSize}&offset=0&search=${encodeURIComponent(searchTerm)}&sortBy=${sortBy}&sortDir=${sortDir}`
+        );
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load tasks');
+        if (cancelled) return;
+        setTasks(data.tasks || []);
+        setFilteredTasks(data.tasks || []);
+        setOffset(data.nextOffset || 0);
+        setHasMore(Boolean(data.hasMore));
+      } catch (error) {
+        console.error('[v0] TasksPage: Error loading tasks:', error);
+      }
     }
-  }, []);
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchTerm, sortBy, sortDir]);
 
   useEffect(() => {
     const filtered = tasks.filter(task =>
@@ -40,29 +59,54 @@ export default function TasksPage() {
     setFilteredTasks(filtered);
   }, [searchTerm, tasks]);
 
+  const handleLoadMore = async () => {
+    try {
+      const res = await fetch(
+        `/api/tasks?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(searchTerm)}&sortBy=${sortBy}&sortDir=${sortDir}`
+      );
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load tasks');
+      const next = [...tasks, ...(data.tasks || [])];
+      setTasks(next);
+      setFilteredTasks(next);
+      setOffset(data.nextOffset || offset);
+      setHasMore(Boolean(data.hasMore));
+    } catch (error) {
+      console.error('[v0] TasksPage: Error loading more tasks:', error);
+    }
+  };
+
   const handleDelete = (taskId: string) => {
     console.log('[v0] handleDelete: Attempting to delete task:', taskId);
     if (confirm('Are you sure you want to delete this task?')) {
-      try {
-        db.deleteTask(taskId);
-        console.log('[v0] handleDelete: Task deleted successfully');
-        setTasks(tasks.filter(t => t.id !== taskId));
-      } catch (error) {
-        console.error('[v0] handleDelete: Error deleting task:', error);
-      }
+      fetch(`/api/tasks/${taskId}`, { method: 'DELETE' })
+        .then(res => res.json())
+        .then(data => {
+          if (!data.success) throw new Error(data.error || 'Failed to delete task');
+          setTasks(tasks.filter(t => t.id !== taskId));
+        })
+        .catch(error => {
+          console.error('[v0] handleDelete: Error deleting task:', error);
+        });
     }
   };
 
   const handleToggleStatus = (task: Task) => {
     const newStatus = task.status === 'active' ? 'paused' : 'active';
     console.log('[v0] handleToggleStatus: Changing status of task:', task.id, 'to:', newStatus);
-    try {
-      db.updateTask(task.id, { status: newStatus as any });
-      console.log('[v0] handleToggleStatus: Status updated successfully');
-      setTasks(tasks.map(t => (t.id === task.id ? { ...t, status: newStatus as any } : t)));
-    } catch (error) {
-      console.error('[v0] handleToggleStatus: Error updating status:', error);
-    }
+    fetch(`/api/tasks/${task.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.success) throw new Error(data.error || 'Failed to update task');
+        setTasks(tasks.map(t => (t.id === task.id ? { ...t, status: newStatus as any } : t)));
+      })
+      .catch(error => {
+        console.error('[v0] handleToggleStatus: Error updating status:', error);
+      });
   };
 
   return (
@@ -93,17 +137,51 @@ export default function TasksPage() {
             <CardTitle>Search Tasks</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="relative">
-              <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search by name or description..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="relative">
+                <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name or description..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <div>
+                <Select
+                  value={`${sortBy}:${sortDir}`}
+                  onValueChange={(value: string) => {
+                    const [by, dir] = value.split(':') as any;
+                    setSortBy(by);
+                    setSortDir(dir);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="createdAt:desc">Date (Newest)</SelectItem>
+                    <SelectItem value="createdAt:asc">Date (Oldest)</SelectItem>
+                    <SelectItem value="status:asc">Status (A→Z)</SelectItem>
+                    <SelectItem value="status:desc">Status (Z→A)</SelectItem>
+                    <SelectItem value="name:asc">Name (A→Z)</SelectItem>
+                    <SelectItem value="name:desc">Name (Z→A)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </CardContent>
         </Card>
+        <div className="mb-6 flex justify-end">
+          <Button
+            variant="outline"
+            onClick={() => {
+              window.location.href = '/api/tasks/export';
+            }}
+          >
+            Export CSV
+          </Button>
+        </div>
 
         {filteredTasks.length === 0 ? (
           <Card>
@@ -220,6 +298,13 @@ export default function TasksPage() {
               </Card>
             ))}
           </div>
+          {hasMore && (
+            <div className="mt-6 flex justify-center">
+              <Button variant="outline" onClick={handleLoadMore}>
+                Load More
+              </Button>
+            </div>
+          )}
         )}
       </main>
     </div>

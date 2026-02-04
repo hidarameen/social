@@ -116,8 +116,8 @@ export class AdvancedProcessingService {
   /**
    * تحسين جدولة المهام بناءً على الأداء التاريخية
    */
-  getOptimalScheduleTime(task: Task): Date {
-    const executions = db.getTaskExecutions(task.id);
+  async getOptimalScheduleTime(task: Task): Promise<Date> {
+    const executions = await db.getTaskExecutions(task.id);
 
     if (executions.length === 0) {
       return new Date(Date.now() + 60000); // بعد دقيقة
@@ -148,12 +148,12 @@ export class AdvancedProcessingService {
   /**
    * تحليل الأخطاء واقتراح الإصلاحات
    */
-  analyzeErrors(task: Task): {
+  async analyzeErrors(task: Task): Promise<{
     pattern: string;
     suggestion: string;
     severity: 'low' | 'medium' | 'high';
-  }[] {
-    const executions = db.getTaskExecutions(task.id);
+  }[]> {
+    const executions = await db.getTaskExecutions(task.id);
     
     // التحقق من أن executions هو مصفوفة
     if (!Array.isArray(executions) || executions.length === 0) {
@@ -212,8 +212,8 @@ export class AdvancedProcessingService {
   /**
    * توقع الفشل
    */
-  predictFailure(task: Task): { riskLevel: number; factors: string[] } {
-    const executions = db.getTaskExecutions(task.id);
+  async predictFailure(task: Task): Promise<{ riskLevel: number; factors: string[] }> {
+    const executions = await db.getTaskExecutions(task.id);
     const factors: string[] = [];
     let riskScore = 0;
 
@@ -235,9 +235,9 @@ export class AdvancedProcessingService {
     }
 
     // العامل 2: حالة الحسابات
-    const sourceAccounts = task.sourceAccounts
-      .map(id => db.getAccount(id))
-      .filter(Boolean);
+    const sourceAccounts = (
+      await Promise.all(task.sourceAccounts.map(id => db.getAccount(id)))
+    ).filter(Boolean) as { isActive: boolean }[];
     const inactiveAccounts = sourceAccounts.filter(a => !a.isActive).length;
     if (inactiveAccounts > 0) {
       factors.push(`${inactiveAccounts} source account(s) inactive`);
@@ -261,13 +261,13 @@ export class AdvancedProcessingService {
   /**
    * تقارير أداء مفصلة
    */
-  generatePerformanceReport(task: Task): {
+  async generatePerformanceReport(task: Task): Promise<{
     summary: string;
     uptime: string;
     averageExecutionTime: string;
     recommendations: string[];
-  } {
-    const executions = db.getTaskExecutions(task.id);
+  }> {
+    const executions = await db.getTaskExecutions(task.id);
 
     // التحقق من أن executions هو مصفوفة وليست فارغة
     if (!Array.isArray(executions) || executions.length === 0) {
