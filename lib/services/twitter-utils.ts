@@ -1,0 +1,104 @@
+import { TelegramClient } from '@/platforms/telegram/client';
+
+export type TweetItem = {
+  id: string;
+  text: string;
+  createdAt: string;
+  referencedTweets?: Array<{ id: string; type: string }>;
+  media: Array<{ type: string; url?: string; previewImageUrl?: string }>;
+};
+
+export function formatDate(iso: string): string {
+  try {
+    return new Date(iso).toISOString();
+  } catch {
+    return iso;
+  }
+}
+
+export function buildMessage(
+  taskTemplate: string | undefined,
+  tweet: TweetItem,
+  accountInfo?: { username?: string; name?: string }
+) {
+  const username = accountInfo?.username || '';
+  const name = accountInfo?.name || '';
+  const link = username
+    ? `https://twitter.com/${username}/status/${tweet.id}`
+    : `https://twitter.com/i/web/status/${tweet.id}`;
+  const mediaUrls = tweet.media
+    .map(m => m.url || m.previewImageUrl)
+    .filter(Boolean)
+    .join('\n');
+
+  const data = {
+    text: tweet.text || '',
+    username,
+    name,
+    date: formatDate(tweet.createdAt),
+    link,
+    media: mediaUrls,
+  };
+
+  const template =
+    taskTemplate?.trim() ||
+    `%name% (@%username%)\n%date%\n%text%\n%link%`;
+
+  let result = template;
+  for (const [key, value] of Object.entries(data)) {
+    const token = `%${key}%`;
+    result = result.split(token).join(value);
+  }
+  return result.trim();
+}
+
+export function isReply(tweet: TweetItem): boolean {
+  return Boolean(tweet.referencedTweets?.some(t => t.type === 'replied_to'));
+}
+
+export function isRetweet(tweet: TweetItem): boolean {
+  return Boolean(tweet.referencedTweets?.some(t => t.type === 'retweeted'));
+}
+
+export function isQuote(tweet: TweetItem): boolean {
+  return Boolean(tweet.referencedTweets?.some(t => t.type === 'quoted'));
+}
+
+export async function sendToTelegram(
+  telegramAccountToken: string,
+  chatId: string,
+  message: string,
+  media: TweetItem['media'],
+  includeMedia: boolean
+) {
+  const client = new TelegramClient(telegramAccountToken);
+
+  if (!includeMedia || media.length === 0) {
+    await client.sendMessage(chatId, message);
+    return;
+  }
+
+  const photos = media.filter(m => m.type === 'photo' && m.url).map(m => m.url as string);
+  const videos = media.filter(m => m.type === 'video' && (m.url || m.previewImageUrl));
+
+  if (photos.length > 0) {
+    const group = photos.map((url, idx) => ({
+      type: 'photo' as const,
+      media: url,
+      caption: idx === 0 ? message : undefined,
+    }));
+    await client.sendMediaGroup(chatId, group);
+    return;
+  }
+
+  if (videos.length > 0) {
+    const first = videos[0];
+    const url = first.url || first.previewImageUrl || '';
+    if (url) {
+      await client.sendVideo(chatId, url, message);
+      return;
+    }
+  }
+
+  await client.sendMessage(chatId, message);
+}

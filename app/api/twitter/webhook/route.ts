@@ -32,7 +32,11 @@ type TwitterWebhookTweet = {
 
 export async function GET(request: NextRequest) {
   const crcToken = request.nextUrl.searchParams.get('crc_token');
-  const secret = process.env.TWITTER_WEBHOOK_SECRET || process.env.TWITTER_CLIENT_SECRET;
+  // X uses the app "Consumer Secret" (API Secret) for CRC/signatures
+  const secret =
+    process.env.TWITTER_API_SECRET ||
+    process.env.TWITTER_WEBHOOK_SECRET ||
+    process.env.TWITTER_CLIENT_SECRET;
   if (!crcToken || !secret) {
     return NextResponse.json({ error: 'Missing crc_token or webhook secret' }, { status: 400 });
   }
@@ -40,7 +44,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const secret = process.env.TWITTER_WEBHOOK_SECRET || process.env.TWITTER_CLIENT_SECRET;
+  // X uses the app "Consumer Secret" (API Secret) for CRC/signatures
+  const secret =
+    process.env.TWITTER_API_SECRET ||
+    process.env.TWITTER_WEBHOOK_SECRET ||
+    process.env.TWITTER_CLIENT_SECRET;
   const rawBody = await request.text();
   if (secret) {
     const signature = request.headers.get('x-twitter-webhooks-signature');
