@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
   if (crc_token) {
     const consumerSecret = process.env.TWITTER_CONSUMER_SECRET;
     if (!consumerSecret) {
+      console.error('[TwitterWebhook] Missing TWITTER_CONSUMER_SECRET for CRC');
       return NextResponse.json({ error: 'Missing TWITTER_CONSUMER_SECRET' }, { status: 500 });
     }
 
@@ -23,7 +24,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ message: 'Twitter Webhook Endpoint' });
+  return NextResponse.json({ message: 'Twitter Webhook Endpoint Active' });
 }
 
 export async function POST(req: NextRequest) {

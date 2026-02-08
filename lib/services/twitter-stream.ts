@@ -49,13 +49,18 @@ export class TwitterStream {
       console.log('[TwitterStream] Stream is disabled via TWITTER_STREAM_ENABLED');
       return;
     }
-    if (!getBearerToken()) {
+    const bearerToken = getBearerToken();
+    if (!bearerToken) {
       console.warn('[TwitterStream] Missing TWITTER_BEARER_TOKEN');
       return;
     }
     this.running = true;
+    console.log('[TwitterStream] Starting stream connection...');
     await this.syncRules();
-    this.connect().catch(err => console.error('[TwitterStream] Connection error:', err));
+    this.connect().catch(err => {
+      console.error('[TwitterStream] Connection error:', err);
+      this.running = false;
+    });
   }
 
   stop() {
