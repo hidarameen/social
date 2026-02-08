@@ -45,7 +45,10 @@ export class TwitterStream {
 
   async start() {
     if (this.running) return;
-    if (!process.env.TWITTER_STREAM_ENABLED || process.env.TWITTER_STREAM_ENABLED === 'false') return;
+    if (!process.env.TWITTER_STREAM_ENABLED || process.env.TWITTER_STREAM_ENABLED === 'false') {
+      console.log('[TwitterStream] Stream is disabled via TWITTER_STREAM_ENABLED');
+      return;
+    }
     if (!getBearerToken()) {
       console.warn('[TwitterStream] Missing TWITTER_BEARER_TOKEN');
       return;

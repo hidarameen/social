@@ -41,3 +41,8 @@ externalPort = 3000
 deploymentTarget = "autoscale"
 run = ["pnpm", "start"]
 build = ["pnpm", "build"]
+
+[userenv]
+
+[userenv.shared]
+TWITTER_STREAM_ENABLED = "true"
