@@ -103,7 +103,7 @@ export class TwitterStream {
   }
 
   private async deleteRules(ids: string[]) {
-    await fetch(`${STREAM_URL}/rules`, {
+    const res = await fetch(`${STREAM_URL}/rules`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${getBearerToken()}`,
@@ -111,10 +111,14 @@ export class TwitterStream {
       },
       body: JSON.stringify({ delete: { ids } }),
     });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      console.error('[TwitterStream] Failed to delete rules:', res.statusText, JSON.stringify(errorData));
+    }
   }
 
   private async addRules(rules: Array<{ value: string; tag: string }>) {
-    await fetch(`${STREAM_URL}/rules`, {
+    const res = await fetch(`${STREAM_URL}/rules`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${getBearerToken()}`,
@@ -122,6 +126,10 @@ export class TwitterStream {
       },
       body: JSON.stringify({ add: rules }),
     });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      console.error('[TwitterStream] Failed to add rules:', res.statusText, JSON.stringify(errorData));
+    }
   }
 
   private async connect() {
@@ -139,7 +147,8 @@ export class TwitterStream {
     });
 
     if (!res.ok || !res.body) {
-      console.error('[TwitterStream] Stream connection failed:', res.statusText);
+      const errorData = await res.json().catch(() => ({}));
+      console.error('[TwitterStream] Stream connection failed:', res.statusText, JSON.stringify(errorData));
       return;
     }
 
