@@ -18,18 +18,18 @@ export class TwitterClient {
   }
 
   private async uploadInit(totalBytes: number, mediaType: string, mediaCategory?: string): Promise<string> {
-    const params = new URLSearchParams();
-    params.append('command', 'INIT');
-    params.append('total_bytes', String(totalBytes));
-    params.append('media_type', mediaType);
-    if (mediaCategory) params.append('media_category', mediaCategory);
+    const formData = new FormData();
+    formData.append('command', 'INIT');
+    formData.append('total_bytes', String(totalBytes));
+    formData.append('media_type', mediaType);
+    if (mediaCategory) formData.append('media_category', mediaCategory);
 
     const response = await fetch('https://upload.twitter.com/1.1/media/upload.json', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.bearerToken}`,
       },
-      body: params,
+      body: formData,
     });
 
     if (!response.ok) {
@@ -132,16 +132,16 @@ export class TwitterClient {
   }
 
   private async uploadFinalize(mediaId: string) {
-    const params = new URLSearchParams();
-    params.append('command', 'FINALIZE');
-    params.append('media_id', mediaId);
+    const formData = new FormData();
+    formData.append('command', 'FINALIZE');
+    formData.append('media_id', mediaId);
 
     const response = await fetch('https://upload.twitter.com/1.1/media/upload.json', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${this.bearerToken}`,
       },
-      body: params,
+      body: formData,
     });
 
     if (!response.ok) {
