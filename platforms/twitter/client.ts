@@ -18,16 +18,18 @@ export class TwitterClient {
   }
 
   private async uploadInit(totalBytes: number, mediaType: string, mediaCategory?: string): Promise<string> {
-    const formData = new FormData();
-    formData.append('command', 'INIT');
-    formData.append('total_bytes', String(totalBytes));
-    formData.append('media_type', mediaType);
-    if (mediaCategory) formData.append('media_category', mediaCategory);
+    const params = new URLSearchParams();
+    params.append('command', 'INIT');
+    params.append('total_bytes', String(totalBytes));
+    params.append('media_type', mediaType);
+    if (mediaCategory) params.append('media_category', mediaCategory);
 
-    const response = await fetch('https://api.x.com/2/media/upload', {
+    const response = await fetch('https://upload.twitter.com/1.1/media/upload.json', {
       method: 'POST',
-      headers: this.getUploadHeaders(),
-      body: formData,
+      headers: {
+        'Authorization': `Bearer ${this.bearerToken}`,
+      },
+      body: params,
     });
 
     if (!response.ok) {
@@ -55,11 +57,13 @@ export class TwitterClient {
     formData.append('media_id', mediaId);
     formData.append('segment_index', String(segmentIndex));
     const blob = new Blob([chunk]);
-    formData.append('media', blob as any, 'chunk');
+    formData.append('media', blob, 'chunk');
 
-    const response = await fetch('https://api.x.com/2/media/upload', {
+    const response = await fetch('https://upload.twitter.com/1.1/media/upload.json', {
       method: 'POST',
-      headers: this.getUploadHeaders(),
+      headers: {
+        'Authorization': `Bearer ${this.bearerToken}`,
+      },
       body: formData,
     });
 
@@ -128,14 +132,16 @@ export class TwitterClient {
   }
 
   private async uploadFinalize(mediaId: string) {
-    const formData = new FormData();
-    formData.append('command', 'FINALIZE');
-    formData.append('media_id', mediaId);
+    const params = new URLSearchParams();
+    params.append('command', 'FINALIZE');
+    params.append('media_id', mediaId);
 
-    const response = await fetch('https://api.x.com/2/media/upload', {
+    const response = await fetch('https://upload.twitter.com/1.1/media/upload.json', {
       method: 'POST',
-      headers: this.getUploadHeaders(),
-      body: formData,
+      headers: {
+        'Authorization': `Bearer ${this.bearerToken}`,
+      },
+      body: params,
     });
 
     if (!response.ok) {
@@ -155,9 +161,11 @@ export class TwitterClient {
     const params = new URLSearchParams();
     params.set('command', 'STATUS');
     params.set('media_id', mediaId);
-    const response = await fetch(`https://api.x.com/2/media/upload?${params.toString()}`, {
+    const response = await fetch(`https://upload.twitter.com/1.1/media/upload.json?${params.toString()}`, {
       method: 'GET',
-      headers: this.getUploadHeaders(),
+      headers: {
+        'Authorization': `Bearer ${this.bearerToken}`,
+      },
     });
 
     if (!response.ok) {
