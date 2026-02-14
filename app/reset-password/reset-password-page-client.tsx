@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
 import { AuthShell } from '@/components/auth/auth-shell';
 import { WaitingSplash } from '@/components/layout/waiting-splash';
@@ -28,11 +27,16 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-export default function ResetPasswordPageClient() {
-  const searchParams = useSearchParams();
-  const token = useMemo(() => String(searchParams.get('token') || '').trim(), [searchParams]);
-  const [email, setEmail] = useState(() => String(searchParams.get('email') || '').trim().toLowerCase());
-  const [code, setCode] = useState(() => normalizeCode(searchParams.get('code') || ''));
+type ResetPasswordPageClientProps = {
+  token?: string;
+  queryEmail?: string;
+  queryCode?: string;
+};
+
+export default function ResetPasswordPageClient({ token, queryEmail, queryCode }: ResetPasswordPageClientProps) {
+  const normalizedToken = String(token || '').trim();
+  const [email, setEmail] = useState(() => String(queryEmail || '').trim().toLowerCase());
+  const [code, setCode] = useState(() => normalizeCode(queryCode || ''));
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -59,7 +63,7 @@ export default function ResetPasswordPageClient() {
 
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedCode = normalizeCode(code);
-    if (!token) {
+    if (!normalizedToken) {
       if (!isValidEmail(normalizedEmail)) {
         setError('Enter a valid email address.');
         return;
@@ -80,8 +84,8 @@ export default function ResetPasswordPageClient() {
 
     setSubmitting(true);
     try {
-      const payload = token
-        ? { token, password }
+      const payload = normalizedToken
+        ? { token: normalizedToken, password }
         : { email: normalizedEmail, code: normalizedCode, password };
 
       const res = await fetch('/api/auth/reset-password', {
@@ -112,7 +116,7 @@ export default function ResetPasswordPageClient() {
         subtitle="Applying your new password and updating account security..."
       />
       <form onSubmit={onSubmit} className="space-y-5">
-        {!token ? (
+        {!normalizedToken ? (
           <>
             <div className="space-y-2">
               <Label htmlFor="reset-email">Email</Label>
@@ -227,7 +231,7 @@ export default function ResetPasswordPageClient() {
           </Button>
         )}
 
-        {!token ? (
+        {!normalizedToken ? (
           <p className="text-center text-xs text-muted-foreground">
             Need a new code?{' '}
             <Link href="/forgot-password" className="font-medium text-primary underline-offset-4 hover:underline">

@@ -1,26 +1,41 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { cn } from '@/lib/utils';
-import { AppLogo } from '@/components/common/app-logo';
+import { useEffect } from 'react';
 
 const SPLASH_SESSION_KEY = 'socialflow_splash_seen_v2';
 const SPLASH_SHOW_MS = 1400;
 const SPLASH_EXIT_MS = 450;
 
 export function SplashOverlay() {
-  const [visible, setVisible] = useState(false);
-  const [exiting, setExiting] = useState(false);
-
   useEffect(() => {
-    const seen = window.sessionStorage.getItem(SPLASH_SESSION_KEY) === '1';
-    if (seen) return;
+    const root = document.documentElement;
+    const bootEnabled = root.dataset.bootSplash === '1';
+    if (!bootEnabled) return;
 
-    setVisible(true);
-    const exitTimer = window.setTimeout(() => setExiting(true), SPLASH_SHOW_MS);
+    const bootSplash = document.querySelector<HTMLElement>('.boot-splash');
+    if (!bootSplash) {
+      // Nothing to animate, but still mark the session as seen.
+      try {
+        window.sessionStorage.setItem(SPLASH_SESSION_KEY, '1');
+      } catch {
+        // ignore storage failures
+      }
+      delete root.dataset.bootSplash;
+      return;
+    }
+
+    const exitTimer = window.setTimeout(() => {
+      bootSplash.classList.add('splash-overlay--exit');
+    }, SPLASH_SHOW_MS);
+
     const hideTimer = window.setTimeout(() => {
-      setVisible(false);
-      window.sessionStorage.setItem(SPLASH_SESSION_KEY, '1');
+      try {
+        window.sessionStorage.setItem(SPLASH_SESSION_KEY, '1');
+      } catch {
+        // ignore storage failures
+      }
+      delete root.dataset.bootSplash;
+      bootSplash.remove();
     }, SPLASH_SHOW_MS + SPLASH_EXIT_MS);
 
     return () => {
@@ -29,19 +44,5 @@ export function SplashOverlay() {
     };
   }, []);
 
-  if (!visible) return null;
-
-  return (
-    <div className={cn('splash-overlay', exiting && 'splash-overlay--exit')}>
-      <div className="splash-overlay__glow" />
-      <div className="splash-overlay__panel">
-        <div className="splash-overlay__ring" />
-        <div className="splash-overlay__logo">
-          <AppLogo size={72} showText={false} variant="splash" splashSurface={false} className="!m-0" />
-        </div>
-        <h1 className="splash-overlay__title">SocialFlow Orbit</h1>
-        <p className="splash-overlay__subtitle">Preparing your automation workspace...</p>
-      </div>
-    </div>
-  );
+  return null;
 }

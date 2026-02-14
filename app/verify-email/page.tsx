@@ -1,21 +1,19 @@
-import { Suspense } from 'react';
 import VerifyEmailPageClient from './verify-email-page-client';
 
-function VerifyEmailFallback() {
-  return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="mx-auto mt-16 max-w-xl space-y-3 rounded-2xl border border-border/60 bg-card/70 p-6">
-        <div className="h-5 rounded bg-muted/40" />
-        <div className="h-10 rounded-md bg-muted/40" />
-      </div>
-    </div>
-  );
+type PageProps = {
+  searchParams?: Record<string, string | string[] | undefined>;
+};
+
+function readParam(searchParams: PageProps['searchParams'], key: string): string {
+  const value = searchParams?.[key];
+  if (Array.isArray(value)) return value[0] ?? '';
+  if (typeof value === 'string') return value;
+  return '';
 }
 
-export default function VerifyEmailPage() {
-  return (
-    <Suspense fallback={<VerifyEmailFallback />}>
-      <VerifyEmailPageClient />
-    </Suspense>
-  );
+export default function VerifyEmailPage({ searchParams }: PageProps) {
+  const token = readParam(searchParams, 'token');
+  const email = readParam(searchParams, 'email');
+  const code = readParam(searchParams, 'code');
+  return <VerifyEmailPageClient token={token} queryEmail={email} queryCode={code} />;
 }

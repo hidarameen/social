@@ -1,21 +1,19 @@
-import { Suspense } from 'react';
 import ResetPasswordPageClient from './reset-password-page-client';
 
-function ResetPasswordFallback() {
-  return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="mx-auto mt-16 max-w-xl space-y-3 rounded-2xl border border-border/60 bg-card/70 p-6">
-        <div className="h-10 rounded-md bg-muted/40" />
-        <div className="h-10 rounded-md bg-muted/40" />
-      </div>
-    </div>
-  );
+type PageProps = {
+  searchParams?: Record<string, string | string[] | undefined>;
+};
+
+function readParam(searchParams: PageProps['searchParams'], key: string): string {
+  const value = searchParams?.[key];
+  if (Array.isArray(value)) return value[0] ?? '';
+  if (typeof value === 'string') return value;
+  return '';
 }
 
-export default function ResetPasswordPage() {
-  return (
-    <Suspense fallback={<ResetPasswordFallback />}>
-      <ResetPasswordPageClient />
-    </Suspense>
-  );
+export default function ResetPasswordPage({ searchParams }: PageProps) {
+  const token = readParam(searchParams, 'token');
+  const email = readParam(searchParams, 'email');
+  const code = readParam(searchParams, 'code');
+  return <ResetPasswordPageClient token={token} queryEmail={email} queryCode={code} />;
 }

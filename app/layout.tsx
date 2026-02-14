@@ -8,6 +8,7 @@ import { SplashOverlay } from '@/components/layout/splash-overlay'
 import { GlobalShellEnhancements } from '@/components/layout/global-shell-enhancements'
 import { PwaRegistration } from '@/components/pwa/pwa-registration'
 import { InstallAppPrompt } from '@/components/pwa/install-app-prompt'
+import { AppLogo } from '@/components/common/app-logo'
 import './globals.css'
 
 const displayFont = Space_Grotesk({
@@ -82,6 +83,30 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${displayFont.variable} ${monoFont.variable} ${arabicFont.variable} font-sans antialiased`}>
+        <script
+          // Runs before the main UI is parsed so the splash can cover the first paint.
+          // If the splash was already seen in this browser tab session, it stays hidden.
+          dangerouslySetInnerHTML={{
+            __html: `(() => {
+  try {
+    var key = 'socialflow_splash_seen_v2';
+    var seen = sessionStorage.getItem(key) === '1';
+    if (!seen) document.documentElement.dataset.bootSplash = '1';
+  } catch {}
+})();`,
+          }}
+        />
+        <div className="splash-overlay boot-splash" role="status" aria-live="polite" aria-busy="true">
+          <div className="splash-overlay__glow" />
+          <div className="splash-overlay__panel">
+            <div className="splash-overlay__ring" />
+            <div className="splash-overlay__logo">
+              <AppLogo size={72} showText={false} variant="splash" splashSurface={false} className="!m-0" />
+            </div>
+            <h1 className="splash-overlay__title">SocialFlow Orbit</h1>
+            <p className="splash-overlay__subtitle">Preparing your automation workspace...</p>
+          </div>
+        </div>
         <Providers>
           <PwaRegistration />
           <SplashOverlay />

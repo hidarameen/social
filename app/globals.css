@@ -400,6 +400,20 @@
     animation: splash-fade-in 240ms ease-out both;
   }
 
+  /*
+   * The initial "boot splash" is rendered by the server in `app/layout.tsx` to
+   * avoid showing the page before the splash (FOUC). It is enabled by an inline
+   * script that sets `html[data-boot-splash="1"]` only when the splash hasn't
+   * been seen in the current session.
+   */
+  .boot-splash {
+    display: none;
+  }
+
+  html[data-boot-splash='1'] .boot-splash {
+    display: grid;
+  }
+
   .splash-overlay--exit {
     animation: splash-fade-out 420ms ease-in forwards;
   }

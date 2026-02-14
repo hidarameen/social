@@ -97,7 +97,12 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
     async redirect({ url, baseUrl }) {
-      const normalizedAppUrl = (process.env.APP_URL || process.env.NEXTAUTH_URL || baseUrl).replace(/\/+$/, '');
+      // Prefer the host inferred from the request (baseUrl) so deployments work across
+      // dynamic domains/proxies (e.g. Northflank preview URLs) without hard-coding.
+      const normalizedAppUrl = String(baseUrl || process.env.APP_URL || process.env.NEXTAUTH_URL || '').replace(
+        /\/+$/,
+        ''
+      );
       const appOrigin = new URL(normalizedAppUrl).origin;
       const baseOrigin = new URL(baseUrl).origin;
 

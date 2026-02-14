@@ -143,6 +143,9 @@ export async function POST(request: NextRequest) {
           sessionString: telegramUser.sessionString,
           phoneNumber: telegramUser.phoneNumber,
           isBot: false,
+          reauthRequired: false,
+          reauthReason: null,
+          reauthRequiredAt: null,
           accountInfo: {
             id: telegramUser.accountId,
             username: telegramUser.accountUsername,

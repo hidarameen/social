@@ -1,8 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { AuthShell } from '@/components/auth/auth-shell';
 import { WaitingSplash } from '@/components/layout/waiting-splash';
 import { Button } from '@/components/ui/button';
@@ -19,16 +18,23 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-export default function VerifyEmailPageClient() {
-  const searchParams = useSearchParams();
-  const token = useMemo(() => String(searchParams.get('token') || '').trim(), [searchParams]);
-  const queryEmail = useMemo(() => String(searchParams.get('email') || '').trim().toLowerCase(), [searchParams]);
-  const queryCode = useMemo(() => normalizeCode(searchParams.get('code') || ''), [searchParams]);
-  const [email, setEmail] = useState(queryEmail);
-  const [code, setCode] = useState(queryCode);
-  const [state, setState] = useState<'idle' | 'loading' | 'success' | 'error'>(token ? 'loading' : 'idle');
+type VerifyEmailPageClientProps = {
+  token?: string;
+  queryEmail?: string;
+  queryCode?: string;
+};
+
+export default function VerifyEmailPageClient({ token, queryEmail, queryCode }: VerifyEmailPageClientProps) {
+  const normalizedToken = String(token || '').trim();
+  const normalizedQueryEmail = String(queryEmail || '').trim().toLowerCase();
+  const normalizedQueryCode = normalizeCode(queryCode || '');
+  const [email, setEmail] = useState(normalizedQueryEmail);
+  const [code, setCode] = useState(normalizedQueryCode);
+  const [state, setState] = useState<'idle' | 'loading' | 'success' | 'error'>(
+    normalizedToken ? 'loading' : 'idle'
+  );
   const [message, setMessage] = useState(
-    token ? 'Verifying your email...' : 'Enter your email and 6-digit verification code.'
+    normalizedToken ? 'Verifying your email...' : 'Enter your email and 6-digit verification code.'
   );
   const [autoCodeAttempted, setAutoCodeAttempted] = useState(false);
 
@@ -49,9 +55,9 @@ export default function VerifyEmailPageClient() {
   useEffect(() => {
     let cancelled = false;
     async function verifyByToken() {
-      if (!token) return;
+      if (!normalizedToken) return;
       try {
-        await submitVerification({ token });
+        await submitVerification({ token: normalizedToken });
         if (!cancelled) {
           setState('success');
           setMessage('Your email has been verified successfully.');
@@ -67,16 +73,16 @@ export default function VerifyEmailPageClient() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [normalizedToken]);
 
   useEffect(() => {
     let cancelled = false;
     async function verifyByCodeFromQuery() {
-      if (token || autoCodeAttempted) return;
-      if (!queryEmail || queryCode.length !== 6) return;
+      if (normalizedToken || autoCodeAttempted) return;
+      if (!normalizedQueryEmail || normalizedQueryCode.length !== 6) return;
       setAutoCodeAttempted(true);
       try {
-        await submitVerification({ email: queryEmail, code: queryCode });
+        await submitVerification({ email: normalizedQueryEmail, code: normalizedQueryCode });
         if (!cancelled) {
           setState('success');
           setMessage('Your email has been verified successfully.');
@@ -92,7 +98,7 @@ export default function VerifyEmailPageClient() {
     return () => {
       cancelled = true;
     };
-  }, [autoCodeAttempted, queryCode, queryEmail, token]);
+  }, [autoCodeAttempted, normalizedQueryCode, normalizedQueryEmail, normalizedToken]);
 
   const onSubmitCode = async (e: React.FormEvent) => {
     e.preventDefault();

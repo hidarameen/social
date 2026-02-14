@@ -76,6 +76,27 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error || 'Unknown error');
 }
 
+function extractTelegramAuthFailureCode(error: unknown): string | null {
+  const message = getErrorMessage(error).toUpperCase();
+  const known = [
+    'AUTH_KEY_DUPLICATED',
+    'AUTH_KEY_UNREGISTERED',
+    'SESSION_REVOKED',
+    'USER_DEACTIVATED',
+    'USER_DEACTIVATED_BAN',
+  ];
+  for (const code of known) {
+    if (message.includes(code)) return code;
+  }
+  return null;
+}
+
+function isTelegramReauthRequired(account: PlatformAccount): boolean {
+  if (account.platformId !== 'telegram') return false;
+  const creds = (account.credentials || {}) as Record<string, any>;
+  return creds.reauthRequired === true;
+}
+
 function isTwitterUnauthorizedError(error: unknown): boolean {
   const message = getErrorMessage(error).toLowerCase();
   return message.includes('401') || message.includes('unauthorized');
@@ -709,6 +730,9 @@ export class TelegramRealtimeService {
         if (!sourceAccount || sourceAccount.platformId !== 'telegram' || !sourceAccount.isActive) {
           continue;
         }
+        if (isTelegramReauthRequired(sourceAccount)) {
+          continue;
+        }
 
         const sessionString = resolveTelegramSession(sourceAccount);
         if (!sessionString) {
@@ -758,6 +782,7 @@ export class TelegramRealtimeService {
 
       const account = this.accountsById.get(accountId);
       if (!account) continue;
+      if (isTelegramReauthRequired(account)) continue;
       const sessionString = resolveTelegramSession(account);
       if (!sessionString) continue;
 
@@ -804,6 +829,15 @@ export class TelegramRealtimeService {
         REALTIME_KEEPALIVE_SECONDS > 0
           ? setInterval(() => {
               void client.invoke(new Api.updates.GetState()).catch((error) => {
+                const authCode = extractTelegramAuthFailureCode(error);
+                if (authCode) {
+                  debugError('Telegram realtime session requires re-auth; disabling account', error, {
+                    accountId: account.id,
+                    authCode,
+                  });
+                  void this.disableAccountForReauth(account.id, authCode);
+                  return;
+                }
                 debugError('Telegram realtime keepalive failed', error, {
                   accountId: account.id,
                 });
@@ -831,10 +865,46 @@ export class TelegramRealtimeService {
         albumBuilder,
       };
     } catch (error) {
+      const authCode = extractTelegramAuthFailureCode(error);
+      if (authCode) {
+        debugError('Telegram realtime connect failed; disabling account for re-auth', error, {
+          accountId: account.id,
+          authCode,
+        });
+        await this.disableAccountForReauth(account.id, authCode);
+      }
       debugError('Failed to connect Telegram realtime source', error, {
         accountId: account.id,
       });
       return null;
+    }
+  }
+
+  private async disableAccountForReauth(accountId: string, authCode: string) {
+    const runtime = this.sourceRuntimes.get(accountId);
+    if (runtime) {
+      this.sourceRuntimes.delete(accountId);
+      await this.stopRuntime(runtime);
+    }
+
+    const current = this.accountsById.get(accountId) || (await db.getAccount(accountId));
+    if (!current) return;
+    if (current.platformId !== 'telegram') return;
+
+    const currentCreds = (current.credentials || {}) as Record<string, any>;
+    const nextCreds: Record<string, any> = {
+      ...currentCreds,
+      reauthRequired: true,
+      reauthReason: authCode,
+      reauthRequiredAt: new Date().toISOString(),
+    };
+
+    const updated = await db.updateAccount(accountId, {
+      isActive: false,
+      credentials: nextCreds,
+    });
+    if (updated) {
+      this.accountsById.set(accountId, updated);
     }
   }
 

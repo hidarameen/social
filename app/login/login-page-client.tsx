@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, MailWarning } from 'lucide-react';
 import { AuthShell } from '@/components/auth/auth-shell';
 import { WaitingSplash } from '@/components/layout/waiting-splash';
@@ -19,12 +19,27 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-export default function LoginPageClient() {
+type LoginPageClientProps = {
+  callbackUrl: string;
+  queryEmail?: string;
+  verified?: boolean;
+  reset?: boolean;
+  registered?: boolean;
+};
+
+export default function LoginPageClient({
+  callbackUrl,
+  queryEmail,
+  verified,
+  reset,
+  registered,
+}: LoginPageClientProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { locale, t } = useLanguage();
   const isArabic = locale === 'ar';
-  const [email, setEmail] = useState('');
+  const normalizedQueryEmail = String(queryEmail || '').trim().toLowerCase();
+  const hasQueryEmail = Boolean(normalizedQueryEmail && isValidEmail(normalizedQueryEmail));
+  const [email, setEmail] = useState(hasQueryEmail ? normalizedQueryEmail : '');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -39,42 +54,33 @@ export default function LoginPageClient() {
   const [redirecting, setRedirecting] = useState(false);
   const creditLine = `${t('auth.creditLine', 'Programming & Design: Oday Algholy')} - ${t('auth.rightsReserved', 'All rights reserved')}`;
 
-  const callbackUrl = useMemo(() => {
-    const fromQuery = searchParams.get('callbackUrl') || '/';
-    return fromQuery.startsWith('/') ? fromQuery : '/';
-  }, [searchParams]);
-
   useEffect(() => {
     const rememberEnabled = window.localStorage.getItem(REMEMBER_ENABLED_KEY) === '1';
     const rememberedEmail = window.localStorage.getItem(REMEMBER_EMAIL_KEY) || '';
     setRememberMe(rememberEnabled);
-    if (rememberEnabled && rememberedEmail) {
+    // If the user navigated here with a specific email in the URL, prefer that.
+    if (!hasQueryEmail && rememberEnabled && rememberedEmail) {
       setEmail(rememberedEmail);
     }
-  }, []);
+  }, [hasQueryEmail]);
 
   useEffect(() => {
     const messages: string[] = [];
 
-    if (searchParams.get('verified') === '1') {
+    if (verified) {
       messages.push(isArabic ? 'تم التحقق من البريد الإلكتروني. يمكنك تسجيل الدخول الآن.' : 'Email verified. You can sign in now.');
     }
-    if (searchParams.get('reset') === '1') {
+    if (reset) {
       messages.push(isArabic ? 'تم تحديث كلمة المرور. سجّل الدخول بكلمة المرور الجديدة.' : 'Password updated. Sign in with your new password.');
     }
-    if (searchParams.get('registered') === '1') {
+    if (registered) {
       messages.push(isArabic ? 'تم إنشاء الحساب بنجاح. يمكنك تسجيل الدخول الآن.' : 'Account created successfully. You can sign in now.');
     }
 
     if (messages.length > 0) {
       setInfoMessage(messages[0]);
     }
-
-    const emailFromQuery = (searchParams.get('email') || '').trim().toLowerCase();
-    if (emailFromQuery && isValidEmail(emailFromQuery)) {
-      setEmail(emailFromQuery);
-    }
-  }, [searchParams, isArabic]);
+  }, [isArabic, registered, reset, verified]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

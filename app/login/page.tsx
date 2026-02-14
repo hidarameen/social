@@ -1,22 +1,34 @@
-import { Suspense } from 'react';
 import LoginPageClient from './login-page-client';
 
-function LoginPageFallback() {
-  return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="mx-auto mt-16 max-w-xl space-y-3 rounded-2xl border border-border/60 bg-card/70 p-6">
-        <div className="h-10 rounded-md bg-muted/40" />
-        <div className="h-10 rounded-md bg-muted/40" />
-        <div className="h-10 rounded-md bg-muted/40" />
-      </div>
-    </div>
-  );
+type PageProps = {
+  searchParams?: Record<string, string | string[] | undefined>;
+};
+
+function readParam(
+  searchParams: PageProps['searchParams'],
+  key: string
+): string {
+  const value = searchParams?.[key];
+  if (Array.isArray(value)) return value[0] ?? '';
+  if (typeof value === 'string') return value;
+  return '';
 }
 
-export default function LoginPage() {
+export default function LoginPage({ searchParams }: PageProps) {
+  const rawCallback = readParam(searchParams, 'callbackUrl');
+  const callbackUrl = rawCallback.startsWith('/') ? rawCallback : '/';
+  const email = readParam(searchParams, 'email');
+  const verified = readParam(searchParams, 'verified') === '1';
+  const reset = readParam(searchParams, 'reset') === '1';
+  const registered = readParam(searchParams, 'registered') === '1';
+
   return (
-    <Suspense fallback={<LoginPageFallback />}>
-      <LoginPageClient />
-    </Suspense>
+    <LoginPageClient
+      callbackUrl={callbackUrl || '/'}
+      queryEmail={email}
+      verified={verified}
+      reset={reset}
+      registered={registered}
+    />
   );
 }
