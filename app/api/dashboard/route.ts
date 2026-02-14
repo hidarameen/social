@@ -18,43 +18,53 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid pagination' }, { status: 400 });
     }
 
-    const [tasks, accounts] = await Promise.all([
+    const listLimit = Math.min(page.data.limit, 50);
+
+    const [tasks, activeTasks, accounts, executionTotals, recentExecutions] = await Promise.all([
       db.getUserTasksPaged({
         userId: user.id,
-        limit: page.data.limit,
+        limit: listLimit,
         offset: 0,
+        sortBy: 'createdAt',
+        sortDir: 'desc',
+      }),
+      db.getUserTasksPaged({
+        userId: user.id,
+        limit: 1,
+        offset: 0,
+        status: 'active',
         sortBy: 'createdAt',
         sortDir: 'desc',
       }),
       db.getUserAccountsPaged({
         userId: user.id,
-        limit: page.data.limit,
+        limit: 1,
         offset: 0,
         sortBy: 'createdAt',
         sortDir: 'desc',
       }),
+      db.getExecutionTotalsForUser(user.id),
+      db.getExecutionsForUserPaged({
+        userId: user.id,
+        limit: 5,
+        offset: 0,
+        sortBy: 'executedAt',
+        sortDir: 'desc',
+      }),
     ]);
 
-    const activeTasks = tasks.tasks.filter(t => t.status === 'active');
-    const executions = (
-      await Promise.all(tasks.tasks.map(t => db.getTaskExecutions(t.id)))
-    ).flat();
-
     const recentTasks = tasks.tasks.slice(0, 5);
-    const recentExecutions = executions
-      .sort((a, b) => new Date(b.executedAt).getTime() - new Date(a.executedAt).getTime())
-      .slice(0, 5);
 
     return NextResponse.json({
       success: true,
       stats: {
         totalTasks: tasks.total,
         totalAccounts: accounts.total,
-        activeTasksCount: activeTasks.length,
-        totalExecutions: executions.length,
+        activeTasksCount: activeTasks.total,
+        totalExecutions: executionTotals.total,
       },
       recentTasks,
-      recentExecutions,
+      recentExecutions: recentExecutions.executions,
     });
   } catch (error) {
     console.error('[API] Error fetching dashboard:', error);

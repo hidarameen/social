@@ -89,9 +89,6 @@ function buildPlatformCredentials(env) {
       clientId: pickFirst(env.LINKEDIN_CLIENT_ID),
       clientSecret: pickFirst(env.LINKEDIN_CLIENT_SECRET),
     }),
-    telegram: stripEmpty({
-      botToken: pickFirst(env.TELEGRAM_BOT_TOKEN),
-    }),
   };
 }
 
@@ -187,4 +184,3 @@ run().catch((error) => {
   console.error('[migrate:platform-credentials] Failed:', error);
   process.exit(1);
 });
-

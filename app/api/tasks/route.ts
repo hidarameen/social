@@ -5,21 +5,17 @@ import { getAuthUser } from '@/lib/auth';
 import { z } from 'zod';
 import { getClientKey, rateLimit } from '@/lib/rate-limit';
 import { parsePagination, parseSort } from '@/lib/validation';
-import { ensureTwitterPollingStarted } from '@/lib/services/twitter-poller';
-import { ensureTwitterStreamStarted } from '@/lib/services/twitter-stream';
-import { ensureSchedulerStarted } from '@/lib/services/task-scheduler';
+import { triggerBackgroundServicesRefresh } from '@/lib/services/background-services';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   try {
-    await ensureTwitterPollingStarted();
-    ensureTwitterStreamStarted();
-    ensureSchedulerStarted();
     const user = await getAuthUser();
     if (!user?.id) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+    triggerBackgroundServicesRefresh();
     const page = parsePagination(request.nextUrl.searchParams);
     if (!page.success) {
       return NextResponse.json({ success: false, error: 'Invalid pagination' }, { status: 400 });
@@ -59,13 +55,11 @@ export async function POST(request: NextRequest) {
     if (!limiter.ok) {
       return NextResponse.json({ success: false, error: 'Too many requests' }, { status: 429 });
     }
-    await ensureTwitterPollingStarted();
-    ensureTwitterStreamStarted();
-    ensureSchedulerStarted();
     const user = await getAuthUser();
     if (!user?.id) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+    triggerBackgroundServicesRefresh();
     const schema = z.object({
       name: z.string().min(1),
       description: z.string().optional(),
@@ -168,6 +162,7 @@ export async function POST(request: NextRequest) {
       failureCount: 0,
     });
 
+    triggerBackgroundServicesRefresh({ force: true });
     return NextResponse.json({ success: true, task }, { status: 201 });
   } catch (error) {
     console.error('[API] Error creating task:', error);

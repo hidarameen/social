@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth';
 import { z } from 'zod';
+import { triggerBackgroundServicesRefresh } from '@/lib/services/background-services';
 
 export const runtime = 'nodejs';
 
@@ -24,6 +25,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    triggerBackgroundServicesRefresh();
     const { id } = await params;
     const idCheck = z.string().min(1).safeParse(id);
     if (!idCheck.success) {
@@ -56,6 +58,7 @@ export async function PATCH(
     if (!updated) {
       return NextResponse.json({ success: false, error: 'Account not found' }, { status: 404 });
     }
+    triggerBackgroundServicesRefresh({ force: true });
     return NextResponse.json({ success: true, account: updated });
   } catch (error) {
     console.error('[API] Error updating account:', error);
@@ -68,6 +71,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    triggerBackgroundServicesRefresh();
     const { id } = await params;
     const idCheck = z.string().min(1).safeParse(id);
     if (!idCheck.success) {
@@ -107,6 +111,7 @@ export async function DELETE(
       }
     }
 
+    triggerBackgroundServicesRefresh({ force: true });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[API] Error deleting account:', error);

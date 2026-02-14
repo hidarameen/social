@@ -1,4 +1,4 @@
-import { debugLog } from '@/lib/debug';
+import { debugEnabled, debugLog } from '@/lib/debug';
 
 export type VideoProgressContext = {
   flow: string;
@@ -6,6 +6,8 @@ export type VideoProgressContext = {
   taskId?: string;
   targetId?: string;
 };
+
+const ASCII_SPINNER = ['|', '/', '-', '\\'];
 
 function clampPercent(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -40,12 +42,22 @@ function formatCounterValue(value: number): string {
   return `${size.toFixed(idx === 0 ? 0 : 1)}${units[idx]}`;
 }
 
+function buildScope(context: VideoProgressContext): string {
+  return [context.flow, context.platform].filter(Boolean).join('/');
+}
+
 export function createVideoProgressLogger(context: VideoProgressContext) {
   let lastPercent = -1;
   let lastLoggedAt = 0;
   let lastCurrent = -1;
+  let inlineLineLength = 0;
+  let spinnerIndex = 0;
   const minPercentDelta = parsePositiveNumber(process.env.VIDEO_PROGRESS_MIN_PERCENT_DELTA, 2);
   const minIntervalMs = parsePositiveNumber(process.env.VIDEO_PROGRESS_MIN_INTERVAL_MS, 800);
+  const inlineEnabled =
+    process.env.VIDEO_PROGRESS_INLINE !== 'false' &&
+    Boolean(process.stdout?.isTTY) &&
+    Boolean(process.stderr?.isTTY);
 
   return (
     currentStep: number,
@@ -53,15 +65,17 @@ export function createVideoProgressLogger(context: VideoProgressContext) {
     stage: string,
     meta?: Record<string, any>
   ) => {
+    if (!debugEnabled()) return;
+
     const safeTotal = Math.max(1, Math.trunc(totalSteps || 1));
     const safeCurrent = Math.min(safeTotal, Math.max(0, Math.trunc(currentStep || 0)));
     const percent = clampPercent((safeCurrent / safeTotal) * 100);
     const now = Date.now();
+    const isFinal = safeCurrent >= safeTotal;
 
     // Byte-sized totals (resumable chunk uploads) can emit thousands of updates.
     // Throttle logs to keep upload throughput high and logs readable.
     if (safeTotal > 1000) {
-      const isFinal = safeCurrent >= safeTotal;
       const percentAdvanced = percent - lastPercent;
       const progressed = safeCurrent > lastCurrent;
       const elapsed = now - lastLoggedAt;
@@ -83,14 +97,24 @@ export function createVideoProgressLogger(context: VideoProgressContext) {
         ? `${formatCounterValue(safeCurrent)}/${formatCounterValue(safeTotal)}`
         : `${safeCurrent}/${safeTotal}`;
     const bar = buildProgressBar(percent, safeTotal > 1000 ? 24 : 20);
+    const scope = buildScope(context);
+    const stageLabel = String(stage || 'progress').replace(/[-_]+/g, ' ');
+    const spinner = ASCII_SPINNER[spinnerIndex % ASCII_SPINNER.length];
+    spinnerIndex += 1;
+    const line = `${spinner} ${scope} ${stageLabel} ${bar} ${String(percent).padStart(3, ' ')}% ${counter}`;
 
-    debugLog('Video progress', {
-      ...context,
-      stage,
-      counter,
-      percent,
-      bar,
-      ...meta,
-    });
+    if (inlineEnabled) {
+      const padded = line.length < inlineLineLength ? line.padEnd(inlineLineLength, ' ') : line;
+      process.stdout.write(`\r[DEBUG] ${padded}`);
+      inlineLineLength = Math.max(inlineLineLength, line.length);
+
+      if (isFinal) {
+        process.stdout.write('\n');
+        inlineLineLength = 0;
+      }
+      return;
+    }
+
+    debugLog(`Video progress ${scope} ${stageLabel} ${bar} ${String(percent).padStart(3, ' ')}% ${counter}`);
   };
 }

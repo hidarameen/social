@@ -3,7 +3,7 @@ import { cookies } from 'next/headers';
 import { getAuthUser } from '@/lib/auth';
 import { getOAuthPlatform } from '@/lib/oauth/platforms';
 import { generateCodeChallenge, generateCodeVerifier, generateState } from '@/lib/oauth/utils';
-import { getOAuthClientCredentials } from '@/lib/platform-credentials';
+import { getOAuthClientCredentials, type ManagedPlatformId } from '@/lib/platform-credentials';
 
 export const runtime = 'nodejs';
 
@@ -31,7 +31,7 @@ export async function GET(
 
   let clientId: string;
   try {
-    ({ clientId } = await getOAuthClientCredentials(user.id, platform.id));
+    ({ clientId } = await getOAuthClientCredentials(user.id, platform.id as ManagedPlatformId));
   } catch (error) {
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : 'Missing OAuth credentials' },

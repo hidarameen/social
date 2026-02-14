@@ -3,13 +3,29 @@
 import Link from 'next/link';
 import { Suspense, type ChangeEvent, useEffect, useMemo, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Bell, LogOut, Menu, Search, Upload, UserCircle2, WandSparkles } from 'lucide-react';
+import {
+  Bell,
+  ChevronRight,
+  Command,
+  LogOut,
+  Menu,
+  PanelLeftClose,
+  PanelRightClose,
+  Search,
+  Upload,
+  UserCircle2,
+  WandSparkles,
+} from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { NAV_ITEMS } from '@/components/layout/nav-items';
+import { getNavItemContent, NAV_ITEMS } from '@/components/layout/nav-items';
 import { cn } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
+import { useShellPreferences } from '@/components/layout/shell-provider';
+import { AppLogo } from '@/components/common/app-logo';
+import { useLanguage } from '@/components/i18n/language-provider';
+import { LanguageToggle } from '@/components/i18n/language-toggle';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +38,8 @@ import { toast } from 'sonner';
 function HeaderContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { sidebarCollapsed, toggleSidebarCollapsed } = useShellPreferences();
+  const { locale, t } = useLanguage();
   const { data: session, update } = useSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -65,18 +83,101 @@ function HeaderContent() {
   };
 
   const activeItem = NAV_ITEMS.find((item) => isNavItemActive(item.href));
+  const activeItemContent = activeItem
+    ? getNavItemContent(activeItem, locale)
+    : {
+        label: t('header.controlPanel', 'Control Panel'),
+        caption: t('header.orchestration', 'Real-time orchestration'),
+      };
+  const crumbs = useMemo(() => {
+    const segments = pathname
+      .split('/')
+      .filter(Boolean)
+      .map((seg) => seg.replace(/-/g, ' '))
+      .map((seg) => seg.charAt(0).toUpperCase() + seg.slice(1));
+    return [t('breadcrumb.workspace', 'Workspace'), ...segments];
+  }, [pathname, t]);
   const userLabel = session?.user?.name || session?.user?.email || 'Account';
   const userImage = session?.user?.image || '';
   const displayedUserImage = profileImageState || userImage;
 
-  const handleLogout = () => {
-    if (typeof window !== 'undefined') {
-      void signOut({ callbackUrl: `${window.location.origin}/login` });
-      return;
-    }
-    void signOut({ callbackUrl: '/login' });
+  const storageKeyNeedsReset = (key: string) => {
+    const normalizedKey = key.toLowerCase();
+    return (
+      normalizedKey.startsWith('socialflow_') ||
+      normalizedKey.includes('nextauth') ||
+      normalizedKey.includes('next-auth') ||
+      normalizedKey.includes('authjs')
+    );
   };
 
+  const clearMatchingStorageKeys = (storage: Storage) => {
+    const keysToRemove: string[] = [];
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (!key || !storageKeyNeedsReset(key)) continue;
+      keysToRemove.push(key);
+    }
+    for (const key of keysToRemove) {
+      storage.removeItem(key);
+    }
+  };
+
+  const clearClientSessionArtifacts = async () => {
+    try {
+      clearMatchingStorageKeys(window.localStorage);
+    } catch {
+      // ignore storage failures
+    }
+    try {
+      clearMatchingStorageKeys(window.sessionStorage);
+    } catch {
+      // ignore storage failures
+    }
+
+    if ('caches' in window) {
+      try {
+        const cacheKeys = await window.caches.keys();
+        await Promise.allSettled(cacheKeys.map((cacheKey) => window.caches.delete(cacheKey)));
+      } catch {
+        // ignore cache API failures
+      }
+    }
+
+    try {
+      const indexedDbFactory = window.indexedDB as IDBFactory & {
+        databases?: () => Promise<Array<{ name?: string }>>;
+      };
+      if (typeof indexedDbFactory.databases !== 'function') return;
+
+      const databases = await indexedDbFactory.databases();
+      await Promise.allSettled(
+        databases.map(({ name }) => {
+          if (!name || !storageKeyNeedsReset(name)) return Promise.resolve();
+          return new Promise<void>((resolve) => {
+            const request = window.indexedDB.deleteDatabase(name);
+            request.onsuccess = () => resolve();
+            request.onerror = () => resolve();
+            request.onblocked = () => resolve();
+          });
+        })
+      );
+    } catch {
+      // ignore indexedDB failures
+    }
+  };
+
+  const handleLogout = () => {
+    void (async () => {
+      await clearClientSessionArtifacts();
+      try {
+        await signOut({ redirect: false });
+      } catch {
+        // continue with cookie cleanup redirect
+      }
+      window.location.assign('/api/clear-cookies?redirect=/login');
+    })();
+  };
   const parseJsonSafe = async (res: Response) => {
     const text = await res.text();
     if (!text) return null;
@@ -279,59 +380,130 @@ function HeaderContent() {
   };
 
   return (
-    <header className="fixed left-0 right-0 top-0 z-40 border-b border-border/80 bg-background/78 backdrop-blur-xl lg:left-72">
-      <div className="flex h-20 items-center gap-3 px-4 sm:px-6 lg:px-10">
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-10 w-10 rounded-xl lg:hidden"
-          onClick={() => setMobileMenuOpen((value) => !value)}
-          aria-label="Toggle navigation"
-        >
-          <Menu size={18} />
-        </Button>
+    <header className="glass-toolbar fixed left-0 right-0 top-0 z-40 overflow-hidden lg:[inset-inline-start:var(--shell-sidebar-width)]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_20%,color-mix(in_oklch,var(--primary)_18%,transparent),transparent_40%),radial-gradient(circle_at_82%_24%,color-mix(in_oklch,var(--accent)_16%,transparent),transparent_42%)]" />
+      <div className="relative flex h-[78px] items-center gap-2 px-3 sm:px-5 lg:px-8">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-10 w-10 rounded-xl border-border/65 bg-card/70 lg:hidden"
+            onClick={() => setMobileMenuOpen((value) => !value)}
+            aria-label="Toggle navigation"
+          >
+            <Menu size={18} />
+          </Button>
 
-        <div className="min-w-0 flex-1">
-          <p className="kpi-pill mb-1 hidden w-fit gap-1 sm:inline-flex">
-            <WandSparkles size={12} />
-            Smart Console
-          </p>
-          <h2 className="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
-            {activeItem?.label || 'Control Panel'}
-          </h2>
-          <p className="truncate text-xs text-muted-foreground sm:text-sm">
-            {activeItem?.caption || 'Real-time orchestration'}
-          </p>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 rounded-2xl border border-border/65 bg-card/75 px-2.5 py-1.5 shadow-[0_8px_24px_-18px_color-mix(in_oklch,var(--foreground)_50%,transparent)] transition-colors hover:border-primary/40"
+            aria-label={t('header.goToDashboard', 'Go to dashboard')}
+          >
+            <AppLogo size={28} showText={false} variant="splash" />
+            <div className="hidden leading-none sm:block">
+              <p className="text-sm font-semibold tracking-tight text-foreground">SocialFlow</p>
+              <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                {t('header.controlSuite', 'Control Suite')}
+              </p>
+            </div>
+          </Link>
         </div>
 
-        <div className="relative hidden max-w-lg flex-1 xl:block">
+        <div className="min-w-0 flex-1">
+          <div className="mb-0.5 hidden items-center gap-1 text-[11px] text-muted-foreground md:flex">
+            {crumbs.map((crumb, index) => (
+              <span key={`${crumb}-${index}`} className="inline-flex items-center gap-1">
+                {index > 0 && <ChevronRight size={12} />}
+                <span>{crumb}</span>
+              </span>
+            ))}
+          </div>
+          <div className="flex min-w-0 items-center gap-2">
+            <h2 className="truncate text-base font-semibold tracking-tight text-foreground sm:text-lg">
+              {activeItemContent.label}
+            </h2>
+            <span className="hidden max-w-[26rem] truncate rounded-full border border-border/65 bg-background/65 px-2.5 py-1 text-[11px] text-muted-foreground lg:inline-flex">
+              {activeItemContent.caption}
+            </span>
+          </div>
+        </div>
+
+        <div className="relative hidden max-w-xl flex-1 xl:block">
           <Search
             size={16}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
           />
           <Input
-            placeholder="Search tasks, accounts, logs..."
-            className="h-10 rounded-xl border-border/70 bg-card/70 pl-9"
+            placeholder={t('header.searchPlaceholder', 'Search tasks, accounts, logs...')}
+            className="h-11 rounded-2xl border-border/70 bg-background/75 pl-9 pr-16 shadow-inner shadow-black/5"
+            readOnly
+            onFocus={() => {
+              window.dispatchEvent(new CustomEvent('open-global-command-palette'));
+            }}
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('open-global-command-palette'));
+            }}
           />
+          <span className="pointer-events-none absolute right-2 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded-lg border border-border/65 bg-card/80 px-2 py-1 text-[10px] font-medium text-muted-foreground">
+            <Command size={11} />
+            K
+          </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 rounded-2xl border border-border/65 bg-card/72 px-1.5 py-1 shadow-[0_10px_25px_-20px_color-mix(in_oklch,var(--foreground)_55%,transparent)]">
+          <LanguageToggle compact={false} className="hidden md:inline-flex" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden h-9 w-9 rounded-xl text-muted-foreground hover:bg-background/70 hover:text-foreground lg:inline-flex"
+            title={
+              sidebarCollapsed
+                ? t('sidebar.expandSidebar', 'Expand sidebar')
+                : t('sidebar.collapseSidebar', 'Collapse sidebar')
+            }
+            aria-label={
+              sidebarCollapsed
+                ? t('sidebar.expandSidebar', 'Expand sidebar')
+                : t('sidebar.collapseSidebar', 'Collapse sidebar')
+            }
+            onClick={toggleSidebarCollapsed}
+          >
+            {sidebarCollapsed ? <PanelRightClose size={17} /> : <PanelLeftClose size={17} />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden h-9 w-9 rounded-xl text-muted-foreground hover:bg-background/70 hover:text-foreground xl:inline-flex"
+            title={t('header.quickSearch', 'Quick Search')}
+            aria-label={t('header.quickSearch', 'Quick Search')}
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('open-global-command-palette'));
+            }}
+          >
+            <WandSparkles size={16} />
+          </Button>
           <Button
             variant="outline"
-            className="hidden h-10 rounded-xl border-border/70 bg-card/60 px-3 text-xs sm:inline-flex"
+            className="hidden h-9 rounded-xl border-border/70 bg-background/65 px-3 text-xs text-foreground md:inline-flex"
             onClick={handleLogout}
           >
             <LogOut size={14} />
-            Logout
+            {t('header.logout', 'Logout')}
           </Button>
-          <Button variant="ghost" size="icon" className="relative h-10 w-10 rounded-xl">
-            <Bell size={18} />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative h-9 w-9 rounded-xl text-muted-foreground hover:bg-background/70 hover:text-foreground"
+            title={t('header.notifications', 'Notifications')}
+            aria-label={t('header.notifications', 'Notifications')}
+          >
+            <Bell size={17} />
             <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-secondary animate-pulse-glow" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-10 w-10 rounded-xl"
+            className="h-9 w-9 rounded-xl ring-1 ring-border/65 hover:bg-background/70"
             title={userLabel}
             aria-label={userLabel}
             onClick={() => setProfileOpen(true)}
@@ -344,49 +516,64 @@ function HeaderContent() {
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <UserCircle2 size={20} />
+              <UserCircle2 size={19} />
             )}
           </Button>
         </div>
       </div>
 
       {mobileMenuOpen && (
-        <div className="animate-fade-up border-t border-border/70 bg-card/95 p-3 shadow-xl lg:hidden">
+        <div className="animate-fade-up border-t border-border/65 bg-card/96 px-3 pb-4 pt-3 shadow-2xl backdrop-blur-xl lg:hidden">
+          <div className="mb-3 grid grid-cols-3 gap-2">
+            <Button
+              variant="outline"
+              className="h-10 rounded-xl border-border/70 bg-background/70 text-xs"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                window.dispatchEvent(new CustomEvent('open-global-command-palette'));
+              }}
+            >
+              <Command size={14} />
+              {t('header.quickSearch', 'Quick Search')}
+            </Button>
+            <Button
+              variant="outline"
+              className="h-10 rounded-xl border-border/70 bg-background/70 text-xs"
+              onClick={() => setProfileOpen(true)}
+            >
+              <UserCircle2 size={14} />
+              {t('header.profile', 'Profile')}
+            </Button>
+            <LanguageToggle compact={false} className="h-10 w-full rounded-xl border-border/70 bg-background/70 text-xs" />
+          </div>
           <div className="space-y-2">
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               const isActive = isNavItemActive(item.href);
+              const itemContent = getNavItemContent(item, locale);
 
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    'flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm transition-colors',
+                    'flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm transition-all',
                     isActive
-                      ? 'border-primary/30 bg-primary/10 text-primary'
-                      : 'border-transparent text-foreground hover:bg-muted/65'
+                      ? 'border-primary/35 bg-primary/14 text-primary shadow-sm'
+                      : 'border-border/50 bg-background/65 text-foreground hover:border-primary/25 hover:bg-muted/65'
                   )}
                 >
                   <Icon size={15} />
-                  <span className="font-medium">{item.label}</span>
+                  <span className="font-medium">{itemContent.label}</span>
                 </Link>
               );
             })}
-            <Button
-              variant="outline"
-              className="mt-2 h-10 w-full rounded-xl border-border/70 bg-card/60"
-              onClick={() => setProfileOpen(true)}
-            >
-              <UserCircle2 size={14} />
-              Profile
-            </Button>
           </div>
         </div>
       )}
 
       <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Profile Settings</DialogTitle>
             <DialogDescription>
@@ -497,7 +684,7 @@ function HeaderContent() {
 
 export function Header() {
   return (
-    <Suspense fallback={<header className="fixed left-0 right-0 top-0 z-40 h-20 border-b border-border/80 bg-background/78 backdrop-blur-xl lg:left-72" />}>
+    <Suspense fallback={<header className="glass-toolbar fixed left-0 right-0 top-0 z-40 h-[78px] lg:[inset-inline-start:var(--shell-sidebar-width)]" />}>
       <HeaderContent />
     </Suspense>
   );

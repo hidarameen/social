@@ -5,9 +5,7 @@ import { db } from '@/lib/db';
 import { getAuthUser } from '@/lib/auth';
 import { getOAuthPlatform } from '@/lib/oauth/platforms';
 import { buildBasicAuth, decodeJwtPayload, safeJsonParse } from '@/lib/oauth/utils';
-import { ensureTwitterPollingStarted } from '@/lib/services/twitter-poller';
-import { ensureTwitterStreamStarted } from '@/lib/services/twitter-stream';
-import { ensureSchedulerStarted } from '@/lib/services/task-scheduler';
+import { triggerBackgroundServicesRefresh } from '@/lib/services/background-services';
 import { getOAuthClientCredentials, type ManagedPlatformId } from '@/lib/platform-credentials';
 
 export const runtime = 'nodejs';
@@ -522,11 +520,7 @@ export async function GET(
       }
     }
 
-    if (platform.id === 'twitter') {
-      await ensureTwitterPollingStarted();
-      ensureTwitterStreamStarted();
-    }
-    ensureSchedulerStarted();
+    triggerBackgroundServicesRefresh({ force: platform.id === 'twitter' });
 
     const returnTo = parsed.returnTo && parsed.returnTo.startsWith('/') ? parsed.returnTo : '/accounts';
     const redirect = new URL(returnTo, appBaseUrl);

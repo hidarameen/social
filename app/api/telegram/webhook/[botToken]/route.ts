@@ -355,6 +355,22 @@ function isTwitterUnauthorizedError(error: unknown): boolean {
   return lower.includes('401') || lower.includes('unauthorized');
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error || '');
+}
+
+function shouldFallbackToTextOnlyForTelegramMediaError(error: unknown, text: string): boolean {
+  if (!text.trim()) return false;
+  const lower = getErrorMessage(error).toLowerCase();
+  return (
+    lower.includes('telegram getfile failed') ||
+    lower.includes('telegram file is too large') ||
+    lower.includes('telegram file download failed') ||
+    lower.includes('invalid file_id') ||
+    lower.includes('file is too big')
+  );
+}
+
 async function withTwitterClientRetry<T>(
   target: { id: string; userId: string; accessToken: string; refreshToken?: string },
   operation: (client: TwitterClient) => Promise<T>
@@ -621,16 +637,16 @@ async function processTelegramTask({
         responseData = { messageId: result.messageId };
       } else if (target.platformId === 'youtube') {
         debugLog('Telegram -> YouTube start', { taskId: task.id, targetId: target.id });
-        const video = mediaItems.find(item => item.kind === 'video');
-        if (!video) {
-          throw new Error('YouTube target requires a video file. Send a Telegram video/document video.');
-        }
-        const { tempPath } = await fetchTelegramFileToTemp(botToken, video.fileId, video.fileSize);
-        try {
-          const result = await executeYouTubePublish({
-            target,
-            filePath: tempPath,
-              mimeType: video.mimeType || 'video/mp4',
+        const videos = mediaItems.filter(item => item.kind === 'video');
+        const firstVideo = videos[0];
+
+        if (firstVideo) {
+          const { tempPath } = await fetchTelegramFileToTemp(botToken, firstVideo.fileId, firstVideo.fileSize);
+          try {
+            const result = await executeYouTubePublish({
+              target,
+              filePath: tempPath,
+              mimeType: firstVideo.mimeType || 'video/mp4',
               transformations: task.transformations,
               context: {
                 taskId: task.id,
@@ -638,23 +654,49 @@ async function processTelegramTask({
                 date: new Date().toISOString(),
               },
             });
-          responseData = {
-            id: result.id,
-            url: result.url,
-            playlistItemId: result.playlistItemId,
-          };
-        } finally {
-          await cleanupTempFile(tempPath);
+            responseData = {
+              id: result.id,
+              url: result.url,
+              playlistItemId: result.playlistItemId,
+              publishMode: 'video_upload',
+            };
+          } finally {
+            await cleanupTempFile(tempPath);
+          }
+          debugLog('Telegram -> YouTube upload success', {
+            taskId: task.id,
+            targetId: target.id,
+            videoId: responseData?.id,
+          });
+        } else {
+          throw new Error(
+            'YouTube targets accept video uploads only. Skipping non-video content.'
+          );
         }
-        debugLog('Telegram -> YouTube upload success', {
-          taskId: task.id,
-          targetId: target.id,
-          videoId: responseData?.id,
-        });
       } else if (target.platformId === 'facebook') {
         debugLog('Telegram -> Facebook start', { taskId: task.id, targetId: target.id });
         const videos = mediaItems.filter(item => item.kind === 'video');
         const photos = mediaItems.filter(item => item.kind === 'photo');
+        const allowTextOnlyFallback =
+          String(process.env.TELEGRAM_FACEBOOK_TEXT_ONLY_FALLBACK || 'false') === 'true';
+        const publishTextOnlyFallback = async (reason: string) => {
+          debugLog('Telegram -> Facebook fallback to text-only', {
+            taskId: task.id,
+            targetId: target.id,
+            reason,
+          });
+          const result = await publishToFacebook({
+            target,
+            message: text,
+          });
+          responseData = {
+            id: result.id,
+            url: result.url,
+            nodeId: result.nodeId,
+            fallback: 'text_only',
+            fallbackReason: reason,
+          };
+        };
 
         if (videos.length === 0 && photos.length > 1) {
           const maxAlbumPhotos = 10;
@@ -692,6 +734,12 @@ async function processTelegramTask({
               album: true,
               mediaCount: albumPhotos.length,
             };
+          } catch (error) {
+            if (allowTextOnlyFallback && shouldFallbackToTextOnlyForTelegramMediaError(error, text)) {
+              await publishTextOnlyFallback(getErrorMessage(error));
+            } else {
+              throw error;
+            }
           } finally {
             await Promise.all(tempPaths.map(path => cleanupTempFile(path)));
           }
@@ -705,8 +753,10 @@ async function processTelegramTask({
           }
 
           const firstVideo = videos[0];
-          const { tempPath } = await fetchTelegramFileToTemp(botToken, firstVideo.fileId, firstVideo.fileSize);
+          let tempPath: string | undefined;
           try {
+            const downloaded = await fetchTelegramFileToTemp(botToken, firstVideo.fileId, firstVideo.fileSize);
+            tempPath = downloaded.tempPath;
             const result = await publishToFacebook({
               target,
               message: text,
@@ -721,13 +771,21 @@ async function processTelegramTask({
               url: result.url,
               nodeId: result.nodeId,
             };
+          } catch (error) {
+            if (allowTextOnlyFallback && shouldFallbackToTextOnlyForTelegramMediaError(error, text)) {
+              await publishTextOnlyFallback(getErrorMessage(error));
+            } else {
+              throw error;
+            }
           } finally {
             await cleanupTempFile(tempPath);
           }
         } else if (photos.length === 1) {
           const firstPhoto = photos[0];
-          const { tempPath } = await fetchTelegramFileToTemp(botToken, firstPhoto.fileId, firstPhoto.fileSize);
+          let tempPath: string | undefined;
           try {
+            const downloaded = await fetchTelegramFileToTemp(botToken, firstPhoto.fileId, firstPhoto.fileSize);
+            tempPath = downloaded.tempPath;
             const result = await publishToFacebook({
               target,
               message: text,
@@ -742,6 +800,12 @@ async function processTelegramTask({
               url: result.url,
               nodeId: result.nodeId,
             };
+          } catch (error) {
+            if (allowTextOnlyFallback && shouldFallbackToTextOnlyForTelegramMediaError(error, text)) {
+              await publishTextOnlyFallback(getErrorMessage(error));
+            } else {
+              throw error;
+            }
           } finally {
             await cleanupTempFile(tempPath);
           }
@@ -767,7 +831,7 @@ async function processTelegramTask({
     } catch (error) {
       status = 'failed';
       failures += 1;
-      errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      errorMessage = getErrorMessage(error) || 'Unknown error';
       debugError('Telegram webhook target failed', error, { taskId: task.id, targetId: target.id });
     }
 
@@ -840,15 +904,9 @@ async function processTelegramMessages(context: TelegramProcessingContext): Prom
   const activeTasks = userTasks.filter(
     (task) => {
       if (task.status !== 'active') return false;
-
-      // Run Telegram webhook against any task whose source is Telegram,
-      // even if it points to another Telegram account of the same user.
-      // This matches "work with any task" behavior requested by product.
-      const sourcePlatformIds = task.sourceAccounts
-        .map((sourceAccountId) => accountsById.get(sourceAccountId)?.platformId)
-        .filter((platformId): platformId is string => Boolean(platformId));
-
-      return sourcePlatformIds.includes('telegram');
+      // Process only tasks that explicitly use this Telegram account as source
+      // to avoid duplicate dispatch across unrelated Telegram source accounts.
+      return task.sourceAccounts.includes(account.id);
     }
   );
 

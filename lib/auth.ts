@@ -2,6 +2,8 @@ import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { compare } from 'bcryptjs';
 import { db } from '@/lib/db';
+import { rateLimit } from '@/lib/rate-limit';
+import { isEmailVerificationEnabled } from '@/lib/auth/email-verification';
 
 function sanitizeSessionImage(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -24,17 +26,32 @@ export const authOptions: NextAuthOptions = {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         const email = credentials?.email?.toLowerCase().trim();
         const password = credentials?.password ?? '';
 
         if (!email || !password) return null;
+        const forwardedFor =
+          typeof (req as any)?.headers?.['x-forwarded-for'] === 'string'
+            ? (req as any).headers['x-forwarded-for'].split(',')[0]?.trim()
+            : '';
+        const clientKey =
+          forwardedFor ||
+          (typeof (req as any)?.headers?.['x-real-ip'] === 'string'
+            ? (req as any).headers['x-real-ip']
+            : '') ||
+          'unknown';
+        const loginLimiter = rateLimit(`auth:login:${clientKey}:${email}`, 15, 60_000);
+        if (!loginLimiter.ok) return null;
 
         const user = await db.getUserByEmailWithPassword(email);
         if (!user?.passwordHash) return null;
 
         const valid = await compare(password, user.passwordHash);
         if (!valid) return null;
+        if (isEmailVerificationEnabled() && !user.emailVerifiedAt) {
+          throw new Error('EMAIL_NOT_VERIFIED');
+        }
 
         return {
           id: user.id,

@@ -2,7 +2,20 @@ import { getToken } from 'next-auth/jwt';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-const PUBLIC_PATHS = new Set(['/login', '/register']);
+const AUTH_PATHS = new Set([
+  '/login',
+  '/register',
+  '/verify-email',
+  '/forgot-password',
+  '/reset-password',
+]);
+
+const PUBLIC_PATHS = new Set([
+  ...AUTH_PATHS,
+  '/terms',
+  '/privacy',
+  '/offline',
+]);
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -19,6 +32,7 @@ export async function middleware(request: NextRequest) {
   };
 
   if (pathname.startsWith('/api/')) return next();
+  if (/\.[^/]+$/.test(pathname)) return next();
   if (pathname.startsWith('/api/auth')) return next();
   if (pathname.startsWith('/api/oauth')) return next();
   if (pathname.startsWith('/api/twitter/webhook')) return next();
@@ -26,7 +40,6 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith('/api/twitter/stream/debug')) return next();
   if (pathname.startsWith('/api/twitter/poll/now')) return next();
   if (pathname.startsWith('/api/telegram/webhook')) return next();
-  if (PUBLIC_PATHS.has(pathname)) return next();
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/_vercel') ||
@@ -34,6 +47,19 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/public')
   ) {
     return next();
+  }
+
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+  if (PUBLIC_PATHS.has(pathname)) {
+    if (!AUTH_PATHS.has(pathname)) {
+      return next();
+    }
+    if (!token) return next();
+    const url = request.nextUrl.clone();
+    url.pathname = '/';
+    const response = NextResponse.redirect(url);
+    response.headers.set('x-request-id', requestId);
+    return response;
   }
 
   const taskDetailMatch = pathname.match(/^\/tasks\/([^/]+)$/);
@@ -45,10 +71,11 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
   if (!token) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
+    const callbackUrl = `${pathname}${request.nextUrl.search}`;
+    url.searchParams.set('callbackUrl', callbackUrl);
     const response = NextResponse.redirect(url);
     response.headers.set('x-request-id', requestId);
     return response;

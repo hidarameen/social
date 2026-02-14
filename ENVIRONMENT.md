@@ -8,6 +8,7 @@ Required:
 
 OAuth redirect base URL:
 - `APP_URL` (e.g., `http://localhost:5000`)
+- `APP_NAME` (display name used in verification/reset emails)
 
 Twitter / X:
 - `TWITTER_CLIENT_ID`
@@ -29,8 +30,19 @@ TikTok:
 - `TIKTOK_CLIENT_KEY`
 - `TIKTOK_CLIENT_SECRET`
 
-Telegram (no OAuth):
-- `TELEGRAM_BOT_TOKEN` (manual setup)
+Email (real verification code delivery):
+- `EMAIL_VERIFICATION_ENABLED` (default `true`; set `false` to auto-verify newly registered emails and skip verification requirement)
+- `RESEND_API_KEY`
+- `EMAIL_FROM` (example: `SocialFlow <no-reply@your-domain.com>`)
+- `EMAIL_REPLY_TO` (optional)
+- `EMAIL_VERIFY_CODE_TTL_MINUTES` (default `15`, range `5`-`60`)
+- `EMAIL_RESET_CODE_TTL_MINUTES` (default `15`, range `5`-`60`)
+
+Telegram (user sessions via MTProto):
+- `API_ID`
+- `API_HASH`
+- Accounts are added with phone number, verification code, and optional 2FA password.
+- Session is stored per account; no global bot token and no local Bot API server required.
 
 Redirect URIs (add in each provider console):
 - `APP_URL/api/oauth/twitter/callback`

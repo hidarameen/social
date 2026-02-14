@@ -13,11 +13,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Save, Bell, Lock, Palette, Database, KeyRound } from 'lucide-react';
+import { Save, Bell, Lock, Palette, Database, KeyRound, Moon, Sun } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useTheme } from 'next-themes';
 import { useSession } from 'next-auth/react';
+import { useThemePreset } from '@/components/theme-provider';
+import { useShellPreferences } from '@/components/layout/shell-provider';
 
 const MANAGED_PLATFORM_IDS = [
   'twitter',
@@ -26,7 +28,6 @@ const MANAGED_PLATFORM_IDS = [
   'youtube',
   'tiktok',
   'linkedin',
-  'telegram',
 ] as const;
 
 type ManagedPlatformId = (typeof MANAGED_PLATFORM_IDS)[number];
@@ -69,7 +70,6 @@ const PLATFORM_LABELS: Record<ManagedPlatformId, string> = {
   youtube: 'YouTube',
   tiktok: 'TikTok',
   linkedin: 'LinkedIn',
-  telegram: 'Telegram',
 };
 
 const PLATFORM_FIELDS: Record<ManagedPlatformId, CredentialField[]> = {
@@ -103,11 +103,33 @@ const PLATFORM_FIELDS: Record<ManagedPlatformId, CredentialField[]> = {
     { key: 'clientId', label: 'Client ID', placeholder: 'LinkedIn client id' },
     { key: 'clientSecret', label: 'Client Secret', placeholder: 'LinkedIn client secret', secret: true },
   ],
-  telegram: [
-    { key: 'botToken', label: 'Bot Token', placeholder: '123456:ABC-DEF...', secret: true },
-    { key: 'webhookSecret', label: 'Webhook Secret (Optional)', placeholder: 'Telegram webhook secret', secret: true },
-  ],
 };
+
+const THEME_PRESETS: Array<{
+  id: 'orbit' | 'graphite' | 'sunrise';
+  name: string;
+  description: string;
+  swatches: [string, string, string];
+}> = [
+  {
+    id: 'orbit',
+    name: 'Orbit',
+    description: 'Balanced blue-cyan premium look.',
+    swatches: ['#4f6dff', '#34c7d5', '#f6c65e'],
+  },
+  {
+    id: 'graphite',
+    name: 'Graphite',
+    description: 'Minimal neutral scheme with subtle accents.',
+    swatches: ['#667086', '#7f8ea4', '#a6b0c2'],
+  },
+  {
+    id: 'sunrise',
+    name: 'Sunrise',
+    description: 'Warm editorial palette with high contrast.',
+    swatches: ['#e57a39', '#edb84c', '#46b8a8'],
+  },
+];
 
 function buildEmptyCredentialMap(): Record<ManagedPlatformId, PlatformCredentialForm> {
   return MANAGED_PLATFORM_IDS.reduce((acc, id) => {
@@ -143,7 +165,16 @@ function sanitizeForSave(form: PlatformCredentialForm): Record<string, string> {
 
 export default function SettingsPage() {
   const { data: session } = useSession();
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
+  const { preset, setPreset } = useThemePreset();
+  const {
+    sidebarCollapsed,
+    setSidebarCollapsed,
+    reducedMotion,
+    setReducedMotion,
+    density,
+    setDensity,
+  } = useShellPreferences();
   const [mounted, setMounted] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<ManagedPlatformId>('twitter');
   const [credentialsSaving, setCredentialsSaving] = useState(false);
@@ -205,7 +236,8 @@ export default function SettingsPage() {
     };
   }, []);
 
-  const selectedTheme = mounted ? (theme ?? 'system') : 'system';
+  const selectedTheme = mounted && resolvedTheme === 'dark' ? 'dark' : 'light';
+  const nextTheme = selectedTheme === 'dark' ? 'light' : 'dark';
   const activeCredentials = useMemo(
     () => credentialMap[selectedPlatform] ?? { ...EMPTY_CREDENTIAL_FORM },
     [credentialMap, selectedPlatform]
@@ -259,13 +291,20 @@ export default function SettingsPage() {
       <Header />
 
       <main className="control-main">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">
+        <div className="page-header animate-fade-up">
+          <div>
+            <p className="kpi-pill mb-3">Workspace Control</p>
+            <h1 className="page-title">
             Settings
-          </h1>
-          <p className="text-muted-foreground">
+            </h1>
+            <p className="page-subtitle">
             Manage your account, themes, and platform API credentials
-          </p>
+            </p>
+          </div>
+          <Button size="lg" onClick={handleSave}>
+            <Save size={18} className="mr-1" />
+            Save All Changes
+          </Button>
         </div>
 
         <div className="max-w-4xl space-y-6">
@@ -395,22 +434,144 @@ export default function SettingsPage() {
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Theme
                 </label>
-                <Select
-                  value={selectedTheme}
-                  onValueChange={(value) => {
-                    setTheme(value);
-                    toast.success('Theme updated');
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="light">Light</SelectItem>
-                    <SelectItem value="dark">Dark</SelectItem>
-                    <SelectItem value="system">Auto (System)</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-card/70 p-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTheme(nextTheme);
+                      toast.success(nextTheme === 'dark' ? 'Dark theme enabled' : 'Light theme enabled');
+                    }}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover:opacity-90"
+                    aria-label={selectedTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                    title={selectedTheme === 'dark' ? 'Light mode' : 'Dark mode'}
+                  >
+                    {selectedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-foreground">
+                  Theme Preset
+                </label>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {THEME_PRESETS.map((item) => {
+                    const active = preset === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setPreset(item.id);
+                          toast.success(`Preset switched to ${item.name}`);
+                        }}
+                        className={`rounded-2xl border p-3 text-left transition-all ${
+                          active
+                            ? 'border-primary/40 bg-primary/10 shadow-md shadow-primary/15'
+                            : 'border-border/70 bg-card/55 hover:border-primary/25 hover:bg-card'
+                        }`}
+                      >
+                        <div className="mb-2 flex items-center justify-between">
+                          <p className="text-sm font-semibold text-foreground">{item.name}</p>
+                          {active && (
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-primary">
+                              Active
+                            </span>
+                          )}
+                        </div>
+                        <div className="mb-2 flex items-center gap-1.5">
+                          {item.swatches.map((color) => (
+                            <span
+                              key={color}
+                              className="h-4 w-4 rounded-full border border-black/10"
+                              style={{ backgroundColor: color }}
+                            />
+                          ))}
+                        </div>
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          {item.description}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Workspace Experience</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/35 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-medium text-foreground">
+                    Compact Density
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Reduce spacing for high-throughput operator workflows.
+                  </p>
+                </div>
+                <Switch
+                  checked={density === 'compact'}
+                  onCheckedChange={(checked) => setDensity(checked ? 'compact' : 'comfortable')}
+                />
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/35 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-medium text-foreground">
+                    Reduced Motion
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Minimize animation and transition effects globally.
+                  </p>
+                </div>
+                <Switch
+                  checked={reducedMotion}
+                  onCheckedChange={setReducedMotion}
+                />
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/35 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-medium text-foreground">
+                    Collapsed Sidebar by Default
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Keep navigation compact until expanded.
+                  </p>
+                </div>
+                <Switch
+                  checked={sidebarCollapsed}
+                  onCheckedChange={setSidebarCollapsed}
+                />
+              </div>
+
+              <div className="rounded-xl border border-border/70 bg-card/45 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Productivity Shortcuts
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Use `Ctrl/Cmd + K` for command palette and `Shift + ?` for shortcut help.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.dispatchEvent(new CustomEvent('open-global-command-palette'))}
+                  >
+                    Open Command Palette
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: '?', shiftKey: true }))}
+                  >
+                    Open Shortcuts
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -423,7 +584,7 @@ export default function SettingsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/35 p-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-medium text-foreground">
                     Email on Success
@@ -446,7 +607,7 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/35 p-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-medium text-foreground">
                     Email on Error
@@ -469,7 +630,7 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/35 p-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-medium text-foreground">
                     Push Notifications
@@ -502,7 +663,7 @@ export default function SettingsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/35 p-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-medium text-foreground">
                     Usage Analytics
@@ -525,7 +686,7 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/35 p-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-medium text-foreground">
                     Share Error Logs
@@ -576,7 +737,7 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <Button size="lg" onClick={handleSave}>
               <Save size={20} className="mr-2" />
               Save Settings

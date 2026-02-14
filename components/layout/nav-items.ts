@@ -8,6 +8,7 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react';
+import type { Locale } from '@/lib/i18n/types';
 
 export interface NavItem {
   href: string;
@@ -25,3 +26,20 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/executions', label: 'Executions', caption: 'Runtime history', icon: Database },
   { href: '/settings', label: 'Settings', caption: 'Workspace control', icon: Settings },
 ];
+
+const ARABIC_NAV_TRANSLATIONS: Record<string, { label: string; caption: string }> = {
+  '/': { label: 'لوحة التحكم', caption: 'نظرة عامة على النظام' },
+  '/tasks': { label: 'مهامي', caption: 'إدارة مسارات الأتمتة' },
+  '/tasks?create=1': { label: 'إنشاء مهمة', caption: 'بناء أتمتة جديدة' },
+  '/accounts': { label: 'الحسابات', caption: 'المنصات المتصلة' },
+  '/analytics': { label: 'التحليلات', caption: 'مؤشرات الأداء' },
+  '/executions': { label: 'التنفيذات', caption: 'سجل التشغيل' },
+  '/settings': { label: 'الإعدادات', caption: 'التحكم في مساحة العمل' },
+};
+
+export function getNavItemContent(item: NavItem, locale: Locale) {
+  if (locale !== 'ar') {
+    return { label: item.label, caption: item.caption };
+  }
+  return ARABIC_NAV_TRANSLATIONS[item.href] || { label: item.label, caption: item.caption };
+}

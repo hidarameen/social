@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.gitignore
+.cache
+.config
+.local
+.upm
+tmp
+*.log
+*.pid
+.env
+.env.local
+.env.*.local

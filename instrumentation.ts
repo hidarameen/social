@@ -40,13 +40,7 @@ export async function register() {
       logServerInfo('runtime', 'Global server error hooks registered');
     }
 
-    // Dynamically import background services to avoid Edge runtime issues with Node.js built-ins
-    const { ensureTwitterPollingStarted } = await import('@/lib/services/twitter-poller');
-    const { ensureSchedulerStarted } = await import('@/lib/services/task-scheduler');
-    const { ensureTwitterStreamStarted } = await import('@/lib/services/twitter-stream');
-    
-    ensureTwitterPollingStarted();
-    ensureSchedulerStarted();
-    ensureTwitterStreamStarted();
+    const { triggerBackgroundServicesRefresh } = await import('@/lib/services/background-services');
+    triggerBackgroundServicesRefresh({ force: true });
   }
 }

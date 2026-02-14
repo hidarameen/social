@@ -259,34 +259,47 @@ export class TwitterStream {
           debugLog('Twitter -> Twitter actions success', { taskId: task.id, targetId: target.id });
         } else if (target.platformId === 'youtube') {
           debugLog('Twitter -> YouTube start', { taskId: task.id, targetId: target.id });
-          const media = await prepareYouTubeVideoFromTweet(tweetItem, link, enableYtDlp);
-          try {
-            const result = await executeYouTubePublish({
-              target,
-              filePath: media.tempPath,
-              mimeType: media.mimeType,
-              transformations: task.transformations,
-              context: {
-                text: message,
-                username: author.username || '',
-                name: author.name || '',
-                date: tweetItem.createdAt,
-                link,
-              },
+          const mediaCandidates = includeMedia ? tweetItem.media : [];
+          const hasVideoMedia = mediaCandidates.some(
+            (item) => item.type === 'video' || item.type === 'animated_gif'
+          );
+
+          if (hasVideoMedia) {
+            const media = await prepareYouTubeVideoFromTweet(tweetItem, link, enableYtDlp);
+            try {
+              const result = await executeYouTubePublish({
+                target,
+                filePath: media.tempPath,
+                mimeType: media.mimeType,
+                transformations: task.transformations,
+                context: {
+                  taskId: task.id,
+                  text: message,
+                  username: author.username || '',
+                  name: author.name || '',
+                  date: tweetItem.createdAt,
+                  link,
+                },
+              });
+              responseData = {
+                ...responseData,
+                youtube: result,
+                mediaSource: media.viaYtDlp ? 'yt-dlp' : 'direct_url',
+                publishMode: 'video_upload',
+              };
+            } finally {
+              await media.cleanup().catch(() => undefined);
+            }
+            debugLog('Twitter -> YouTube upload success', {
+              taskId: task.id,
+              targetId: target.id,
+              videoId: responseData?.youtube?.id,
             });
-            responseData = {
-              ...responseData,
-              youtube: result,
-              mediaSource: media.viaYtDlp ? 'yt-dlp' : 'direct_url',
-            };
-          } finally {
-            await media.cleanup().catch(() => undefined);
+          } else {
+            throw new Error(
+              'YouTube targets accept video uploads only. Skipping non-video content.'
+            );
           }
-          debugLog('Twitter -> YouTube upload success', {
-            taskId: task.id,
-            targetId: target.id,
-            videoId: responseData?.youtube?.id,
-          });
         } else if (target.platformId === 'facebook') {
           debugLog('Twitter -> Facebook start', { taskId: task.id, targetId: target.id });
           const mediaCandidates = includeMedia ? tweetItem.media : [];

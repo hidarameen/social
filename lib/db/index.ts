@@ -7,6 +7,7 @@ export interface User {
   name: string;
   profileImageUrl?: string;
   passwordHash?: string;
+  emailVerifiedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -153,6 +154,7 @@ function mapUser(row: any): User {
     name: row.name,
     profileImageUrl: row.profile_image_url ?? undefined,
     passwordHash: row.password_hash ?? undefined,
+    emailVerifiedAt: row.email_verified_at ? new Date(row.email_verified_at) : undefined,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -247,6 +249,7 @@ class Database {
   private telegramProcessedMessagesSchemaReady = false;
   private platformCredentialsSchemaReady = false;
   private usersSchemaReady = false;
+  private authTokensSchemaReady = false;
 
   private async ensureUsersSchema() {
     if (this.usersSchemaReady) return;
@@ -255,8 +258,57 @@ class Database {
       ALTER TABLE users
       ADD COLUMN IF NOT EXISTS profile_image_url TEXT
     `);
+    await pool.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ
+    `);
 
     this.usersSchemaReady = true;
+  }
+
+  private async ensureAuthTokensSchema() {
+    if (this.authTokensSchemaReady) return;
+
+    await this.ensureUsersSchema();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS email_verification_tokens (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_user
+      ON email_verification_tokens(user_id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_expires
+      ON email_verification_tokens(expires_at)
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user
+      ON password_reset_tokens(user_id)
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires
+      ON password_reset_tokens(expires_at)
+    `);
+
+    this.authTokensSchemaReady = true;
   }
 
   private async ensurePlatformCredentialsSchema() {
@@ -374,15 +426,24 @@ class Database {
     await this.ensureUsersSchema();
     const result = await pool.query(
       `
-      INSERT INTO users (id, email, name, profile_image_url, password_hash)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO users (id, email, name, profile_image_url, password_hash, email_verified_at)
+      VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (id) DO UPDATE SET
         email = EXCLUDED.email,
         name = EXCLUDED.name,
-        profile_image_url = EXCLUDED.profile_image_url
-      RETURNING id, email, name, profile_image_url, password_hash, created_at, updated_at
+        profile_image_url = EXCLUDED.profile_image_url,
+        password_hash = EXCLUDED.password_hash,
+        email_verified_at = EXCLUDED.email_verified_at
+      RETURNING id, email, name, profile_image_url, password_hash, email_verified_at, created_at, updated_at
       `,
-      [user.id, user.email, user.name, user.profileImageUrl ?? null, user.passwordHash ?? null]
+      [
+        user.id,
+        user.email,
+        user.name,
+        user.profileImageUrl ?? null,
+        user.passwordHash ?? null,
+        user.emailVerifiedAt ?? null,
+      ]
     );
     return mapUser(result.rows[0]);
   }
@@ -390,7 +451,7 @@ class Database {
   async getUser(id: string): Promise<User | undefined> {
     await this.ensureUsersSchema();
     const result = await pool.query(
-      `SELECT id, email, name, profile_image_url, password_hash, created_at, updated_at FROM users WHERE id = $1`,
+      `SELECT id, email, name, profile_image_url, password_hash, email_verified_at, created_at, updated_at FROM users WHERE id = $1`,
       [id]
     );
     if (result.rowCount === 0) return undefined;
@@ -400,7 +461,7 @@ class Database {
   async getUserByEmail(email: string): Promise<User | undefined> {
     await this.ensureUsersSchema();
     const result = await pool.query(
-      `SELECT id, email, name, profile_image_url, password_hash, created_at, updated_at FROM users WHERE email = $1`,
+      `SELECT id, email, name, profile_image_url, password_hash, email_verified_at, created_at, updated_at FROM users WHERE email = $1`,
       [email]
     );
     if (result.rowCount === 0) return undefined;
@@ -410,7 +471,7 @@ class Database {
   async getAllUsers(): Promise<User[]> {
     await this.ensureUsersSchema();
     const result = await pool.query(
-      `SELECT id, email, name, profile_image_url, password_hash, created_at, updated_at FROM users ORDER BY created_at DESC`
+      `SELECT id, email, name, profile_image_url, password_hash, email_verified_at, created_at, updated_at FROM users ORDER BY created_at DESC`
     );
     return result.rows.map(mapUser);
   }
@@ -423,11 +484,18 @@ class Database {
     const result = await pool.query(
       `
       UPDATE users
-      SET email = $2, name = $3, profile_image_url = $4, password_hash = $5, updated_at = NOW()
+      SET email = $2, name = $3, profile_image_url = $4, password_hash = $5, email_verified_at = $6, updated_at = NOW()
       WHERE id = $1
-      RETURNING id, email, name, profile_image_url, password_hash, created_at, updated_at
+      RETURNING id, email, name, profile_image_url, password_hash, email_verified_at, created_at, updated_at
       `,
-      [id, next.email, next.name, next.profileImageUrl ?? null, next.passwordHash ?? null]
+      [
+        id,
+        next.email,
+        next.name,
+        next.profileImageUrl ?? null,
+        next.passwordHash ?? null,
+        next.emailVerifiedAt ?? null,
+      ]
     );
     return mapUser(result.rows[0]);
   }
@@ -435,11 +503,67 @@ class Database {
   async getUserByEmailWithPassword(email: string): Promise<User | undefined> {
     await this.ensureUsersSchema();
     const result = await pool.query(
-      `SELECT id, email, name, profile_image_url, password_hash, created_at, updated_at FROM users WHERE email = $1`,
+      `SELECT id, email, name, profile_image_url, password_hash, email_verified_at, created_at, updated_at FROM users WHERE email = $1`,
       [email]
     );
     if (result.rowCount === 0) return undefined;
     return mapUser(result.rows[0]);
+  }
+
+  async createEmailVerificationToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void> {
+    await this.ensureAuthTokensSchema();
+    await pool.query(
+      `
+      INSERT INTO email_verification_tokens (id, user_id, token_hash, expires_at)
+      VALUES ($1, $2, $3, $4)
+      `,
+      [randomUUID(), userId, tokenHash, expiresAt]
+    );
+  }
+
+  async consumeEmailVerificationToken(tokenHash: string): Promise<{ userId: string } | undefined> {
+    await this.ensureAuthTokensSchema();
+    const result = await pool.query(
+      `
+      UPDATE email_verification_tokens
+      SET used_at = NOW()
+      WHERE token_hash = $1
+        AND used_at IS NULL
+        AND expires_at > NOW()
+      RETURNING user_id
+      `,
+      [tokenHash]
+    );
+    if ((result.rowCount ?? 0) === 0) return undefined;
+    return { userId: result.rows[0].user_id };
+  }
+
+  async createPasswordResetToken(userId: string, tokenHash: string, expiresAt: Date): Promise<void> {
+    await this.ensureAuthTokensSchema();
+    await pool.query(
+      `
+      INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at)
+      VALUES ($1, $2, $3, $4)
+      `,
+      [randomUUID(), userId, tokenHash, expiresAt]
+    );
+  }
+
+  async consumePasswordResetToken(tokenHash: string): Promise<{ userId: string } | undefined> {
+    await this.ensureAuthTokensSchema();
+    const result = await pool.query(
+      `
+      UPDATE password_reset_tokens
+      SET used_at = NOW()
+      WHERE token_hash = $1
+        AND used_at IS NULL
+        AND expires_at > NOW()
+      RETURNING user_id
+      `,
+      [tokenHash]
+    );
+    if ((result.rowCount ?? 0) === 0) return undefined;
+    return { userId: result.rows[0].user_id };
   }
 
   // User Platform Credentials Methods
@@ -954,7 +1078,16 @@ class Database {
     search?: string;
     sortBy?: 'executedAt' | 'status' | 'taskName';
     sortDir?: 'asc' | 'desc';
-  }): Promise<{ total: number; executions: Array<TaskExecution & { taskName: string }> }> {
+  }): Promise<{
+    total: number;
+    executions: Array<
+      TaskExecution & {
+        taskName: string;
+        sourceAccountName?: string;
+        targetAccountName?: string;
+      }
+    >;
+  }> {
     const { userId, limit, offset, status, search, sortBy, sortDir } = params;
     const conditions: string[] = ['t.user_id = $1'];
     const values: any[] = [userId];
@@ -990,9 +1123,17 @@ class Database {
       `
       SELECT e.id, e.task_id, e.source_account, e.target_account, e.original_content,
         e.transformed_content, e.status, e.error, e.executed_at, e.response_data,
-        t.name AS task_name
+        t.name AS task_name,
+        source_account_row.account_name AS source_account_name,
+        source_account_row.account_username AS source_account_username,
+        target_account_row.account_name AS target_account_name,
+        target_account_row.account_username AS target_account_username
       FROM task_executions e
       JOIN tasks t ON t.id = e.task_id
+      LEFT JOIN platform_accounts source_account_row
+        ON source_account_row.id = e.source_account AND source_account_row.user_id = t.user_id
+      LEFT JOIN platform_accounts target_account_row
+        ON target_account_row.id = e.target_account AND target_account_row.user_id = t.user_id
       ${where}
       ORDER BY ${sortColumn} ${direction}
       LIMIT $${idx++} OFFSET $${idx++}
@@ -1005,6 +1146,10 @@ class Database {
       executions: dataRes.rows.map((row: any) => ({
         ...mapExecution(row),
         taskName: row.task_name,
+        sourceAccountName:
+          row.source_account_name || row.source_account_username || undefined,
+        targetAccountName:
+          row.target_account_name || row.target_account_username || undefined,
       })),
     };
   }

@@ -6,14 +6,24 @@ import { Header } from '@/components/layout/header';
 import { StatCard } from '@/components/common/stat-card';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
-  BarChart3,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   TrendingUp,
   CheckCircle,
   AlertCircle,
   Clock,
   Zap,
 } from 'lucide-react';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
+import { getCachedQuery, setCachedQuery } from '@/lib/client/query-cache';
+import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
 
 export default function AnalyticsPage() {
   const [stats, setStats] = useState({
@@ -27,23 +37,47 @@ export default function AnalyticsPage() {
   const [taskStats, setTaskStats] = useState<any[]>([]);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'taskName' | 'successRate' | 'totalExecutions' | 'failed'>('successRate');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const pageSize = 50;
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 300);
+  const isInitialLoading = isLoadingAnalytics && taskStats.length === 0;
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    const cacheKey = `analytics:list:${pageSize}:0:${debouncedSearchTerm}:${sortBy}:${sortDir}`;
+    const cached = getCachedQuery<{
+      stats: typeof stats;
+      taskStats: any[];
+      nextOffset: number;
+      hasMore: boolean;
+    }>(cacheKey, 20_000);
+
+    if (cached) {
+      setStats(cached.stats);
+      setTaskStats(cached.taskStats);
+      setOffset(cached.nextOffset);
+      setHasMore(cached.hasMore);
+      setIsLoadingAnalytics(false);
+    } else {
+      setIsLoadingAnalytics(true);
+    }
+
     async function load() {
       try {
         const res = await fetch(
-          `/api/analytics?limit=${pageSize}&offset=0&search=${encodeURIComponent(searchTerm)}&sortBy=${sortBy}&sortDir=${sortDir}`
+          `/api/analytics?limit=${pageSize}&offset=0&search=${encodeURIComponent(debouncedSearchTerm)}&sortBy=${sortBy}&sortDir=${sortDir}`,
+          { signal: controller.signal }
         );
         const data = await res.json();
         if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load analytics');
         if (cancelled) return;
 
-        setStats({
+        const nextStats = {
           totalExecutions: data.totals.executions,
           successfulExecutions: data.totals.successfulExecutions,
           failedExecutions: data.totals.failedExecutions,
@@ -51,25 +85,43 @@ export default function AnalyticsPage() {
             ? ((data.totals.successfulExecutions / data.totals.executions) * 100).toFixed(2)
             : '0',
           averageExecutionTime: '245ms',
-        });
+        };
+        const list = data.taskStats || [];
+        const nextOffset = data.nextOffset || 0;
+        const nextHasMore = Boolean(data.hasMore);
 
-        setTaskStats(data.taskStats || []);
-        setOffset(data.nextOffset || 0);
-        setHasMore(Boolean(data.hasMore));
+        setStats(nextStats);
+        setTaskStats(list);
+        setOffset(nextOffset);
+        setHasMore(nextHasMore);
+        setCachedQuery(cacheKey, {
+          stats: nextStats,
+          taskStats: list,
+          nextOffset,
+          hasMore: nextHasMore,
+        });
       } catch (error) {
+        if ((error as Error)?.name === 'AbortError') return;
         console.error('[v0] AnalyticsPage: Error loading analytics:', error);
+      } finally {
+        if (!cancelled) {
+          setIsLoadingAnalytics(false);
+        }
       }
     }
     load();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [searchTerm, sortBy, sortDir]);
+  }, [pageSize, debouncedSearchTerm, sortBy, sortDir]);
 
   const handleLoadMore = async () => {
+    if (isLoadingMore) return;
     try {
+      setIsLoadingMore(true);
       const res = await fetch(
-        `/api/analytics?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(searchTerm)}&sortBy=${sortBy}&sortDir=${sortDir}`
+        `/api/analytics?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(debouncedSearchTerm)}&sortBy=${sortBy}&sortDir=${sortDir}`
       );
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load analytics');
@@ -79,6 +131,8 @@ export default function AnalyticsPage() {
       setHasMore(Boolean(data.hasMore));
     } catch (error) {
       console.error('[v0] AnalyticsPage: Error loading more analytics:', error);
+    } finally {
+      setIsLoadingMore(false);
     }
   };
 
@@ -88,49 +142,16 @@ export default function AnalyticsPage() {
       <Header />
 
       <main className="control-main">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground mb-2">
+        <div className="page-header animate-fade-up">
+          <div>
+            <p className="kpi-pill mb-3">Execution Intelligence</p>
+            <h1 className="page-title">
             Analytics & Insights
-          </h1>
-          <p className="text-muted-foreground">
+            </h1>
+            <p className="page-subtitle">
             Monitor task performance and execution statistics
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-          <StatCard
-            title="Total Executions"
-            value={stats.totalExecutions}
-            icon={Zap}
-            color="primary"
-          />
-          <StatCard
-            title="Successful"
-            value={stats.successfulExecutions}
-            icon={CheckCircle}
-            color="secondary"
-          />
-          <StatCard
-            title="Failed"
-            value={stats.failedExecutions}
-            icon={AlertCircle}
-            color="primary"
-          />
-          <StatCard
-            title="Success Rate"
-            value={`${stats.successRate}%`}
-            icon={TrendingUp}
-            color="accent"
-          />
-          <StatCard
-            title="Avg. Time"
-            value={stats.averageExecutionTime}
-            icon={Clock}
-            color="primary"
-          />
-        </div>
-
-        <div className="mb-6 flex justify-end">
+            </p>
+          </div>
           <Button
             variant="outline"
             onClick={() => {
@@ -141,41 +162,132 @@ export default function AnalyticsPage() {
           </Button>
         </div>
 
+        {isInitialLoading ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5 mb-8">
+            {[0, 1, 2, 3, 4].map((idx) => (
+              <Card key={idx}>
+                <CardContent className="pt-6">
+                  <div className="animate-pulse space-y-3">
+                    <div className="h-3 w-24 rounded bg-muted/50" />
+                    <div className="h-8 w-20 rounded bg-muted/65" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5 mb-8">
+            <StatCard
+              title="Total Executions"
+              value={stats.totalExecutions}
+              icon={Zap}
+              color="primary"
+            />
+            <StatCard
+              title="Successful"
+              value={stats.successfulExecutions}
+              icon={CheckCircle}
+              color="secondary"
+            />
+            <StatCard
+              title="Failed"
+              value={stats.failedExecutions}
+              icon={AlertCircle}
+              color="primary"
+            />
+            <StatCard
+              title="Success Rate"
+              value={`${stats.successRate}%`}
+              icon={TrendingUp}
+              color="accent"
+            />
+            <StatCard
+              title="Avg. Time"
+              value={stats.averageExecutionTime}
+              icon={Clock}
+              color="primary"
+            />
+          </div>
+        )}
+
+        <Card className="mb-8 animate-fade-up">
+          <CardHeader>
+            <CardTitle>Success Rate by Task (Top 8)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {taskStats.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No chart data yet.</p>
+            ) : (
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={taskStats.slice(0, 8)}>
+                    <CartesianGrid strokeDasharray="4 4" opacity={0.25} />
+                    <XAxis
+                      dataKey="taskName"
+                      tick={{ fontSize: 11 }}
+                      interval="preserveStartEnd"
+                      minTickGap={18}
+                      angle={-20}
+                      textAnchor="end"
+                      height={56}
+                    />
+                    <YAxis tick={{ fontSize: 11 }} domain={[0, 100]} />
+                    <Tooltip />
+                    <Bar dataKey="successRate" fill="var(--color-primary)" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Task Performance Table */}
-        <Card>
+        <Card className="animate-fade-up">
           <CardHeader>
             <CardTitle>Performance by Task</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="mb-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            <div className="mb-4 sticky-toolbar">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Input
                   placeholder="Search tasks..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
-                <select
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                <Select
                   value={`${sortBy}:${sortDir}`}
-                  onChange={(e) => {
-                    const [by, dir] = e.target.value.split(':') as any;
+                  onValueChange={(value: string) => {
+                    const [by, dir] = value.split(':') as any;
                     setSortBy(by);
                     setSortDir(dir);
                   }}
                 >
-                  <option value="successRate:desc">Success Rate (High)</option>
-                  <option value="successRate:asc">Success Rate (Low)</option>
-                  <option value="totalExecutions:desc">Total Runs (High)</option>
-                  <option value="totalExecutions:asc">Total Runs (Low)</option>
-                  <option value="failed:desc">Failures (High)</option>
-                  <option value="failed:asc">Failures (Low)</option>
-                  <option value="taskName:asc">Task (A→Z)</option>
-                  <option value="taskName:desc">Task (Z→A)</option>
-                </select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="successRate:desc">Success Rate (High)</SelectItem>
+                    <SelectItem value="successRate:asc">Success Rate (Low)</SelectItem>
+                    <SelectItem value="totalExecutions:desc">Total Runs (High)</SelectItem>
+                    <SelectItem value="totalExecutions:asc">Total Runs (Low)</SelectItem>
+                    <SelectItem value="failed:desc">Failures (High)</SelectItem>
+                    <SelectItem value="failed:asc">Failures (Low)</SelectItem>
+                    <SelectItem value="taskName:asc">Task (A→Z)</SelectItem>
+                    <SelectItem value="taskName:desc">Task (Z→A)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
-            {taskStats.length === 0 ? (
+            {isInitialLoading ? (
+              <div className="space-y-3">
+                {[0, 1, 2].map((idx) => (
+                  <div key={idx} className="animate-pulse rounded-xl border border-border/60 p-4">
+                    <div className="h-4 w-40 rounded bg-muted/55" />
+                    <div className="mt-3 h-3 w-64 rounded bg-muted/40" />
+                  </div>
+                ))}
+              </div>
+            ) : taskStats.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-muted-foreground">
                   No execution data available yet. Create and run some tasks to see analytics.
@@ -183,7 +295,7 @@ export default function AnalyticsPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="min-w-[720px] w-full text-sm">
                   <thead className="border-b border-border">
                     <tr>
                       <th className="text-left py-3 px-4 font-semibold text-foreground">
@@ -205,7 +317,7 @@ export default function AnalyticsPage() {
                   </thead>
                   <tbody className="divide-y divide-border">
                     {taskStats.map(stat => (
-                      <tr key={stat.taskId} className="hover:bg-card/50 transition-colors">
+                      <tr key={stat.taskId} className="hover:bg-card/60 transition-colors">
                         <td className="py-4 px-4 text-foreground font-medium">
                           {stat.taskName}
                         </td>
@@ -235,8 +347,8 @@ export default function AnalyticsPage() {
                 </table>
                 {hasMore && (
                   <div className="mt-4 flex justify-center">
-                    <Button variant="outline" onClick={handleLoadMore}>
-                      Load More
+                    <Button variant="outline" onClick={handleLoadMore} disabled={isLoadingMore}>
+                      {isLoadingMore ? 'Loading...' : 'Load More'}
                     </Button>
                   </div>
                 )}
@@ -246,7 +358,7 @@ export default function AnalyticsPage() {
         </Card>
 
         {/* Performance Insights */}
-        <Card className="mt-8">
+        <Card className="mt-8 animate-fade-up-delay">
           <CardHeader>
             <CardTitle>Performance Insights</CardTitle>
           </CardHeader>

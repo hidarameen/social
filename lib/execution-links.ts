@@ -55,3 +55,96 @@ export function extractYouTubeVideoLinks(responseData: unknown): string[] {
   collectUrls(responseData, urls, seen);
   return urls.filter(isYouTubeVideoUrl);
 }
+
+function safeHttpUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = normalizePossibleUrl(value);
+  if (!/^https?:\/\//i.test(normalized)) return undefined;
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return undefined;
+    return parsed.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function safeString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function twitterStatusUrl(username: string | undefined, tweetId: string | undefined): string | undefined {
+  if (!tweetId) return undefined;
+  const cleanId = tweetId.trim();
+  if (!cleanId) return undefined;
+  if (username) {
+    const cleanUsername = username.replace(/^@+/, '').trim();
+    if (cleanUsername) {
+      return `https://x.com/${encodeURIComponent(cleanUsername)}/status/${encodeURIComponent(cleanId)}`;
+    }
+  }
+  return `https://x.com/i/web/status/${encodeURIComponent(cleanId)}`;
+}
+
+function firstDefinedUrl(values: unknown[]): string | undefined {
+  for (const item of values) {
+    const url = safeHttpUrl(item);
+    if (url) return url;
+  }
+  return undefined;
+}
+
+export function extractExecutionMessageLinks(responseData: unknown): {
+  sourceUrl?: string;
+  targetUrl?: string;
+} {
+  const payload = (responseData && typeof responseData === 'object')
+    ? (responseData as Record<string, unknown>)
+    : {};
+
+  const sourceTweetId = safeString(payload.sourceTweetId);
+  const sourceUsername = safeString(payload.sourceUsername);
+  const sourceUrl = firstDefinedUrl([
+    payload.sourceUrl,
+    payload.sourceLink,
+    twitterStatusUrl(sourceUsername, sourceTweetId),
+  ]);
+
+  const targetUrlFromKnownKeys = firstDefinedUrl([
+    payload.targetUrl,
+    payload.targetLink,
+    payload.url,
+    (payload.youtube as Record<string, unknown> | undefined)?.url,
+    (payload.facebook as Record<string, unknown> | undefined)?.url,
+    (payload.actions as Record<string, unknown> | undefined)?.url,
+    ((payload.actions as Record<string, unknown> | undefined)?.post as Record<string, unknown> | undefined)?.url,
+    ((payload.actions as Record<string, unknown> | undefined)?.reply as Record<string, unknown> | undefined)?.url,
+    ((payload.actions as Record<string, unknown> | undefined)?.quote as Record<string, unknown> | undefined)?.url,
+  ]);
+
+  const targetTweetId = safeString(
+    ((payload.actions as Record<string, unknown> | undefined)?.post as Record<string, unknown> | undefined)?.id
+  ) || safeString(
+    ((payload.actions as Record<string, unknown> | undefined)?.reply as Record<string, unknown> | undefined)?.id
+  ) || safeString(
+    ((payload.actions as Record<string, unknown> | undefined)?.quote as Record<string, unknown> | undefined)?.id
+  ) || safeString(payload.id);
+
+  const targetUrlFromTweetId = twitterStatusUrl(undefined, targetTweetId);
+
+  let targetUrl = targetUrlFromKnownKeys || targetUrlFromTweetId;
+
+  if (!targetUrl) {
+    const urls: string[] = [];
+    const seen = new Set<string>();
+    collectUrls(responseData, urls, seen);
+    targetUrl = urls.find((url) => url !== sourceUrl);
+  }
+
+  return {
+    sourceUrl,
+    targetUrl,
+  };
+}

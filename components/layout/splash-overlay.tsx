@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AppLogo } from '@/components/common/app-logo';
 
 const SPLASH_SESSION_KEY = 'socialflow_splash_seen_v2';
 const SPLASH_SHOW_MS = 1400;
@@ -37,7 +37,7 @@ export function SplashOverlay() {
       <div className="splash-overlay__panel">
         <div className="splash-overlay__ring" />
         <div className="splash-overlay__logo">
-          <Sparkles size={24} />
+          <AppLogo size={72} showText={false} variant="splash" splashSurface={false} className="!m-0" />
         </div>
         <h1 className="splash-overlay__title">SocialFlow Orbit</h1>
         <p className="splash-overlay__subtitle">Preparing your automation workspace...</p>
@@ -45,4 +45,3 @@ export function SplashOverlay() {
     </div>
   );
 }
-

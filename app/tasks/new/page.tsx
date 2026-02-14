@@ -809,7 +809,6 @@ export default function CreateTaskPage() {
                   />
                   Upload video to playlist
                 </label>
-
                 {formData.youtubeActions.uploadVideoToPlaylist && (
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">

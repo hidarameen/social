@@ -28,9 +28,40 @@ function shouldClearCookie(name: string): boolean {
   return false;
 }
 
+function getAppOrigin(request: NextRequest): string {
+  const candidate = (process.env.APP_URL || process.env.NEXTAUTH_URL || request.nextUrl.origin).replace(/\/+$/, '');
+  try {
+    return new URL(candidate).origin;
+  } catch {
+    return request.nextUrl.origin;
+  }
+}
+
+function getSafeRedirectPath(request: NextRequest, appOrigin: string): string {
+  const fallback = '/login?cookies=cleared';
+  const redirectTarget = request.nextUrl.searchParams.get('redirect');
+  if (!redirectTarget) return fallback;
+
+  if (redirectTarget.startsWith('/')) {
+    return redirectTarget;
+  }
+
+  try {
+    const url = new URL(redirectTarget);
+    if (url.origin === appOrigin) {
+      return `${url.pathname}${url.search}${url.hash}`;
+    }
+  } catch {
+    // fall back below
+  }
+
+  return fallback;
+}
+
 export async function GET(request: NextRequest) {
-  const redirectTarget = request.nextUrl.searchParams.get('redirect') || '/login?cookies=cleared';
-  const response = NextResponse.redirect(new URL(redirectTarget, request.nextUrl.origin));
+  const appOrigin = getAppOrigin(request);
+  const redirectPath = getSafeRedirectPath(request, appOrigin);
+  const response = NextResponse.redirect(`${appOrigin}${redirectPath}`);
 
   const incomingCookies = request.cookies.getAll();
   const cleared = new Set<string>();
@@ -68,4 +99,3 @@ export async function GET(request: NextRequest) {
 
   return response;
 }
-

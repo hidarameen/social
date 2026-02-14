@@ -5,63 +5,10 @@ import { getAuthUser } from '@/lib/auth'
 import { getClientKey, rateLimit } from '@/lib/rate-limit'
 import { z } from 'zod'
 import { parsePagination, parseSort } from '@/lib/validation'
-import {
-  buildTelegramBotFileUrl,
-  buildTelegramBotMethodUrl,
-  getTelegramApiBaseUrl,
-} from '@/lib/telegram-api'
+import { getTelegramUserProfileFromSession } from '@/lib/telegram-user-auth';
+import { triggerBackgroundServicesRefresh } from '@/lib/services/background-services';
 
 export const runtime = 'nodejs';
-
-async function fetchTelegramBotProfileImage(botToken: string, botId?: string | number): Promise<string | undefined> {
-  if (!botToken || typeof botId === 'undefined' || botId === null) return undefined;
-  const telegramApiBaseUrl = getTelegramApiBaseUrl();
-
-  try {
-    const photosRes = await fetch(buildTelegramBotMethodUrl(botToken, 'getUserProfilePhotos', telegramApiBaseUrl), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: Number(botId),
-        limit: 1,
-      }),
-    });
-    const photosData = await photosRes.json().catch(() => null);
-    const firstPhoto = photosData?.result?.photos?.[0];
-    const bestSize = Array.isArray(firstPhoto) && firstPhoto.length > 0
-      ? firstPhoto[firstPhoto.length - 1]
-      : undefined;
-    const fileId = bestSize?.file_id;
-    if (!fileId) return undefined;
-
-    const fileRes = await fetch(buildTelegramBotMethodUrl(botToken, 'getFile', telegramApiBaseUrl), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file_id: fileId }),
-    });
-    const fileData = await fileRes.json().catch(() => null);
-    const filePath = fileData?.result?.file_path;
-    if (!filePath) return undefined;
-
-    const fileUrl = buildTelegramBotFileUrl(botToken, filePath, telegramApiBaseUrl);
-    const photoRes = await fetch(fileUrl);
-    if (!photoRes.ok) return undefined;
-
-    const buffer = Buffer.from(await photoRes.arrayBuffer());
-    if (!buffer.length) return undefined;
-
-    const lowerPath = String(filePath).toLowerCase();
-    const mimeType = lowerPath.endsWith('.png')
-      ? 'image/png'
-      : lowerPath.endsWith('.webp')
-      ? 'image/webp'
-      : 'image/jpeg';
-
-    return `data:${mimeType};base64,${buffer.toString('base64')}`;
-  } catch {
-    return undefined;
-  }
-}
 
 
 export async function GET(request: NextRequest) {
@@ -116,6 +63,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    triggerBackgroundServicesRefresh();
     const limiter = rateLimit(`accounts:post:${getClientKey(request)}`, 30, 60_000)
     if (!limiter.ok) {
       return NextResponse.json({ success: false, error: 'Too many requests' }, { status: 429 })
@@ -145,11 +93,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Account name is required' }, { status: 400 })
     }
 
-    const telegramBotToken =
-      safe.platformId === 'telegram' ? String(safe.accessToken || '').trim() : undefined
+    const incomingTelegramCredentials = ((safe.credentials as Record<string, any>) || {})
+    const telegramSessionString =
+      safe.platformId === 'telegram'
+        ? String(incomingTelegramCredentials.sessionString || safe.accessToken || '').trim()
+        : undefined
 
-    if (safe.platformId === 'telegram' && !telegramBotToken) {
-      return NextResponse.json({ success: false, error: 'Telegram bot token is required' }, { status: 400 })
+    if (safe.platformId === 'telegram' && !telegramSessionString) {
+      return NextResponse.json({ success: false, error: 'Telegram session is required' }, { status: 400 })
     }
 
     if (safe.platformId === 'twitter') {
@@ -166,9 +117,6 @@ export async function POST(request: NextRequest) {
     const findExistingAccount = (resolvedAccountId?: string) =>
       userAccounts.find((a) => {
         if (a.platformId !== safe.platformId) return false
-        if (safe.platformId === 'telegram' && telegramBotToken && String(a.accessToken || '').trim() === telegramBotToken) {
-          return true
-        }
         const candidateAccountId = resolvedAccountId || safe.accountId
         return Boolean(candidateAccountId) && a.accountId === candidateAccountId
       })
@@ -182,110 +130,57 @@ export async function POST(request: NextRequest) {
     let accountUsername = safe.accountUsername ?? safe.accountName ?? '';
     let accountId = safe.accountId ?? `${safe.platformId}_${Date.now()}`;
 
-    if (safe.platformId === 'telegram' && telegramBotToken) {
+    if (safe.platformId === 'telegram' && telegramSessionString) {
       try {
-        const telegramApiBaseUrl = getTelegramApiBaseUrl();
-        const res = await fetch(buildTelegramBotMethodUrl(telegramBotToken, 'getMe', telegramApiBaseUrl));
-        const data = await res.json();
-        if (!res.ok || !data?.ok || !data?.result) {
-          return NextResponse.json({ success: false, error: 'Invalid Telegram bot token' }, { status: 400 })
-        }
-        const bot = data.result;
-        accountName = bot.first_name || 'Telegram Bot';
-        accountUsername = bot.username || bot.first_name || 'telegram_bot';
-        accountId = String(bot.id || accountId);
-        const profileImageUrl = await fetchTelegramBotProfileImage(telegramBotToken, bot.id);
+        const telegramUser = await getTelegramUserProfileFromSession(telegramSessionString);
+        accountName = telegramUser.accountName || 'Telegram User';
+        accountUsername = telegramUser.accountUsername || telegramUser.accountName || 'telegram_user';
+        accountId = String(telegramUser.accountId || accountId);
         const existingTelegram = findExistingAccount(accountId)
+        const sessionCredentials: Record<string, any> = {
+          ...incomingTelegramCredentials,
+          authType: 'user_session',
+          sessionString: telegramUser.sessionString,
+          phoneNumber: telegramUser.phoneNumber,
+          isBot: false,
+          accountInfo: {
+            id: telegramUser.accountId,
+            username: telegramUser.accountUsername,
+            name: telegramUser.accountName,
+            isBot: false,
+            profileImageUrl: telegramUser.profileImageUrl,
+            phoneNumber: telegramUser.phoneNumber,
+          },
+        };
         if (existingTelegram) {
           const currentCredentials = (existingTelegram.credentials as Record<string, any>) || {}
-          const incomingCredentials = (safe.credentials as Record<string, any>) || {}
           const mergedCredentials: Record<string, any> = {
             ...currentCredentials,
-            ...incomingCredentials,
-            isBot: Boolean(bot.is_bot ?? true),
-            profileImageUrl,
-            accountInfo: {
-              id: String(bot.id || accountId),
-              username: bot.username || accountUsername,
-              name: bot.first_name || accountName,
-              isBot: Boolean(bot.is_bot ?? true),
-              profileImageUrl,
-            },
+            ...sessionCredentials,
           }
 
-          if (typeof incomingCredentials.chatId !== 'undefined') {
-            mergedCredentials.chatId = incomingCredentials.chatId
+          if (typeof incomingTelegramCredentials.chatId !== 'undefined') {
+            mergedCredentials.chatId = incomingTelegramCredentials.chatId
           }
 
           const updated = await db.updateAccount(existingTelegram.id, {
             accountName,
             accountUsername,
             accountId,
-            accessToken: telegramBotToken,
+            accessToken: telegramUser.sessionString,
             refreshToken: safe.refreshToken ?? existingTelegram.refreshToken,
             credentials: mergedCredentials,
             isActive: safe.isActive ?? true,
           })
-
+          triggerBackgroundServicesRefresh({ force: true });
           return NextResponse.json({ success: true, account: updated ?? existingTelegram }, { status: 200 })
         }
-
-        const webhookSecret = randomUUID();
-        const baseUrl = (process.env.APP_URL || request.nextUrl.origin).replace(/\/+$/, '');
-        const webhookUrl = `${baseUrl}/api/telegram/webhook/${telegramBotToken}`;
-
-        const webhookRes = await fetch(buildTelegramBotMethodUrl(telegramBotToken, 'setWebhook', telegramApiBaseUrl), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          // Allow Telegram to deliver album items in parallel webhook requests.
-          // Can be overridden via env. Telegram Bot API range is 1..100.
-          body: JSON.stringify({
-            url: webhookUrl,
-            secret_token: webhookSecret,
-            max_connections: Math.min(
-              100,
-              Math.max(1, Number(process.env.TELEGRAM_WEBHOOK_MAX_CONNECTIONS || '40'))
-            ),
-          }),
-        });
-
-        const webhookData = await webhookRes.json().catch(() => null);
-        if (!webhookRes.ok || !webhookData?.ok) {
-          const retryAfter = Number(webhookData?.parameters?.retry_after)
-          const detail =
-            Number.isFinite(retryAfter) && retryAfter > 0
-              ? `Too Many Requests. Retry after ${retryAfter} second(s)`
-              : (typeof webhookData?.description === 'string' && webhookData.description.trim()) ||
-                (typeof webhookData?.error_code !== 'undefined'
-                  ? `Telegram error code ${webhookData.error_code}`
-                  : '');
-          return NextResponse.json(
-            {
-              success: false,
-              error: detail
-                ? `Failed to register Telegram webhook: ${detail}`
-                : 'Failed to register Telegram webhook',
-            },
-            { status: 400 }
-          );
-        }
-
-        safe.credentials = {
-          ...(safe.credentials ?? {}),
-          webhookSecret,
-          chatId: (safe.credentials as any)?.chatId,
-          isBot: Boolean(bot.is_bot ?? true),
-          profileImageUrl,
-          accountInfo: {
-            id: String(bot.id || accountId),
-            username: bot.username || accountUsername,
-            name: bot.first_name || accountName,
-            isBot: Boolean(bot.is_bot ?? true),
-            profileImageUrl,
-          },
-        };
+        safe.credentials = sessionCredentials;
       } catch (error) {
-        return NextResponse.json({ success: false, error: 'Failed to verify Telegram bot token' }, { status: 400 })
+        return NextResponse.json(
+          { success: false, error: error instanceof Error ? error.message : 'Failed to verify Telegram session' },
+          { status: 400 }
+        )
       }
     }
 
@@ -297,12 +192,13 @@ export async function POST(request: NextRequest) {
       accountName,
       accountUsername,
       accountId,
-      accessToken: safe.platformId === 'telegram' ? telegramBotToken ?? 'manual' : safe.accessToken ?? 'manual',
+      accessToken: safe.platformId === 'telegram' ? telegramSessionString ?? 'manual' : safe.accessToken ?? 'manual',
       refreshToken: safe.refreshToken,
       credentials: safe.credentials ?? {},
       isActive: safe.isActive ?? true,
     })
 
+    triggerBackgroundServicesRefresh({ force: true });
     return NextResponse.json({ success: true, account }, { status: 201 })
   } catch (error) {
     console.error('[API] Error creating account:', error)

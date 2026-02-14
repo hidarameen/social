@@ -23,9 +23,9 @@ export function StatCard({
   color = 'primary',
 }: StatCardProps) {
   const colorClasses = {
-    primary: 'bg-primary/15 text-primary',
-    accent: 'bg-accent/15 text-accent',
-    secondary: 'bg-secondary/20 text-secondary',
+    primary: 'bg-primary/14 text-primary border-primary/20',
+    accent: 'bg-accent/16 text-accent border-accent/24',
+    secondary: 'bg-secondary/20 text-secondary-foreground border-secondary/25',
   };
 
   return (
@@ -38,7 +38,7 @@ export function StatCard({
       <CardContent>
         <div className="flex items-end justify-between">
           <div>
-            <p className="text-3xl font-semibold tracking-tight">{value}</p>
+            <p className="text-3xl font-semibold tracking-tight sm:text-[2rem]">{value}</p>
             {trend && (
               <p
                 className={cn(
@@ -57,7 +57,7 @@ export function StatCard({
               </p>
             )}
           </div>
-          <div className={cn('animate-float-soft rounded-xl p-3', colorClasses[color])}>
+          <div className={cn('animate-float-soft rounded-2xl border p-3 shadow-sm', colorClasses[color])}>
             <Icon size={22} />
           </div>
         </div>

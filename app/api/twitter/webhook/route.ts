@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { db } from '@/lib/db';
-import { buildMessage, buildTweetLink, sendToTelegram, type TweetItem } from '@/lib/services/twitter-utils';
+import { buildMessage, buildTweetLink, prepareYouTubeVideoFromTweet, sendToTelegram, type TweetItem } from '@/lib/services/twitter-utils';
 import { executeTwitterActions } from '@/lib/services/twitter-actions';
+import { executeYouTubePublish } from '@/lib/services/youtube-actions';
 import { publishToFacebook } from '@/lib/services/facebook-publish';
 import { executionQueue } from '@/lib/services/execution-queue';
 import { debugLog, debugError } from '@/lib/debug';
@@ -147,6 +148,51 @@ async function processTaskTweetsForSource({
             throw new Error(actionResult.error || 'Twitter actions failed');
           }
           debugLog('Twitter webhook -> Twitter actions success', { taskId: task.id, targetId: target.id });
+        } else if (target.platformId === 'youtube') {
+          debugLog('Twitter webhook -> YouTube start', { taskId: task.id, targetId: target.id });
+          const mediaCandidates = includeMedia ? tweetItem.media : [];
+          const hasVideoMedia = mediaCandidates.some(
+            (item) => item.type === 'video' || item.type === 'animated_gif'
+          );
+
+          if (hasVideoMedia) {
+            const media = await prepareYouTubeVideoFromTweet(tweetItem, link, enableYtDlp);
+            try {
+              const result = await executeYouTubePublish({
+                target,
+                filePath: media.tempPath,
+                mimeType: media.mimeType,
+                transformations: task.transformations,
+                context: {
+                  taskId: task.id,
+                  text: message,
+                  username: username || '',
+                  name: name || '',
+                  date: tweetItem.createdAt,
+                  link,
+                },
+              });
+
+              responseData = {
+                ...responseData,
+                youtube: result,
+                mediaSource: media.viaYtDlp ? 'yt-dlp' : 'direct_url',
+                publishMode: 'video_upload',
+              };
+            } finally {
+              await media.cleanup().catch(() => undefined);
+            }
+
+            debugLog('Twitter webhook -> YouTube upload success', {
+              taskId: task.id,
+              targetId: target.id,
+              videoId: responseData?.youtube?.id,
+            });
+          } else {
+            throw new Error(
+              'YouTube targets accept video uploads only. Skipping non-video content.'
+            );
+          }
         } else if (target.platformId === 'facebook') {
           debugLog('Twitter webhook -> Facebook start', { taskId: task.id, targetId: target.id });
           const mediaCandidates = includeMedia ? tweetItem.media : [];

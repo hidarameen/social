@@ -30,6 +30,9 @@ import { useConfirmDialog } from '@/components/common/use-confirm-dialog';
 import { platformConfigs } from '@/lib/platforms/handlers';
 import type { PlatformId } from '@/lib/platforms/types';
 import { PlatformIcon } from '@/components/common/platform-icon';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
+import { getCachedQuery, setCachedQuery } from '@/lib/client/query-cache';
+import { cn } from '@/lib/utils';
 import {
   DEFAULT_YOUTUBE_CATEGORY_ID,
   resolveYouTubeCategoryId,
@@ -104,16 +107,21 @@ function TasksPageContent() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [filteredTasks, setFilteredTasks] = useState<Task[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'paused' | 'completed' | 'error'>('all');
   const [sortBy, setSortBy] = useState<'createdAt' | 'status' | 'name'>('createdAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [viewMode, setViewMode] = useState<'cards' | 'compact'>('cards');
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [accounts, setAccounts] = useState<PlatformAccount[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [createForm, setCreateForm] = useState<TaskDialogForm>(createDefaultTaskForm());
   const pageSize = 50;
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 300);
 
   const toLocalDateTimeInput = (value?: Date | string | null) => {
     if (!value) return '';
@@ -205,52 +213,96 @@ function TasksPageContent() {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    const cacheKey = `tasks:list:${pageSize}:0:${debouncedSearchTerm}:${statusFilter}:${sortBy}:${sortDir}`;
+    const cached = getCachedQuery<{
+      tasks: Task[];
+      nextOffset: number;
+      hasMore: boolean;
+    }>(cacheKey, 20_000);
+
+    if (cached) {
+      setTasks(cached.tasks);
+      setFilteredTasks(cached.tasks);
+      setOffset(cached.nextOffset);
+      setHasMore(cached.hasMore);
+      setIsLoadingTasks(false);
+    } else {
+      setIsLoadingTasks(true);
+    }
+
     async function load() {
       try {
+        const statusParam = statusFilter === 'all' ? '' : `&status=${statusFilter}`;
         const res = await fetch(
-          `/api/tasks?limit=${pageSize}&offset=0&search=${encodeURIComponent(searchTerm)}&sortBy=${sortBy}&sortDir=${sortDir}`
+          `/api/tasks?limit=${pageSize}&offset=0&search=${encodeURIComponent(debouncedSearchTerm)}${statusParam}&sortBy=${sortBy}&sortDir=${sortDir}`,
+          { signal: controller.signal }
         );
         const data = await res.json();
         if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load tasks');
         if (cancelled) return;
-        setTasks(data.tasks || []);
-        setFilteredTasks(data.tasks || []);
-        setOffset(data.nextOffset || 0);
-        setHasMore(Boolean(data.hasMore));
+        const list = data.tasks || [];
+        const nextOffset = data.nextOffset || 0;
+        const nextHasMore = Boolean(data.hasMore);
+        setTasks(list);
+        setFilteredTasks(list);
+        setOffset(nextOffset);
+        setHasMore(nextHasMore);
+        setCachedQuery(cacheKey, {
+          tasks: list,
+          nextOffset,
+          hasMore: nextHasMore,
+        });
       } catch (error) {
+        if ((error as Error)?.name === 'AbortError') return;
         console.error('[v0] TasksPage: Error loading tasks:', error);
+      } finally {
+        if (!cancelled) {
+          setIsLoadingTasks(false);
+        }
       }
     }
     load();
     return () => {
       cancelled = true;
+      controller.abort();
     };
-  }, [searchTerm, sortBy, sortDir]);
+  }, [pageSize, debouncedSearchTerm, statusFilter, sortBy, sortDir]);
 
   useEffect(() => {
-    const filtered = tasks.filter(task =>
-      task.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      task.description.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    setFilteredTasks(filtered);
-  }, [searchTerm, tasks]);
+    setFilteredTasks(tasks);
+  }, [tasks]);
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
+    const cacheKey = 'tasks:active-accounts';
+    const cached = getCachedQuery<PlatformAccount[]>(cacheKey, 60_000);
+
+    if (cached) {
+      setAccounts(cached);
+    }
+
     async function loadAccounts() {
       try {
-        const res = await fetch('/api/accounts?limit=200&offset=0');
+        const res = await fetch('/api/accounts?limit=200&offset=0', {
+          signal: controller.signal,
+        });
         const data = await res.json();
         if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load accounts');
         if (cancelled) return;
-        setAccounts((data.accounts || []).filter((account: PlatformAccount) => account.isActive));
+        const activeAccounts = (data.accounts || []).filter((account: PlatformAccount) => account.isActive);
+        setAccounts(activeAccounts);
+        setCachedQuery(cacheKey, activeAccounts);
       } catch (error) {
+        if ((error as Error)?.name === 'AbortError') return;
         console.error('[v0] TasksPage: Error loading accounts for task dialog:', error);
       }
     }
     loadAccounts();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, []);
 
@@ -306,6 +358,10 @@ function TasksPageContent() {
     setCreateForm(createDefaultTaskForm());
   };
 
+  const isCreateDraftDirty =
+    !editingTaskId &&
+    JSON.stringify(createForm) !== JSON.stringify(createDefaultTaskForm());
+
   const openCreateDialog = () => {
     setEditingTaskId(null);
     resetCreateForm();
@@ -319,12 +375,23 @@ function TasksPageContent() {
   };
 
   const handleTaskDialogOpenChange = (open: boolean) => {
+    if (!open && isCreateDraftDirty) {
+      const shouldClose = window.confirm('Discard unsaved task draft?');
+      if (!shouldClose) return;
+    }
     setCreateOpen(open);
     if (!open) {
       setEditingTaskId(null);
       setIsCreating(false);
       resetCreateForm();
     }
+  };
+
+  const closeTaskDialogAfterSubmit = () => {
+    setCreateOpen(false);
+    setEditingTaskId(null);
+    setIsCreating(false);
+    resetCreateForm();
   };
 
   const handleQuickCreateTask = async () => {
@@ -464,7 +531,7 @@ function TasksPageContent() {
         setFilteredTasks(prev => [data.task, ...prev]);
         toast.success(data.duplicate ? 'Task already exists and was reused' : 'Task created successfully');
       }
-      handleTaskDialogOpenChange(false);
+      closeTaskDialogAfterSubmit();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : (editingTaskId ? 'Failed to update task' : 'Failed to create task'));
     } finally {
@@ -473,9 +540,11 @@ function TasksPageContent() {
   };
 
   const handleLoadMore = async () => {
+    if (isLoadingMore) return;
     try {
+      setIsLoadingMore(true);
       const res = await fetch(
-        `/api/tasks?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(searchTerm)}&sortBy=${sortBy}&sortDir=${sortDir}`
+        `/api/tasks?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(debouncedSearchTerm)}${statusFilter === 'all' ? '' : `&status=${statusFilter}`}&sortBy=${sortBy}&sortDir=${sortDir}`
       );
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load tasks');
@@ -486,6 +555,8 @@ function TasksPageContent() {
       setHasMore(Boolean(data.hasMore));
     } catch (error) {
       console.error('[v0] TasksPage: Error loading more tasks:', error);
+    } finally {
+      setIsLoadingMore(false);
     }
   };
 
@@ -531,6 +602,9 @@ function TasksPageContent() {
         toast.error(error instanceof Error ? error.message : 'Failed to update task');
       });
   };
+  const activeTasksCount = filteredTasks.filter((task) => task.status === 'active').length;
+  const pausedTasksCount = filteredTasks.filter((task) => task.status === 'paused').length;
+  const isInitialLoading = isLoadingTasks && tasks.length === 0;
 
   return (
     <div className="min-h-screen bg-background control-app">
@@ -540,15 +614,31 @@ function TasksPageContent() {
       <main className="control-main">
         <div className="page-header animate-fade-up">
           <div>
+            <p className="kpi-pill mb-3">Automation Pipelines</p>
             <h1 className="page-title">
               My Tasks
             </h1>
             <p className="page-subtitle">
               Manage and monitor your automation tasks
             </p>
+            <div className="mt-4 flex flex-wrap gap-2 text-xs">
+              {isInitialLoading ? (
+                <>
+                  <span className="kpi-pill">Loading tasks...</span>
+                  <span className="kpi-pill">Loading active...</span>
+                  <span className="kpi-pill">Loading paused...</span>
+                </>
+              ) : (
+                <>
+                  <span className="kpi-pill">{filteredTasks.length} visible</span>
+                  <span className="kpi-pill">{activeTasksCount} active</span>
+                  <span className="kpi-pill">{pausedTasksCount} paused</span>
+                </>
+              )}
+            </div>
           </div>
           <Dialog open={createOpen} onOpenChange={handleTaskDialogOpenChange}>
-            <Button size="lg" onClick={openCreateDialog}>
+            <Button size="lg" className="animate-float-soft" onClick={openCreateDialog}>
               <Plus size={18} />
               Create New Task
             </Button>
@@ -1049,7 +1139,6 @@ function TasksPageContent() {
                         Upload to playlist
                       </label>
                     </div>
-
                     {createForm.youtubeActions.uploadVideoToPlaylist && (
                       <div>
                         <label className="mb-2 block text-sm font-medium text-foreground">
@@ -1363,7 +1452,7 @@ function TasksPageContent() {
           </Dialog>
         </div>
 
-        <Card className="mb-6 animate-fade-up">
+        <Card className="mb-6 animate-fade-up sticky-toolbar">
           <CardHeader>
             <CardTitle>Search Tasks</CardTitle>
           </CardHeader>
@@ -1378,7 +1467,24 @@ function TasksPageContent() {
                   className="pl-10"
                 />
               </div>
-              <div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Select
+                  value={statusFilter}
+                  onValueChange={(value: 'all' | 'active' | 'paused' | 'completed' | 'error') =>
+                    setStatusFilter(value)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="paused">Paused</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="error">Error</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Select
                   value={`${sortBy}:${sortDir}`}
                   onValueChange={(value: string) => {
@@ -1401,6 +1507,34 @@ function TasksPageContent() {
                 </Select>
               </div>
             </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant={viewMode === 'cards' ? 'default' : 'outline'}
+                onClick={() => setViewMode('cards')}
+              >
+                Cards
+              </Button>
+              <Button
+                size="sm"
+                variant={viewMode === 'compact' ? 'default' : 'outline'}
+                onClick={() => setViewMode('compact')}
+              >
+                Compact
+              </Button>
+              {(searchTerm || statusFilter !== 'all') && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setStatusFilter('all');
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
         <div className="mb-6 flex justify-end animate-fade-up-delay">
@@ -1414,8 +1548,22 @@ function TasksPageContent() {
           </Button>
         </div>
 
-        {filteredTasks.length === 0 ? (
-          <Card>
+        {isInitialLoading ? (
+          <div className="space-y-4 animate-fade-up-delay">
+            {[0, 1, 2].map((idx) => (
+              <Card key={idx}>
+                <CardContent className="p-6">
+                  <div className="animate-pulse space-y-3">
+                    <div className="h-5 w-48 rounded bg-muted/60" />
+                    <div className="h-4 w-80 rounded bg-muted/50" />
+                    <div className="h-4 w-64 rounded bg-muted/40" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : filteredTasks.length === 0 ? (
+          <Card className="animate-fade-up-delay">
             <CardContent className="py-12 text-center">
               <p className="text-muted-foreground mb-4">
                 No tasks found. {tasks.length === 0 ? 'Create your first task to get started.' : 'Try a different search.'}
@@ -1430,13 +1578,13 @@ function TasksPageContent() {
           </Card>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4">
+            <div className={cn('grid grid-cols-1', viewMode === 'compact' ? 'gap-2' : 'gap-4')}>
               {filteredTasks.map((task) => (
-                <Card key={task.id} className="animate-fade-up hover:border-primary/50 transition-colors">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between">
+                <Card key={task.id} className={cn('animate-fade-up hover:border-primary/45 transition-colors', viewMode === 'compact' && 'rounded-xl')}>
+                  <CardContent className={cn(viewMode === 'compact' ? 'p-4' : 'p-6')}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
+                        <div className="mb-2 flex flex-wrap items-center gap-3">
                           <h3 className="text-lg font-semibold text-foreground">
                             {task.name}
                           </h3>
@@ -1451,7 +1599,7 @@ function TasksPageContent() {
                           </span>
                         </div>
 
-                        <p className="text-muted-foreground mb-3">
+                        <p className="text-muted-foreground mb-3 leading-relaxed">
                           {task.description}
                         </p>
 
@@ -1485,7 +1633,7 @@ function TasksPageContent() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 ml-4">
+                      <div className="ml-0 flex flex-wrap items-center gap-2 sm:ml-4 sm:self-start">
                         <Button
                           variant="outline"
                           size="icon"
@@ -1506,7 +1654,7 @@ function TasksPageContent() {
                           variant="outline"
                           size="icon"
                           onClick={() => handleDelete(task.id)}
-                          className="text-destructive"
+                          className="text-destructive hover:bg-destructive/10"
                         >
                           <Trash2 size={18} />
                         </Button>
@@ -1519,8 +1667,8 @@ function TasksPageContent() {
             </div>
             {hasMore && (
               <div className="mt-6 flex justify-center">
-                <Button variant="outline" onClick={handleLoadMore}>
-                  Load More
+                <Button variant="outline" onClick={handleLoadMore} disabled={isLoadingMore}>
+                  {isLoadingMore ? 'Loading...' : 'Load More'}
                 </Button>
               </div>
             )}

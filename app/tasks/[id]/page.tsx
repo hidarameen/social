@@ -463,7 +463,7 @@ export default function TaskDetailPage() {
 
       <main className="control-main">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground mb-2">
               {task.name}
@@ -473,7 +473,7 @@ export default function TaskDetailPage() {
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
               onClick={handleToggleStatus}
@@ -905,7 +905,6 @@ export default function TaskDetailPage() {
                     />
                     Upload video to playlist
                   </label>
-
                   {editForm.youtubeActions?.uploadVideoToPlaylist && (
                     <div>
                       <label className="block text-sm font-medium text-foreground mb-2">
@@ -1199,7 +1198,7 @@ export default function TaskDetailPage() {
                 </div>
               )}
 
-              <div className="flex gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row">
                 <Button onClick={handleSaveEdits}>Save Changes</Button>
                 <Button variant="outline" onClick={() => setIsEditing(false)}>
                   Cancel
@@ -1272,7 +1271,7 @@ export default function TaskDetailPage() {
                   <p className="text-foreground">{task.description || 'No description'}</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Execution Type</p>
                     <p className="text-foreground capitalize">{task.executionType}</p>
@@ -1283,7 +1282,7 @@ export default function TaskDetailPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Source Accounts</p>
                     <p className="text-foreground font-semibold">

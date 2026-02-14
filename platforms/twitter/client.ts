@@ -1,6 +1,7 @@
 import { TwitterContent, TwitterTweet } from './types'
 import { promises as fs } from 'fs'
 import { debugError, debugLog } from '@/lib/debug'
+import { createVideoProgressLogger } from '@/lib/services/video-progress'
 import crypto from 'crypto'
 
 const TWITTER_API_V2 = 'https://api.x.com/2'
@@ -439,7 +440,6 @@ export class TwitterClient {
       });
       throw new Error(`Twitter API error: ${response.status} ${response.statusText} ${text}`.trim());
     }
-    debugLog('Twitter media APPEND success', { mediaId, segmentIndex });
   }
 
   private async uploadAppendWithRetry(mediaId: string, segmentIndex: number, chunk: Buffer) {
@@ -487,10 +487,23 @@ export class TwitterClient {
     });
 
     const { mediaId, processingInfo } = await this.uploadInit(totalBytes, mediaType, mediaCategory);
+    const progressTotal = Math.max(1, totalBytes) + 1;
+    const progress = createVideoProgressLogger({
+      flow: 'twitter-media-upload',
+      platform: 'twitter',
+      targetId: mediaId,
+    });
+    progress(0, progressTotal, 'upload-start', {
+      filePath,
+      mediaType,
+      mediaCategory,
+      totalBytes,
+    });
 
     if (!isVideo) {
       const buffer = await fs.readFile(filePath);
       await this.uploadAppendWithRetry(mediaId, 0, buffer);
+      progress(totalBytes, progressTotal, 'upload-complete', { mediaId, chunks: 1 });
     } else {
       const handle = await fs.open(filePath, 'r');
       try {
@@ -526,6 +539,10 @@ export class TwitterClient {
           }
           segment += 1;
           offset += bytesRead;
+          progress(offset, progressTotal, 'uploading', {
+            mediaId,
+            segmentIndex: segment,
+          });
         }
       } finally {
         await handle.close();
@@ -549,6 +566,7 @@ export class TwitterClient {
       attempts += 1;
     }
 
+    progress(progressTotal, progressTotal, 'done', { mediaId });
     return mediaId;
   }
 
@@ -1232,6 +1250,17 @@ export class TwitterClient {
       });
 
       const { mediaId } = await this.uploadInit(mediaBuffer.length, mediaType, category);
+      const progressTotal = Math.max(1, mediaBuffer.length) + 1;
+      const progress = createVideoProgressLogger({
+        flow: 'twitter-media-upload-buffer',
+        platform: 'twitter',
+        targetId: mediaId,
+      });
+      progress(0, progressTotal, 'upload-start', {
+        mediaType,
+        mediaCategory: category,
+        totalBytes: mediaBuffer.length,
+      });
       let segment = 0;
       let offset = 0;
       while (offset < mediaBuffer.length) {
@@ -1260,6 +1289,10 @@ export class TwitterClient {
         }
         offset += chunk.length;
         segment += 1;
+        progress(offset, progressTotal, 'uploading', {
+          mediaId,
+          segmentIndex: segment,
+        });
       }
 
       const finalize = await this.uploadFinalize(mediaId);
@@ -1279,6 +1312,7 @@ export class TwitterClient {
         attempts += 1;
       }
 
+      progress(progressTotal, progressTotal, 'done', { mediaId });
       return mediaId
     } catch (error) {
       debugError('Twitter uploadMedia failed', error);

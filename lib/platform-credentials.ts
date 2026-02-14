@@ -7,7 +7,6 @@ export const MANAGED_PLATFORM_IDS = [
   'youtube',
   'tiktok',
   'linkedin',
-  'telegram',
 ] as const;
 
 export type ManagedPlatformId = (typeof MANAGED_PLATFORM_IDS)[number];
@@ -139,4 +138,3 @@ export async function getTwitterOAuth1CredentialsForUser(userId: string): Promis
 
   return { consumerKey, consumerSecret, token, tokenSecret };
 }
-

@@ -15,6 +15,10 @@ type ProbeStatus = {
 };
 
 let activeBoot: Promise<EnsureLocalApiResult> | null = null;
+let keepAliveTimer: NodeJS.Timeout | null = null;
+let keepAliveCycleRunning = false;
+let lastKeepAliveFailureAt = 0;
+let lastKeepAliveFailureReason = '';
 
 function parseBaseUrl(baseUrl: string): URL | null {
   try {
@@ -238,4 +242,75 @@ export async function ensureTelegramLocalApiServer(baseUrl?: string): Promise<En
     activeBoot = null;
   }
   return result;
+}
+
+function getKeepAliveIntervalMs(): number {
+  const parsed = Number(process.env.TELEGRAM_LOCAL_API_KEEPALIVE_INTERVAL_MS || '15000');
+  if (!Number.isFinite(parsed)) return 15000;
+  return Math.max(3000, Math.floor(parsed));
+}
+
+function getKeepAliveFailureLogCooldownMs(): number {
+  const parsed = Number(process.env.TELEGRAM_LOCAL_API_KEEPALIVE_LOG_COOLDOWN_MS || '60000');
+  if (!Number.isFinite(parsed)) return 60000;
+  return Math.max(5000, Math.floor(parsed));
+}
+
+function isKeepAliveEnabled(): boolean {
+  if (String(process.env.TELEGRAM_LOCAL_API_KEEPALIVE || 'true') === 'false') {
+    return false;
+  }
+  return String(process.env.TELEGRAM_LOCAL_API_AUTOSTART || 'true') !== 'false';
+}
+
+async function runKeepAliveCycle(): Promise<void> {
+  if (keepAliveCycleRunning) return;
+  keepAliveCycleRunning = true;
+  try {
+    const result = await ensureTelegramLocalApiServer();
+    if (result.ok) {
+      if (result.started) {
+        console.log('[telegram-local-api] keepalive restart successful');
+      }
+      return;
+    }
+
+    const reason = result.reason || 'Unknown local API error';
+    const now = Date.now();
+    const cooldownMs = getKeepAliveFailureLogCooldownMs();
+    const shouldLog =
+      reason !== lastKeepAliveFailureReason || now - lastKeepAliveFailureAt >= cooldownMs;
+    if (shouldLog) {
+      console.warn(`[telegram-local-api] keepalive check failed: ${reason}`);
+      lastKeepAliveFailureAt = now;
+      lastKeepAliveFailureReason = reason;
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'Unknown keepalive exception';
+    const now = Date.now();
+    const cooldownMs = getKeepAliveFailureLogCooldownMs();
+    if (reason !== lastKeepAliveFailureReason || now - lastKeepAliveFailureAt >= cooldownMs) {
+      console.warn(`[telegram-local-api] keepalive exception: ${reason}`);
+      lastKeepAliveFailureAt = now;
+      lastKeepAliveFailureReason = reason;
+    }
+  } finally {
+    keepAliveCycleRunning = false;
+  }
+}
+
+export function ensureTelegramLocalApiKeepAliveStarted(): void {
+  if (!isKeepAliveEnabled()) return;
+  if (keepAliveTimer) return;
+
+  const intervalMs = getKeepAliveIntervalMs();
+  keepAliveTimer = setInterval(() => {
+    void runKeepAliveCycle();
+  }, intervalMs);
+  if (typeof keepAliveTimer.unref === 'function') {
+    keepAliveTimer.unref();
+  }
+
+  console.log(`[telegram-local-api] keepalive started (interval=${intervalMs}ms)`);
+  void runKeepAliveCycle();
 }
