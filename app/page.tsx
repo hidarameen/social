@@ -5,7 +5,7 @@ import { Header } from '@/components/layout/header';
 import { StatCard } from '@/components/common/stat-card';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { BarChart3, Zap, Users, TrendingUp, Plus, Play, Pause, Edit, Trash2, FileText, ArrowRight, ArrowDown, Send, MessageSquare, Linkedin, Clock } from 'lucide-react';
+import { BarChart3, Zap, Users, TrendingUp, Plus, Play, Pause, Edit, Trash2, FileText } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useLanguage } from '@/components/i18n/language-provider';

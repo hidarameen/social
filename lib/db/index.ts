@@ -1076,6 +1076,7 @@ class Database {
     offset: number;
     status?: string;
     search?: string;
+    taskId?: string;
     sortBy?: 'executedAt' | 'status' | 'taskName';
     sortDir?: 'asc' | 'desc';
   }): Promise<{
@@ -1088,7 +1089,7 @@ class Database {
       }
     >;
   }> {
-    const { userId, limit, offset, status, search, sortBy, sortDir } = params;
+    const { userId, limit, offset, status, search, taskId, sortBy, sortDir } = params;
     const conditions: string[] = ['t.user_id = $1'];
     const values: any[] = [userId];
     let idx = 2;
@@ -1096,6 +1097,10 @@ class Database {
     if (status) {
       conditions.push(`e.status = $${idx++}`);
       values.push(status);
+    }
+    if (taskId) {
+      conditions.push(`e.task_id = $${idx++}`);
+      values.push(taskId);
     }
     if (search) {
       conditions.push(`(t.name ILIKE $${idx} OR e.original_content ILIKE $${idx})`);

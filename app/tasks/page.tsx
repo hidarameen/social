@@ -7,14 +7,13 @@ import {
   Plus,
   Search,
   Edit2,
-  Trash2,
   Play,
   Pause,
   ArrowRight,
   Loader2,
   Sparkles,
   AlertTriangle,
-  BarChart3,
+  Settings2,
   RotateCcw,
 } from 'lucide-react';
 
@@ -108,201 +107,6 @@ function taskHasAuthWarning(task: Task, accountById: Record<string, PlatformAcco
   return false;
 }
 
-function resolveAccountAvatar(account: PlatformAccount): string | null {
-  const credentials = (account.credentials || {}) as Record<string, unknown>;
-  const accountInfo =
-    typeof credentials.accountInfo === 'object' && credentials.accountInfo
-      ? (credentials.accountInfo as Record<string, unknown>)
-      : null;
-
-  const candidates = [
-    credentials.profileImageUrl,
-    credentials.avatarUrl,
-    credentials.picture,
-    accountInfo?.profileImageUrl,
-    accountInfo?.avatarUrl,
-    accountInfo?.picture,
-  ];
-
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) {
-      return candidate.trim();
-    }
-  }
-  return null;
-}
-
-function accountDisplayName(account: PlatformAccount): string {
-  return (
-    String(account.accountName || '').trim() ||
-    String(account.accountUsername || '').trim() ||
-    String(account.accountId || '').trim() ||
-    account.id
-  );
-}
-
-function normalizeTelegramChatList(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return [...new Set(value.map((item) => String(item || '').trim()).filter(Boolean))];
-  }
-  const raw = String(value || '').trim();
-  if (!raw) return [];
-  if (raw.includes(',') || raw.includes('\n')) {
-    return [...new Set(raw.split(/[\n,]+/).map((item) => item.trim()).filter(Boolean))];
-  }
-  return [raw];
-}
-
-function normalizeTelegramUsernameToken(value: string): string {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  if (raw.startsWith('@')) return raw.toLowerCase();
-  return `@${raw.toLowerCase()}`;
-}
-
-function parseTelegramChatToken(value: string): string {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  if (/^-?\d+$/.test(raw)) return raw;
-  if (raw.startsWith('@')) return raw.toLowerCase();
-  const normalized = raw.toLowerCase();
-  const withProtocol =
-    normalized.startsWith('http://') || normalized.startsWith('https://') ? normalized : `https://${normalized}`;
-  try {
-    const parsed = new URL(withProtocol);
-    if (parsed.hostname.includes('t.me') || parsed.hostname.includes('telegram.me')) {
-      const segments = parsed.pathname.split('/').filter(Boolean);
-      if (segments.length === 0) return raw;
-      if (segments[0] === 'c' && segments[1] && /^\d+$/.test(segments[1])) {
-        return `-100${segments[1]}`;
-      }
-      if (/^[a-z0-9_]{4,}$/i.test(segments[0])) {
-        return normalizeTelegramUsernameToken(segments[0]);
-      }
-    }
-  } catch {
-    // ignore parse failures
-  }
-  return raw;
-}
-
-function parseChatCollectionFromCredentials(
-  credentials: Record<string, unknown>,
-  field: string
-): Array<{ id: string; title?: string }> {
-  const raw = credentials[field];
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null;
-      const entry = item as Record<string, unknown>;
-      const idCandidate = String(
-        entry.chatId ||
-          entry.chat_id ||
-          entry.id ||
-          entry.channelId ||
-          entry.channel_id ||
-          entry.peerId ||
-          ''
-      ).trim();
-      const usernameCandidate = String(entry.username || '').trim();
-      const id = parseTelegramChatToken(idCandidate || usernameCandidate);
-      if (!id) return null;
-      const title = String(
-        entry.title ||
-          entry.chatTitle ||
-          entry.chat_name ||
-          entry.chatName ||
-          entry.channelTitle ||
-          entry.name ||
-          usernameCandidate ||
-          ''
-      ).trim();
-      return { id, title: title || undefined };
-    })
-    .filter(Boolean) as Array<{ id: string; title?: string }>;
-}
-
-function collectTelegramChatTitleMap(accounts: PlatformAccount[]): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const account of accounts) {
-    if (account.platformId !== 'telegram') continue;
-    const credentials = ((account.credentials || {}) as Record<string, unknown>) || {};
-    const singleIds = normalizeTelegramChatList(credentials.chatId).map(parseTelegramChatToken).filter(Boolean);
-    const singleTitle = String(
-      credentials.chatTitle ||
-        credentials.chat_name ||
-        credentials.chatName ||
-        credentials.channelTitle ||
-        credentials.channel_name ||
-        credentials.channelName ||
-        ''
-    ).trim();
-    for (const chatId of singleIds) {
-      if (singleTitle && !map.has(chatId)) map.set(chatId, singleTitle);
-      if (!map.has(chatId) && account.accountName) map.set(chatId, account.accountName);
-    }
-
-    const records = [
-      ...parseChatCollectionFromCredentials(credentials, 'availableChats'),
-      ...parseChatCollectionFromCredentials(credentials, 'selectedChats'),
-      ...parseChatCollectionFromCredentials(credentials, 'chats'),
-      ...parseChatCollectionFromCredentials(credentials, 'chatList'),
-      ...parseChatCollectionFromCredentials(credentials, 'channels'),
-    ];
-    for (const record of records) {
-      if (!record.title || map.has(record.id)) continue;
-      map.set(record.id, record.title);
-    }
-  }
-  return map;
-}
-
-function formatTelegramChatLabel(chatId: string, chatTitleMap: Map<string, string>): string {
-  const normalized = parseTelegramChatToken(chatId);
-  const title = chatTitleMap.get(normalized);
-  if (title) return title;
-  if (normalized.startsWith('@')) return normalized;
-  return normalized;
-}
-
-function resolveTelegramChatsForTask(task: Task, accounts: PlatformAccount[], side: 'source' | 'target') {
-  const chatTitleMap = collectTelegramChatTitleMap(accounts);
-  const values = new Set<string>();
-
-  for (const account of accounts) {
-    if (account.platformId !== 'telegram') continue;
-    const credentials = (account.credentials || {}) as Record<string, unknown>;
-    for (const chatId of normalizeTelegramChatList(credentials.chatId)) {
-      const normalized = parseTelegramChatToken(chatId);
-      if (normalized) values.add(normalized);
-    }
-  }
-
-  if (side === 'source') {
-    const filters = (task.filters || {}) as Record<string, unknown>;
-    for (const chatId of normalizeTelegramChatList((filters as any).telegramChatIds)) {
-      const normalized = parseTelegramChatToken(chatId);
-      if (normalized) values.add(normalized);
-    }
-    const single = parseTelegramChatToken(String((filters as any).telegramChatId || ''));
-    if (single) values.add(single);
-  } else {
-    const transformations = (task.transformations || {}) as Record<string, unknown>;
-    for (const chatId of normalizeTelegramChatList((transformations as any).telegramTargetChatIds)) {
-      const normalized = parseTelegramChatToken(chatId);
-      if (normalized) values.add(normalized);
-    }
-    const single = parseTelegramChatToken(String((transformations as any).telegramTargetChatId || ''));
-    if (single) values.add(single);
-  }
-
-  return [...values].map((chatId) => ({
-    id: chatId,
-    label: formatTelegramChatLabel(chatId, chatTitleMap),
-  }));
-}
-
 function normalizeAccountMap(raw: unknown): Record<string, PlatformAccount> {
   if (!raw || typeof raw !== 'object') return {};
   const entries = Object.entries(raw as Record<string, unknown>);
@@ -335,7 +139,6 @@ function TasksPageContent() {
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [runningTaskIds, setRunningTaskIds] = useState<Record<string, boolean>>({});
-  const [selectedTaskIds, setSelectedTaskIds] = useState<Record<string, boolean>>({});
 
   const pageSize = 50;
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 300);
@@ -432,14 +235,6 @@ function TasksPageContent() {
       return true;
     });
     setFilteredTasks(next);
-    setSelectedTaskIds((prev) => {
-      const nextSelected: Record<string, boolean> = {};
-      const visible = new Set(next.map((task) => task.id));
-      for (const [taskId, selected] of Object.entries(prev)) {
-        if (selected && visible.has(taskId)) nextSelected[taskId] = true;
-      }
-      return nextSelected;
-    });
   }, [tasks, platformFilter, lastRunFilter, issueFilter, accountById]);
 
   const handleLoadMore = async () => {
@@ -534,57 +329,9 @@ function TasksPageContent() {
   const handleRetryTask = async (task: Task) => {
     await handleRunNow(task);
   };
-
-  const selectedCount = Object.values(selectedTaskIds).filter(Boolean).length;
-  const allVisibleSelected = filteredTasks.length > 0 && filteredTasks.every((task) => selectedTaskIds[task.id]);
   const availablePlatformFilters = [...new Set(tasks.flatMap((task) => uniquePlatformIdsForTask(task, accountById)))]
     .filter(Boolean)
     .sort() as PlatformId[];
-
-  const handleBulkPause = async () => {
-    const selected = filteredTasks.filter((task) => selectedTaskIds[task.id]);
-    if (selected.length === 0) return;
-    try {
-      await Promise.all(
-        selected.map(async (task) => {
-          if (task.status === 'paused') return;
-          const res = await fetch(`/api/tasks/${task.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'paused' }),
-          });
-          const data = await res.json();
-          if (!res.ok || !data.success) throw new Error(data.error || `Failed to pause task ${task.name}`);
-        })
-      );
-      setTasks((prev) =>
-        prev.map((task) => (selectedTaskIds[task.id] ? { ...task, status: 'paused' as Task['status'] } : task))
-      );
-      toast.success(`Paused ${selected.length} task(s)`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to pause selected tasks');
-    }
-  };
-
-  const handleBulkRun = async () => {
-    const selected = filteredTasks.filter((task) => selectedTaskIds[task.id]);
-    if (selected.length === 0) return;
-    try {
-      await Promise.all(
-        selected.map(async (task) => {
-          const res = await fetch(`/api/tasks/${task.id}/run`, { method: 'POST' });
-          const data = await res.json();
-          if (!res.ok || !data.success) throw new Error(data.error || `Failed to run task ${task.name}`);
-        })
-      );
-      setTasks((prev) =>
-        prev.map((task) => (selectedTaskIds[task.id] ? { ...task, lastExecuted: new Date() } : task))
-      );
-      toast.success(`Ran ${selected.length} task(s)`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to run selected tasks');
-    }
-  };
 
   const activeTasksCount = filteredTasks.filter((task) => task.status === 'active').length;
   const pausedTasksCount = filteredTasks.filter((task) => task.status === 'paused').length;
@@ -717,22 +464,6 @@ function TasksPageContent() {
                   Clear Filters
                 </Button>
               )}
-              {selectedCount > 0 ? (
-                <>
-                  <span className="kpi-pill">{selectedCount} selected</span>
-                  <Button size="sm" variant="outline" onClick={() => void handleBulkRun()}>
-                    <Play size={14} />
-                    Run Selected
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => void handleBulkPause()}>
-                    <Pause size={14} />
-                    Pause Selected
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setSelectedTaskIds({})}>
-                    Clear Selection
-                  </Button>
-                </>
-              ) : null}
             </div>
           </CardContent>
         </Card>
@@ -767,27 +498,6 @@ function TasksPageContent() {
           </Card>
         ) : (
           <>
-            <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={allVisibleSelected}
-                onChange={(event) => {
-                  const checked = event.target.checked;
-                  setSelectedTaskIds((prev) => {
-                    const next = { ...prev };
-                    for (const task of filteredTasks) {
-                      if (checked) next[task.id] = true;
-                      else delete next[task.id];
-                    }
-                    return next;
-                  });
-                }}
-                aria-label="Select all visible tasks"
-                className="h-4 w-4 rounded border-border"
-              />
-              <span>Select all visible tasks</span>
-            </div>
-
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               {filteredTasks.map((task) => {
                 const statusMeta = STATUS_META[task.status] || STATUS_META.paused;
@@ -837,15 +547,6 @@ function TasksPageContent() {
                       <div className="space-y-5">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex min-w-0 flex-1 items-start gap-3">
-                            <input
-                              type="checkbox"
-                              checked={Boolean(selectedTaskIds[task.id])}
-                              onChange={(event) =>
-                                setSelectedTaskIds((prev) => ({ ...prev, [task.id]: event.target.checked }))
-                              }
-                              aria-label={`Select task ${task.name}`}
-                              className="mt-1 h-4 w-4 rounded border-border"
-                            />
                             <div className="min-w-0">
                               <h3 className="truncate text-xl font-semibold tracking-tight text-foreground">{task.name}</h3>
                               <p
@@ -975,26 +676,14 @@ function TasksPageContent() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="text-destructive hover:bg-destructive/10"
-                            onClick={() => void handleDelete(task.id)}
+                            onClick={() =>
+                              router.push(
+                                `/executions?taskId=${encodeURIComponent(task.id)}&taskName=${encodeURIComponent(task.name)}`
+                              )
+                            }
                           >
-                            <Trash2 size={14} />
-                            Delete
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => router.push(`/executions?search=${encodeURIComponent(task.name)}`)}
-                          >
-                            <BarChart3 size={14} />
+                            <Settings2 size={14} />
                             Logs
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => router.push(`/tasks/${task.id}/edit?section=advanced`)}
-                          >
-                            Advanced
                           </Button>
                         </div>
                       </div>

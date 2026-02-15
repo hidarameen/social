@@ -21,12 +21,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid sort' }, { status: 400 });
     }
     const status = request.nextUrl.searchParams.get('status') || undefined;
+    const taskId = request.nextUrl.searchParams.get('taskId') || undefined;
 
     const result = await db.getExecutionsForUserPaged({
       userId: user.id,
       limit: page.data.limit,
       offset: page.data.offset,
       status,
+      taskId,
       search: page.data.search,
       sortBy: sort.data.sortBy,
       sortDir: sort.data.sortDir,

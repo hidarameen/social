@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,10 +42,13 @@ function clampProgress(value: number): number {
 }
 
 export default function ExecutionsPage() {
+  const searchParams = useSearchParams();
   const [executions, setExecutions] = useState<ExpandedExecution[]>([]);
   const [filteredExecutions, setFilteredExecutions] = useState<ExpandedExecution[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'success' | 'failed' | 'pending'>('all');
+  const [taskIdFilter, setTaskIdFilter] = useState(searchParams.get('taskId') || '');
+  const [taskNameHint] = useState(searchParams.get('taskName') || '');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
   const [activeTaskProgress, setActiveTaskProgress] = useState<Record<string, number>>({});
@@ -66,7 +70,7 @@ export default function ExecutionsPage() {
     let cancelled = false;
     const controller = new AbortController();
     const statusParam = statusFilter === 'all' ? '' : statusFilter;
-    const cacheKey = `executions:list:${pageSize}:0:${debouncedSearchTerm}:${statusParam}:${sortBy}:${sortDir}`;
+    const cacheKey = `executions:list:${pageSize}:0:${debouncedSearchTerm}:${statusParam}:${taskIdFilter}:${sortBy}:${sortDir}`;
     const cached = getCachedQuery<{
       executions: ExpandedExecution[];
       nextOffset: number;
@@ -86,8 +90,9 @@ export default function ExecutionsPage() {
     async function load() {
       try {
         const requestStatusParam = statusFilter === 'all' ? '' : `&status=${statusFilter}`;
+        const requestTaskIdParam = taskIdFilter ? `&taskId=${encodeURIComponent(taskIdFilter)}` : '';
         const res = await fetch(
-          `/api/executions?limit=${pageSize}&offset=0&search=${encodeURIComponent(debouncedSearchTerm)}${requestStatusParam}&sortBy=${sortBy}&sortDir=${sortDir}`,
+          `/api/executions?limit=${pageSize}&offset=0&search=${encodeURIComponent(debouncedSearchTerm)}${requestStatusParam}${requestTaskIdParam}&sortBy=${sortBy}&sortDir=${sortDir}`,
           { signal: controller.signal }
         );
         const data = await res.json();
@@ -119,7 +124,7 @@ export default function ExecutionsPage() {
       cancelled = true;
       controller.abort();
     };
-  }, [pageSize, debouncedSearchTerm, statusFilter, sortBy, sortDir]);
+  }, [pageSize, debouncedSearchTerm, statusFilter, taskIdFilter, sortBy, sortDir]);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,11 +168,12 @@ export default function ExecutionsPage() {
   const handleRefresh = (options: { showLoading?: boolean } = {}) => {
     const showLoading = options.showLoading !== false;
     const statusParam = statusFilter === 'all' ? '' : `&status=${statusFilter}`;
+    const taskIdParam = taskIdFilter ? `&taskId=${encodeURIComponent(taskIdFilter)}` : '';
     if (showLoading) {
       setIsLoadingExecutions(true);
     }
 
-    return fetch(`/api/executions?limit=${pageSize}&offset=0&search=${encodeURIComponent(debouncedSearchTerm)}${statusParam}&sortBy=${sortBy}&sortDir=${sortDir}`)
+    return fetch(`/api/executions?limit=${pageSize}&offset=0&search=${encodeURIComponent(debouncedSearchTerm)}${statusParam}${taskIdParam}&sortBy=${sortBy}&sortDir=${sortDir}`)
       .then(res => res.json())
       .then(data => {
         if (!data.success) throw new Error(data.error || 'Failed to load executions');
@@ -193,7 +199,7 @@ export default function ExecutionsPage() {
       void handleRefresh({ showLoading: false });
     }, 2500);
     return () => clearInterval(timer);
-  }, [shouldLivePoll, pageSize, debouncedSearchTerm, statusFilter, sortBy, sortDir]);
+  }, [shouldLivePoll, pageSize, debouncedSearchTerm, statusFilter, taskIdFilter, sortBy, sortDir]);
 
   useEffect(() => {
     let filtered = executions;
@@ -218,8 +224,9 @@ export default function ExecutionsPage() {
     try {
       setIsLoadingMore(true);
       const statusParam = statusFilter === 'all' ? '' : `&status=${statusFilter}`;
+      const taskIdParam = taskIdFilter ? `&taskId=${encodeURIComponent(taskIdFilter)}` : '';
       const res = await fetch(
-        `/api/executions?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(debouncedSearchTerm)}${statusParam}&sortBy=${sortBy}&sortDir=${sortDir}`
+        `/api/executions?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(debouncedSearchTerm)}${statusParam}${taskIdParam}&sortBy=${sortBy}&sortDir=${sortDir}`
       );
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load executions');
@@ -304,6 +311,16 @@ export default function ExecutionsPage() {
             <p className="text-muted-foreground">
               Track all your task executions and their results
             </p>
+            {taskIdFilter ? (
+              <div className="mt-3 flex items-center gap-2 text-xs">
+                <span className="kpi-pill">
+                  Task scope: {taskNameHint || taskIdFilter}
+                </span>
+                <Button size="sm" variant="ghost" onClick={() => setTaskIdFilter('')}>
+                  Show all tasks
+                </Button>
+              </div>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap gap-2">
