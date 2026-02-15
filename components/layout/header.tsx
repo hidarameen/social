@@ -105,6 +105,7 @@ function HeaderContent() {
   }, [pathname, t]);
   const userImage = session?.user?.image || '';
   const isDarkTheme = themeMounted && resolvedTheme === 'dark';
+  const userLabel = session?.user?.name || t('header.profile', 'Profile');
 
   const storageKeyNeedsReset = (key: string) => {
     const normalizedKey = key.toLowerCase();
@@ -411,14 +412,13 @@ function HeaderContent() {
   };
 
   return (
-    <header className="glass-toolbar fixed left-0 right-0 top-0 z-40 overflow-visible md:[inset-inline-start:var(--shell-content-offset)]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_20%,color-mix(in_oklch,var(--primary)_18%,transparent),transparent_40%),radial-gradient(circle_at_82%_24%,color-mix(in_oklch,var(--accent)_16%,transparent),transparent_42%)]" />
-      <div className="relative flex h-[var(--shell-header-height)] items-center gap-2 px-3 sm:px-5 lg:px-8">
+    <header className="glass-toolbar fixed left-0 right-0 top-0 z-20 md:[inset-inline-start:var(--shell-sidebar-width)]">
+      <div className="flex h-[var(--shell-header-height)] items-center gap-2 px-3 sm:px-5 lg:px-8">
         <div className="flex items-center gap-2">
           <Button
-            variant="outline"
+            variant="ghost"
             size="icon"
-            className="h-10 w-10 rounded-xl border-border/65 bg-card/70 md:hidden"
+            className="h-10 w-10 rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-foreground md:hidden"
             onClick={() => setMobileMenuOpen((value) => !value)}
             aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
           >
@@ -427,13 +427,13 @@ function HeaderContent() {
 
           <Link
             href="/"
-            className="inline-flex items-center gap-2 rounded-2xl border border-border/65 bg-card/75 px-2.5 py-1.5 shadow-[0_8px_24px_-18px_color-mix(in_oklch,var(--foreground)_50%,transparent)] transition-colors hover:border-primary/40"
+            className="inline-flex items-center gap-2 rounded-xl px-2 py-1.5 transition-colors hover:bg-muted/45"
             aria-label={t('header.goToDashboard', 'Go to dashboard')}
           >
             <AppLogo size={28} showText={false} variant="splash" />
             <div className="hidden leading-none lg:block">
               <p className="text-sm font-semibold tracking-tight text-foreground">SocialFlow</p>
-              <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+              <p className="mt-0.5 text-sm uppercase tracking-[0.14em] text-muted-foreground">
                 {t('header.controlSuite', 'Control Suite')}
               </p>
             </div>
@@ -441,7 +441,7 @@ function HeaderContent() {
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="mb-0.5 hidden items-center gap-1 text-[11px] text-muted-foreground lg:flex">
+          <div className="mb-0.5 hidden items-center gap-1 text-sm text-muted-foreground lg:flex">
             {crumbs.map((crumb, index) => (
               <span key={`${crumb}-${index}`} className="inline-flex items-center gap-1">
                 {index > 0 && <ChevronRight size={12} />}
@@ -453,7 +453,7 @@ function HeaderContent() {
             <h2 className="truncate text-base font-semibold tracking-tight text-foreground sm:text-lg">
               {activeItemContent.label}
             </h2>
-            <span className="hidden max-w-[26rem] truncate rounded-full border border-border/65 bg-background/65 px-2.5 py-1 text-[11px] text-muted-foreground lg:inline-flex">
+            <span className="hidden max-w-[26rem] truncate rounded-full border border-border/65 bg-card/72 px-2.5 py-1 text-sm text-muted-foreground lg:inline-flex">
               {activeItemContent.caption}
             </span>
           </div>
@@ -466,7 +466,7 @@ function HeaderContent() {
           />
           <Input
             placeholder={t('header.searchPlaceholder', 'Search tasks, accounts, logs...')}
-            className="h-11 rounded-2xl border-border/70 bg-background/75 pl-9 pr-16 shadow-inner shadow-black/5"
+            className="h-10 rounded-2xl border-border/70 bg-card/75 pl-9 pr-16"
             readOnly
             onFocus={() => {
               window.dispatchEvent(new CustomEvent('open-global-command-palette'));
@@ -475,7 +475,7 @@ function HeaderContent() {
               window.dispatchEvent(new CustomEvent('open-global-command-palette'));
             }}
           />
-          <span className="pointer-events-none absolute right-2 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded-lg border border-border/65 bg-card/80 px-2 py-1 text-[10px] font-medium text-muted-foreground">
+          <span className="pointer-events-none absolute right-2 top-1/2 inline-flex -translate-y-1/2 items-center gap-1 rounded-lg border border-border/65 bg-card/88 px-2 py-1 text-sm font-medium text-muted-foreground">
             <Command size={11} />
             K
           </span>
@@ -487,7 +487,7 @@ function HeaderContent() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-xl text-muted-foreground hover:bg-transparent hover:text-foreground"
+            className="h-10 w-10 rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-foreground"
             title={isDarkTheme ? t('auth.themeLight', 'Light mode') : t('auth.themeDark', 'Dark mode')}
             aria-label={isDarkTheme ? t('auth.themeLight', 'Light mode') : t('auth.themeDark', 'Dark mode')}
             onClick={() => setTheme(isDarkTheme ? 'light' : 'dark')}
@@ -497,7 +497,7 @@ function HeaderContent() {
           <Button
             variant="ghost"
             size="icon"
-            className="hidden h-9 w-9 rounded-xl text-muted-foreground hover:bg-transparent hover:text-foreground xl:inline-flex"
+            className="hidden h-10 w-10 rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-foreground xl:inline-flex"
             title={t('header.quickSearch', 'Quick Search')}
             aria-label={t('header.quickSearch', 'Quick Search')}
             onClick={() => {
@@ -509,12 +509,31 @@ function HeaderContent() {
           <Button
             variant="ghost"
             size="icon"
-            className="relative h-9 w-9 rounded-xl text-muted-foreground hover:bg-transparent hover:text-foreground max-[380px]:hidden"
+            className="relative h-10 w-10 rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-foreground max-[380px]:hidden"
             title={t('header.notifications', 'Notifications')}
             aria-label={t('header.notifications', 'Notifications')}
           >
             <Bell size={17} />
             <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-secondary animate-pulse-glow" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 rounded-xl ring-1 ring-border/65 hover:bg-muted/50"
+            title={userLabel}
+            aria-label={userLabel}
+            onClick={() => setProfileOpen(true)}
+          >
+            {profilePreviewImage ? (
+              <img
+                src={profilePreviewImage}
+                alt={userLabel}
+                className="h-8 w-8 rounded-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <UserCircle2 size={19} />
+            )}
           </Button>
         </div>
       </div>
@@ -541,7 +560,7 @@ function HeaderContent() {
             <div className="mb-3 grid grid-cols-1 gap-2 min-[380px]:grid-cols-2">
               <Button
                 variant="outline"
-                className="h-10 rounded-xl border-border/70 bg-background/70 text-xs"
+                className="h-10 rounded-xl border-border/70 bg-background/70 text-sm"
                 onClick={() => {
                   setMobileMenuOpen(false);
                   window.dispatchEvent(new CustomEvent('open-global-command-palette'));
@@ -552,7 +571,7 @@ function HeaderContent() {
               </Button>
               <Button
                 variant="outline"
-                className="h-10 rounded-xl border-border/70 bg-background/70 text-xs"
+                className="h-10 rounded-xl border-border/70 bg-background/70 text-sm"
                 onClick={() => {
                   setMobileMenuOpen(false);
                   setProfileOpen(true);
@@ -606,7 +625,7 @@ function HeaderContent() {
                       <p className="truncate text-sm font-semibold">{itemContent.label}</p>
                       <p
                         className={cn(
-                          'truncate text-xs',
+                          'truncate text-sm',
                           isActive
                             ? 'text-sidebar-primary-foreground/85'
                             : 'text-sidebar-foreground/65'
@@ -735,7 +754,7 @@ function HeaderContent() {
 
 export function Header() {
   return (
-    <Suspense fallback={<header className="glass-toolbar fixed left-0 right-0 top-0 z-40 h-[var(--shell-header-height)] md:[inset-inline-start:var(--shell-content-offset)]" />}>
+    <Suspense fallback={<header className="glass-toolbar fixed left-0 right-0 top-0 z-20 h-[var(--shell-header-height)] md:[inset-inline-start:var(--shell-sidebar-width)]" />}>
       <HeaderContent />
     </Suspense>
   );

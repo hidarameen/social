@@ -1,6 +1,9 @@
 import { db, type Task, type PlatformAccount, type TaskExecution } from '@/lib/db';
 import { getPlatformHandler } from '@/lib/platforms/handlers';
 import type { PlatformId } from '@/lib/platforms/types';
+import { randomUUID } from 'crypto';
+
+const GENERIC_TASK_SUPPORTED_TARGETS = new Set<PlatformId>(['facebook']);
 
 export class TaskProcessor {
   /**
@@ -12,6 +15,7 @@ export class TaskProcessor {
 
     const executions: TaskExecution[] = [];
     let failures = 0;
+    const executionGroupId = `manual:${task.id}:${Date.now()}:${randomUUID().slice(0, 8)}`;
 
     // الحصول على حسابات المصدر والهدف
     const sourceAccounts = (
@@ -26,18 +30,22 @@ export class TaskProcessor {
       throw new Error('Source or target accounts not found');
     }
 
-    // معالجة كل زوج من (مصدر -> هدف)
-    for (const sourceAccount of sourceAccounts) {
-      for (const targetAccount of targetAccounts) {
+    // معالجة كل زوج من (مصدر -> هدف) بالتوازي
+    const routePairs = sourceAccounts.flatMap((sourceAccount) =>
+      targetAccounts.map((targetAccount) => ({ sourceAccount, targetAccount }))
+    );
+
+    const executionResults = await Promise.all(
+      routePairs.map(async ({ sourceAccount, targetAccount }) => {
         try {
-          const execution = await this.executeTransfer(
+          return await this.executeTransfer(
             task,
             sourceAccount,
-            targetAccount
+            targetAccount,
+            executionGroupId
           );
-          executions.push(execution);
         } catch (error) {
-          const execution = await db.createExecution({
+          return db.createExecution({
             taskId,
             sourceAccount: sourceAccount.id,
             targetAccount: targetAccount.id,
@@ -46,12 +54,19 @@ export class TaskProcessor {
             status: 'failed',
             error: error instanceof Error ? error.message : 'Unknown error',
             executedAt: new Date(),
+            responseData: {
+              executionGroupId,
+              progress: 100,
+              stage: 'failed',
+              failureReason: error instanceof Error ? error.message : 'Unknown error',
+            },
           });
-          executions.push(execution);
-          failures += 1;
         }
-      }
-    }
+      })
+    );
+
+    executions.push(...executionResults);
+    failures += executionResults.filter((execution) => execution.status === 'failed').length;
 
     // تحديث آخر تنفيذ للمهمة
     await db.updateTask(taskId, {
@@ -70,60 +85,124 @@ export class TaskProcessor {
   private async executeTransfer(
     task: Task,
     sourceAccount: PlatformAccount,
-    targetAccount: PlatformAccount
+    targetAccount: PlatformAccount,
+    executionGroupId: string
   ): Promise<TaskExecution> {
-    // الحصول على معالجات المنصات
-    const sourceHandler = getPlatformHandler(sourceAccount.platformId as PlatformId);
-    const targetHandler = getPlatformHandler(targetAccount.platformId as PlatformId);
+    const sourcePlatformId = sourceAccount.platformId as PlatformId;
+    const targetPlatformId = targetAccount.platformId as PlatformId;
 
-    // تحويل المحتوى
-    let transformedContent = task.description;
-
-    if (task.transformations) {
-      transformedContent = this.applyTransformations(
-        transformedContent,
-        task.transformations
+    if (!GENERIC_TASK_SUPPORTED_TARGETS.has(targetPlatformId)) {
+      throw new Error(
+        `Generic task execution for target platform "${targetAccount.platformId}" is not implemented. Use platform-specific webhook automation for this route.`
       );
     }
 
-    // إرسال إلى المنصة الهدف
-    const postRequest = {
-      content: transformedContent,
-      scheduleTime: task.scheduleTime,
-      hashtags: task.transformations?.addHashtags,
+    // الحصول على معالجات المنصات
+    getPlatformHandler(sourcePlatformId);
+    const targetHandler = getPlatformHandler(targetPlatformId);
+
+    const baseResponseData = {
+      sourcePlatformId,
+      targetPlatformId,
+      executionGroupId,
     };
 
-    let postResponse;
-    if (task.executionType === 'scheduled' && task.scheduleTime) {
-      postResponse = await targetHandler.schedulePost(
-        postRequest,
-        targetAccount.accessToken
-      );
-    } else {
-      postResponse = await targetHandler.publishPost(
-        postRequest,
-        targetAccount.accessToken
-      );
-    }
-
-    if (!postResponse.success) {
-      throw new Error(postResponse.error || 'Failed to publish');
-    }
-
-    // تسجيل التنفيذ
-    return db.createExecution({
+    const pendingExecution = await db.createExecution({
       taskId: task.id,
       sourceAccount: sourceAccount.id,
       targetAccount: targetAccount.id,
       originalContent: task.description,
-      transformedContent,
-      status: 'success',
+      transformedContent: task.description,
+      status: 'pending',
       executedAt: new Date(),
       responseData: {
-        postId: postResponse.postId,
-        url: postResponse.url,
+        ...baseResponseData,
+        progress: 8,
+        stage: 'queued',
       },
     });
+
+    try {
+      // تحويل المحتوى
+      let transformedContent = task.description;
+      if (task.transformations) {
+        transformedContent = this.applyTransformations(
+          transformedContent,
+          task.transformations
+        );
+      }
+
+      await db.updateExecution(pendingExecution.id, {
+        transformedContent,
+        responseData: {
+          ...baseResponseData,
+          progress: 34,
+          stage: 'transforming',
+        },
+      });
+
+      // إرسال إلى المنصة الهدف
+      const postRequest = {
+        content: transformedContent,
+        scheduleTime: task.scheduleTime,
+        hashtags: task.transformations?.addHashtags,
+      };
+
+      await db.updateExecution(pendingExecution.id, {
+        responseData: {
+          ...baseResponseData,
+          progress: 72,
+          stage:
+            task.executionType === 'scheduled' && task.scheduleTime
+              ? 'scheduling'
+              : 'publishing',
+        },
+      });
+
+      let postResponse;
+      if (task.executionType === 'scheduled' && task.scheduleTime) {
+        postResponse = await targetHandler.schedulePost(
+          postRequest,
+          targetAccount.accessToken
+        );
+      } else {
+        postResponse = await targetHandler.publishPost(
+          postRequest,
+          targetAccount.accessToken
+        );
+      }
+
+      if (!postResponse.success) {
+        throw new Error(postResponse.error || 'Failed to publish');
+      }
+
+      return db.updateExecution(pendingExecution.id, {
+        transformedContent,
+        status: 'success',
+        error: null,
+        executedAt: new Date(),
+        responseData: {
+          ...baseResponseData,
+          progress: 100,
+          stage: 'completed',
+          postId: postResponse.postId,
+          url: postResponse.url,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return db.updateExecution(pendingExecution.id, {
+        status: 'failed',
+        error: message,
+        executedAt: new Date(),
+        responseData: {
+          ...baseResponseData,
+          progress: 100,
+          stage: 'failed',
+          failureReason: message,
+        },
+      });
+    }
   }
 
   /**

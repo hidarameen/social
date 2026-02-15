@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
@@ -14,19 +14,46 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { PlatformAccount, TaskExecution } from '@/lib/db';
+import type { TaskExecution } from '@/lib/db';
 import type { PlatformId } from '@/lib/platforms/types';
 import { extractExecutionMessageLinks } from '@/lib/execution-links';
-import { Search, Download, RefreshCw, ChevronDown, Loader2, ArrowRight } from 'lucide-react';
+import {
+  Search,
+  Download,
+  RefreshCw,
+  ChevronDown,
+  ArrowRight,
+  FileText,
+  ImageIcon,
+  Layers,
+  VideoIcon,
+} from 'lucide-react';
 import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { getCachedQuery, setCachedQuery } from '@/lib/client/query-cache';
 import { toast } from 'sonner';
 import { PlatformIcon } from '@/components/common/platform-icon';
+import { cn } from '@/lib/utils';
 
 interface ExpandedExecution extends TaskExecution {
   taskName?: string;
   sourceAccountName?: string;
   targetAccountName?: string;
+  sourcePlatformId?: string;
+  targetPlatformId?: string;
+}
+
+function getExecutionGroupId(execution: ExpandedExecution): string {
+  const responseData =
+    execution.responseData && typeof execution.responseData === 'object'
+      ? (execution.responseData as Record<string, any>)
+      : {};
+  const explicit = String(responseData.executionGroupId || '').trim();
+  if (explicit) return explicit;
+  const sourceTweetId = String(responseData.sourceTweetId || '').trim();
+  if (sourceTweetId) return `legacy:${execution.taskId}:tweet:${sourceTweetId}`;
+  const secondBucket = Math.floor(new Date(execution.executedAt).getTime() / 1000);
+  const contentKey = String(execution.originalContent || '').trim().slice(0, 80);
+  return `legacy:${execution.taskId}:${execution.sourceAccount}:${secondBucket}:${contentKey}`;
 }
 
 function toDisplayText(value: string | undefined): string {
@@ -41,6 +68,179 @@ function clampProgress(value: number): number {
   return Math.round(value);
 }
 
+function getExecutionProgressSnapshot(responseData: unknown): {
+  progress: number;
+  stage?: string;
+} {
+  if (!responseData || typeof responseData !== 'object') {
+    return { progress: 0 };
+  }
+  const record = responseData as Record<string, unknown>;
+  const rawProgress = Number(record.progress);
+  const stage = typeof record.stage === 'string' ? record.stage : undefined;
+  return {
+    progress: clampProgress(Number.isFinite(rawProgress) ? rawProgress : 0),
+    stage,
+  };
+}
+
+type ExecutionMessageKind = 'text' | 'media' | 'mixed';
+type ExecutionMediaKind = 'image' | 'video' | 'media';
+
+function toStageToken(stage: string | undefined): string {
+  return String(stage || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-')
+    .replace(/-+/g, '-');
+}
+
+function toResponseRecord(responseData: unknown): Record<string, any> {
+  if (!responseData || typeof responseData !== 'object') return {};
+  return responseData as Record<string, any>;
+}
+
+function toNumberOrZero(value: unknown): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.floor(parsed);
+}
+
+function inferMediaKind(responseData: unknown, stage: string | undefined): ExecutionMediaKind | undefined {
+  const record = toResponseRecord(responseData);
+  const stageToken = toStageToken(stage);
+  const explicitKind = String(record.mediaKind || '').toLowerCase();
+  if (explicitKind.includes('video')) return 'video';
+  if (explicitKind.includes('photo') || explicitKind.includes('image')) return 'image';
+  if (String(record.publishMode || '').toLowerCase().includes('video')) return 'video';
+  if (stageToken.includes('video') || stageToken.includes('youtube')) return 'video';
+  if (
+    stageToken.includes('image') ||
+    stageToken.includes('photo') ||
+    stageToken.includes('album')
+  ) {
+    return 'image';
+  }
+  const hasAnyMediaSignals =
+    toNumberOrZero(record.mediaCount) > 0 ||
+    toNumberOrZero(record.uploadedMediaCount) > 0 ||
+    (Array.isArray(record.mediaIds) && record.mediaIds.length > 0) ||
+    Boolean(record.album) ||
+    Boolean(record.publishMode);
+  return hasAnyMediaSignals ? 'media' : undefined;
+}
+
+function inferMessageKind(execution: ExpandedExecution): {
+  kind: ExecutionMessageKind;
+  mediaKind?: ExecutionMediaKind;
+  mediaCount: number;
+} {
+  const record = toResponseRecord(execution.responseData);
+  const stage = typeof record.stage === 'string' ? record.stage : undefined;
+  const mediaKind = inferMediaKind(record, stage);
+  const mediaCount = Math.max(
+    toNumberOrZero(record.mediaCount),
+    toNumberOrZero(record.uploadedMediaCount),
+    Array.isArray(record.mediaIds) ? record.mediaIds.length : 0
+  );
+  const hasMedia =
+    Boolean(mediaKind) ||
+    mediaCount > 0 ||
+    toStageToken(stage).includes('media') ||
+    toStageToken(stage).includes('video') ||
+    toStageToken(stage).includes('image') ||
+    toStageToken(stage).includes('photo');
+  const hasText =
+    String(execution.originalContent || '').trim().length > 0 ||
+    String(execution.transformedContent || '').trim().length > 0;
+
+  if (hasText && hasMedia) return { kind: 'mixed', mediaKind, mediaCount };
+  if (hasMedia) return { kind: 'media', mediaKind, mediaCount };
+  return { kind: 'text', mediaKind, mediaCount };
+}
+
+function formatExecutionStage(
+  stage: string | undefined,
+  sourcePlatformId: PlatformId | undefined,
+  targetPlatformId: PlatformId | undefined,
+  responseData: unknown
+): string {
+  const stageToken = toStageToken(stage);
+  const mediaKind = inferMediaKind(responseData, stage);
+  const mediaLabel =
+    mediaKind === 'video' ? 'video' : mediaKind === 'image' ? 'image' : 'media';
+  const source = platformLabel(sourcePlatformId);
+  const target = platformLabel(targetPlatformId);
+
+  if (!stageToken) return `Processing message from ${source} and preparing ${target}`;
+  if (stageToken.includes('downloading')) return `Downloading ${mediaLabel} from ${source}`;
+  if (stageToken.includes('downloaded')) return `${mediaLabel[0].toUpperCase()}${mediaLabel.slice(1)} downloaded from ${source}`;
+  if (
+    stageToken.includes('uploading') ||
+    stageToken.includes('upload-start') ||
+    stageToken.includes('resumable-transfer') ||
+    (stageToken.includes('starting-') && stageToken.includes('upload'))
+  ) {
+    return `Uploading ${mediaLabel} to ${target}`;
+  }
+  if (stageToken.includes('uploaded')) return `${mediaLabel[0].toUpperCase()}${mediaLabel.slice(1)} uploaded to ${target}`;
+  if (stageToken.includes('transcode')) return 'Transcoding video for destination requirements';
+  if (stageToken.includes('playlist-attach')) return 'Attaching uploaded video to playlist';
+  if (stageToken.includes('token-refreshed')) return 'Refreshing destination account token';
+  if (stageToken.includes('tweet-posted') || stageToken.includes('text-post-complete') || stageToken.includes('done')) {
+    return `Finalizing delivery to ${target}`;
+  }
+  if (stageToken.includes('publish') || stageToken.includes('sending') || stageToken.includes('schedule')) {
+    return `Sending content to ${target}`;
+  }
+  if (stageToken.includes('process') || stageToken.includes('transform') || stageToken.includes('prepare')) {
+    return 'Analyzing and preparing message payload';
+  }
+
+  const normalized = stageToken.replace(/-/g, ' ').trim();
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+type StepState = 'done' | 'active' | 'pending' | 'failed';
+
+function platformLabel(platformId?: PlatformId): string {
+  if (!platformId) return 'source';
+  if (platformId === 'twitter') return 'X';
+  return platformId.charAt(0).toUpperCase() + platformId.slice(1);
+}
+
+function resolveStepState(
+  stepIndex: number,
+  status: TaskExecution['status'],
+  stage: string | undefined
+): StepState {
+  const normalized = toStageToken(stage);
+  const currentStepIndex =
+    normalized.includes('done') || normalized.includes('complete') || normalized.includes('posted')
+      ? 3
+      : normalized.includes('publish') ||
+          normalized.includes('schedule') ||
+          normalized.includes('send') ||
+          normalized.includes('upload')
+        ? 2
+        : normalized.includes('transform') ||
+            normalized.includes('process') ||
+            normalized.includes('prepare') ||
+            normalized.includes('download')
+          ? 1
+          : 0;
+
+  if (status === 'success') return 'done';
+  if (status === 'failed') {
+    if (stepIndex <= currentStepIndex) return 'done';
+    if (stepIndex === 3) return 'failed';
+    return 'pending';
+  }
+  if (stepIndex < currentStepIndex) return 'done';
+  if (stepIndex === currentStepIndex) return 'active';
+  return 'pending';
+}
+
 export default function ExecutionsPage() {
   const searchParams = useSearchParams();
   const [executions, setExecutions] = useState<ExpandedExecution[]>([]);
@@ -51,10 +251,8 @@ export default function ExecutionsPage() {
   const [taskNameHint] = useState(searchParams.get('taskName') || '');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
-  const [activeTaskProgress, setActiveTaskProgress] = useState<Record<string, number>>({});
   const [sortBy, setSortBy] = useState<'executedAt' | 'status' | 'taskName'>('executedAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [accountById, setAccountById] = useState<Record<string, PlatformAccount>>({});
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingExecutions, setIsLoadingExecutions] = useState(true);
@@ -62,9 +260,9 @@ export default function ExecutionsPage() {
   const pageSize = 50;
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 300);
   const isInitialLoading = isLoadingExecutions && executions.length === 0;
-  const activeProcessingCount = Object.keys(activeTaskProgress).length;
-  const pendingExecutionCount = executions.filter(e => e.status === 'pending').length;
-  const shouldLivePoll = activeProcessingCount > 0 || pendingExecutionCount > 0;
+  const pendingExecutions = executions.filter((execution) => execution.status === 'pending');
+  const pendingExecutionCount = pendingExecutions.length;
+  const shouldLivePoll = pendingExecutionCount > 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -93,7 +291,7 @@ export default function ExecutionsPage() {
         const requestTaskIdParam = taskIdFilter ? `&taskId=${encodeURIComponent(taskIdFilter)}` : '';
         const res = await fetch(
           `/api/executions?limit=${pageSize}&offset=0&search=${encodeURIComponent(debouncedSearchTerm)}${requestStatusParam}${requestTaskIdParam}&sortBy=${sortBy}&sortDir=${sortDir}`,
-          { signal: controller.signal }
+          { signal: controller.signal, cache: 'no-store' }
         );
         const data = await res.json();
         if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load executions');
@@ -126,46 +324,7 @@ export default function ExecutionsPage() {
     };
   }, [pageSize, debouncedSearchTerm, statusFilter, taskIdFilter, sortBy, sortDir]);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadAccounts() {
-      try {
-        const res = await fetch('/api/accounts?limit=300&offset=0');
-        const data = await res.json();
-        if (!res.ok || !data.success) return;
-        if (cancelled) return;
-        const map: Record<string, PlatformAccount> = {};
-        for (const account of (data.accounts || []) as PlatformAccount[]) {
-          map[account.id] = account;
-        }
-        setAccountById(map);
-      } catch {
-        // non-blocking
-      }
-    }
-    void loadAccounts();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!activeProcessingCount) return;
-    const timer = setInterval(() => {
-      setActiveTaskProgress((current) => {
-        const next: Record<string, number> = {};
-        for (const [taskId, progress] of Object.entries(current)) {
-          const delta = 2 + Math.floor(Math.random() * 6);
-          next[taskId] = clampProgress(Math.min(94, progress + delta));
-        }
-        return next;
-      });
-    }, 520);
-
-    return () => clearInterval(timer);
-  }, [activeProcessingCount]);
-
-  const handleRefresh = (options: { showLoading?: boolean } = {}) => {
+  const handleRefresh = useCallback((options: { showLoading?: boolean } = {}) => {
     const showLoading = options.showLoading !== false;
     const statusParam = statusFilter === 'all' ? '' : `&status=${statusFilter}`;
     const taskIdParam = taskIdFilter ? `&taskId=${encodeURIComponent(taskIdFilter)}` : '';
@@ -173,7 +332,7 @@ export default function ExecutionsPage() {
       setIsLoadingExecutions(true);
     }
 
-    return fetch(`/api/executions?limit=${pageSize}&offset=0&search=${encodeURIComponent(debouncedSearchTerm)}${statusParam}${taskIdParam}&sortBy=${sortBy}&sortDir=${sortDir}`)
+    return fetch(`/api/executions?limit=${pageSize}&offset=0&search=${encodeURIComponent(debouncedSearchTerm)}${statusParam}${taskIdParam}&sortBy=${sortBy}&sortDir=${sortDir}`, { cache: 'no-store' })
       .then(res => res.json())
       .then(data => {
         if (!data.success) throw new Error(data.error || 'Failed to load executions');
@@ -191,15 +350,94 @@ export default function ExecutionsPage() {
           setIsLoadingExecutions(false);
         }
       });
-  };
+  }, [debouncedSearchTerm, pageSize, sortBy, sortDir, statusFilter, taskIdFilter]);
 
   useEffect(() => {
-    if (!shouldLivePoll) return;
+    const refreshInterval = shouldLivePoll ? 2500 : 3500;
     const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
       void handleRefresh({ showLoading: false });
-    }, 2500);
+    }, refreshInterval);
     return () => clearInterval(timer);
-  }, [shouldLivePoll, pageSize, debouncedSearchTerm, statusFilter, taskIdFilter, sortBy, sortDir]);
+  }, [handleRefresh, shouldLivePoll]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    let disposed = false;
+    let stream: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleReconnect = () => {
+      if (disposed || reconnectTimer) return;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, 1400);
+    };
+
+    const onExecutionChanged = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void handleRefresh({ showLoading: false });
+    };
+
+    const connect = () => {
+      if (disposed) return;
+      try {
+        stream = new EventSource('/api/executions/stream');
+      } catch {
+        scheduleReconnect();
+        return;
+      }
+
+      stream.addEventListener('ready', onExecutionChanged);
+      stream.addEventListener('execution-changed', onExecutionChanged);
+      stream.onerror = () => {
+        try {
+          stream?.close();
+        } catch {
+          // ignore
+        }
+        stream = null;
+        scheduleReconnect();
+      };
+    };
+
+    connect();
+    return () => {
+      disposed = true;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+      }
+      reconnectTimer = null;
+      try {
+        stream?.close();
+      } catch {
+        // ignore
+      }
+      stream = null;
+    };
+  }, [handleRefresh]);
+
+  useEffect(() => {
+    const triggerImmediateRefresh = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void handleRefresh({ showLoading: false });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        triggerImmediateRefresh();
+      }
+    };
+
+    window.addEventListener('focus', triggerImmediateRefresh);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', triggerImmediateRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [handleRefresh]);
 
   useEffect(() => {
     let filtered = executions;
@@ -226,7 +464,8 @@ export default function ExecutionsPage() {
       const statusParam = statusFilter === 'all' ? '' : `&status=${statusFilter}`;
       const taskIdParam = taskIdFilter ? `&taskId=${encodeURIComponent(taskIdFilter)}` : '';
       const res = await fetch(
-        `/api/executions?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(debouncedSearchTerm)}${statusParam}${taskIdParam}&sortBy=${sortBy}&sortDir=${sortDir}`
+        `/api/executions?limit=${pageSize}&offset=${offset}&search=${encodeURIComponent(debouncedSearchTerm)}${statusParam}${taskIdParam}&sortBy=${sortBy}&sortDir=${sortDir}`,
+        { cache: 'no-store' }
       );
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load executions');
@@ -246,57 +485,38 @@ export default function ExecutionsPage() {
     if (!taskId || retryingTaskId) return;
     try {
       setRetryingTaskId(taskId);
-      setActiveTaskProgress((current) => ({ ...current, [taskId]: 8 }));
       const res = await fetch(`/api/tasks/${taskId}/run`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to trigger retry');
-      setActiveTaskProgress((current) => ({ ...current, [taskId]: 100 }));
       toast.success('Task retry queued successfully');
       await handleRefresh({ showLoading: false });
-      window.setTimeout(() => {
-        setActiveTaskProgress((current) => {
-          const next = { ...current };
-          delete next[taskId];
-          return next;
-        });
-      }, 900);
     } catch (error) {
-      setActiveTaskProgress((current) => {
-        const next = { ...current };
-        delete next[taskId];
-        return next;
-      });
       toast.error(error instanceof Error ? error.message : 'Failed to trigger retry');
     } finally {
       setRetryingTaskId(null);
     }
   };
 
-  const stats = {
-    total: executions.length,
-    successful: executions.filter(e => e.status === 'success').length,
-    failed: executions.filter(e => e.status === 'failed').length,
-    processing: Math.max(pendingExecutionCount, activeProcessingCount),
-  };
-  const activeProgressValues = Object.values(activeTaskProgress);
-  const aggregateLiveProgress =
-    activeProgressValues.length > 0
-      ? clampProgress(
-          activeProgressValues.reduce((sum, value) => sum + value, 0) /
-            activeProgressValues.length
-        )
-      : isLoadingExecutions
-        ? 26
-        : 0;
-  const latestExecutionByTask = new Map<string, { id: string; timestamp: number }>();
-  for (const item of filteredExecutions) {
-    const timestamp = new Date(item.executedAt).getTime();
-    const current = latestExecutionByTask.get(item.taskId);
-    if (!current || timestamp > current.timestamp) {
-      latestExecutionByTask.set(item.taskId, { id: item.id, timestamp });
-    }
+  const groupedRuns = new Map<string, ExpandedExecution[]>();
+  for (const execution of filteredExecutions) {
+    const groupId = getExecutionGroupId(execution);
+    const group = groupedRuns.get(groupId) || [];
+    group.push(execution);
+    groupedRuns.set(groupId, group);
   }
 
+  const groupedRunList = Array.from(groupedRuns.entries()).map(([groupId, group]) => ({
+    groupId,
+    routes: group,
+    lead: group[0],
+  }));
+
+  const stats = {
+    total: groupedRunList.length,
+    successful: groupedRunList.filter(({ routes }) => routes.every((e) => e.status === 'success')).length,
+    failed: groupedRunList.filter(({ routes }) => !routes.some((e) => e.status === 'pending') && routes.some((e) => e.status === 'failed')).length,
+    processing: groupedRunList.filter(({ routes }) => routes.some((e) => e.status === 'pending')).length,
+  };
   return (
     <div className="min-h-screen bg-background control-app">
       <Sidebar />
@@ -340,38 +560,6 @@ export default function ExecutionsPage() {
           </div>
         </div>
 
-        {(shouldLivePoll || isLoadingExecutions) && (
-          <Card className="mb-6 border-primary/25 bg-card/92 shadow-lg">
-            <CardContent className="pt-5">
-              <div className="flex items-start gap-3">
-                <Loader2 size={18} className="mt-0.5 animate-spin text-primary" />
-                <div className="flex-1">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-foreground">
-                      {activeProcessingCount > 0
-                        ? `Processing ${activeProcessingCount} task${activeProcessingCount > 1 ? 's' : ''}`
-                        : 'Refreshing executions stream'}
-                    </p>
-                    <span className="text-xs text-muted-foreground">
-                      {aggregateLiveProgress}% complete
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Tracking message processing in real time. The list auto-refreshes until execution is complete.
-                  </p>
-                  <div className="execution-progress-track mt-3">
-                    <div
-                      className="execution-progress-fill"
-                      style={{ width: `${aggregateLiveProgress}%` }}
-                    />
-                    <div className="execution-progress-indeterminate" />
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Stats Cards */}
         {isInitialLoading ? (
           <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -391,7 +579,7 @@ export default function ExecutionsPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="text-center">
-                  <p className="text-muted-foreground text-sm mb-1">Total Executions</p>
+                  <p className="text-muted-foreground text-sm mb-1">Total Runs</p>
                   <p className="text-3xl font-bold text-foreground">{stats.total}</p>
                 </div>
               </CardContent>
@@ -399,8 +587,8 @@ export default function ExecutionsPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="text-center">
-                  <p className="text-muted-foreground text-sm mb-1">Successful</p>
-                  <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                  <p className="text-muted-foreground text-sm mb-1">Successful Runs</p>
+                  <p className="text-3xl font-bold text-primary">
                     {stats.successful}
                   </p>
                 </div>
@@ -409,8 +597,8 @@ export default function ExecutionsPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="text-center">
-                  <p className="text-muted-foreground text-sm mb-1">Failed</p>
-                  <p className="text-3xl font-bold text-red-600 dark:text-red-400">
+                  <p className="text-muted-foreground text-sm mb-1">Failed Runs</p>
+                  <p className="text-3xl font-bold text-destructive">
                     {stats.failed}
                   </p>
                 </div>
@@ -419,8 +607,8 @@ export default function ExecutionsPage() {
             <Card>
               <CardContent className="pt-6">
                 <div className="text-center">
-                  <p className="text-muted-foreground text-sm mb-1">Processing</p>
-                  <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
+                  <p className="text-muted-foreground text-sm mb-1">Processing Runs</p>
+                  <p className="text-3xl font-bold text-secondary-foreground">
                     {stats.processing}
                   </p>
                 </div>
@@ -524,209 +712,422 @@ export default function ExecutionsPage() {
           </Card>
         ) : (
           <div className="space-y-3">
-            {filteredExecutions.map((execution) => {
-              const sourceAccountLabel =
-                execution.sourceAccountName || execution.sourceAccount || 'Unknown source';
-              const targetAccountLabel =
-                execution.targetAccountName || execution.targetAccount || 'Unknown target';
-              const messageText = toDisplayText(execution.originalContent);
+            {groupedRunList.map(({ groupId, routes, lead }) => {
+              const taskLabel = lead.taskName || lead.taskId;
+              const messageText = toDisplayText(lead.originalContent);
               const messagePreview =
                 messageText.length > 220 ? `${messageText.slice(0, 220)}...` : messageText;
-              const messageLinks = extractExecutionMessageLinks(execution.responseData);
-              const isSuccess = execution.status === 'success';
-              const isFailed = execution.status === 'failed';
-              const isLatestForTask = latestExecutionByTask.get(execution.taskId)?.id === execution.id;
-              const pendingProgress = isLatestForTask ? activeTaskProgress[execution.taskId] : undefined;
-              const isPending = execution.status === 'pending' || typeof pendingProgress === 'number';
-              const statusText = isSuccess ? 'Success' : isFailed ? 'Failed' : 'Processing';
-              const statusClass = isSuccess
-                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                : isFailed
-                  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                  : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
-              const liveProgress = clampProgress(typeof pendingProgress === 'number' ? pendingProgress : 64);
-              const sourcePlatformId = accountById[execution.sourceAccount]?.platformId as PlatformId | undefined;
-              const targetPlatformId = accountById[execution.targetAccount]?.platformId as PlatformId | undefined;
+              const sourceLabels = Array.from(
+                new Set(
+                  routes.map((route) => route.sourceAccountName || route.sourceAccount || 'Unknown source')
+                )
+              );
+              const targetLabels = Array.from(
+                new Set(
+                  routes.map((route) => route.targetAccountName || route.targetAccount || 'Unknown target')
+                )
+              );
+              const sourcePlatforms = Array.from(
+                new Set(routes.map((route) => route.sourcePlatformId).filter(Boolean))
+              ) as PlatformId[];
+              const targetPlatforms = Array.from(
+                new Set(routes.map((route) => route.targetPlatformId).filter(Boolean))
+              ) as PlatformId[];
+              const sourcePlatformId = sourcePlatforms.length === 1 ? sourcePlatforms[0] : undefined;
+              const targetPlatformId = targetPlatforms.length === 1 ? targetPlatforms[0] : undefined;
+              const sourceSummary =
+                sourceLabels.length === 1 ? sourceLabels[0] : `${sourceLabels.length} sources`;
+              const targetSummary =
+                targetLabels.length === 1 ? targetLabels[0] : `${targetLabels.length} targets`;
+
+              const hasPending = routes.some((route) => route.status === 'pending');
+              const hasFailed = routes.some((route) => route.status === 'failed');
+              const hasSuccess = routes.some((route) => route.status === 'success');
+              const isPartial = !hasPending && hasFailed && hasSuccess;
+              const status: TaskExecution['status'] =
+                hasPending ? 'pending' : hasFailed ? 'failed' : 'success';
+              const statusText = hasPending
+                ? 'Processing'
+                : isPartial
+                  ? 'Partial failure'
+                  : hasFailed
+                    ? 'Failed'
+                    : 'Success';
+              const statusClass = hasPending
+                ? 'border border-secondary/35 bg-secondary/20 text-secondary-foreground'
+                : hasFailed
+                  ? 'border border-destructive/35 bg-destructive/10 text-destructive'
+                  : 'border border-primary/30 bg-primary/10 text-primary';
+
+              const pendingRoute = routes.find((route) => route.status === 'pending');
+              const stageRoute = pendingRoute || lead;
+              const stageSnapshot = getExecutionProgressSnapshot(stageRoute.responseData);
+              const routeProgressSamples = routes
+                .map((route) => getExecutionProgressSnapshot(route.responseData))
+                .filter((snapshot) => snapshot.progress > 0);
+              const averageProgress =
+                routeProgressSamples.length > 0
+                  ? Math.round(
+                      routeProgressSamples.reduce((sum, snapshot) => sum + snapshot.progress, 0) /
+                        routeProgressSamples.length
+                    )
+                  : 0;
+              const liveProgress = averageProgress > 0 ? averageProgress : 20;
+              const liveStage = formatExecutionStage(
+                stageSnapshot.stage,
+                sourcePlatformId,
+                targetPlatformId,
+                stageRoute.responseData
+              );
+
+              const messageKind = inferMessageKind(lead);
+              const MessageKindIcon =
+                messageKind.kind === 'mixed'
+                  ? Layers
+                  : messageKind.kind === 'media'
+                    ? messageKind.mediaKind === 'video'
+                      ? VideoIcon
+                      : ImageIcon
+                    : FileText;
+              const messageKindLabel =
+                messageKind.kind === 'mixed'
+                  ? 'Text + media'
+                  : messageKind.kind === 'media'
+                    ? messageKind.mediaKind === 'video'
+                      ? 'Video only'
+                      : messageKind.mediaKind === 'image'
+                        ? 'Image only'
+                        : 'Media only'
+                    : 'Text only';
+
+              const steps = [
+                {
+                  id: 'received',
+                  label: `Received from ${platformLabel(sourcePlatformId)}`,
+                  state: resolveStepState(0, status, stageSnapshot.stage),
+                },
+                {
+                  id: 'processing',
+                  label: 'Analyzing and transforming message',
+                  state: resolveStepState(1, status, stageSnapshot.stage),
+                },
+                {
+                  id: 'sending',
+                  label: `Sending to ${platformLabel(targetPlatformId)}`,
+                  state: resolveStepState(2, status, stageSnapshot.stage),
+                },
+                {
+                  id: 'result',
+                  label: hasFailed ? 'Delivery failed' : hasPending ? 'Awaiting delivery result' : 'Delivered successfully',
+                  state: resolveStepState(3, status, stageSnapshot.stage),
+                },
+              ];
+
+              const groupErrors = routes
+                .map((route) => String(route.error || '').trim())
+                .filter(Boolean);
+
+              const isExpanded = expandedId === groupId;
 
               return (
-                <Card
-                  key={execution.id}
-                  className="hover:border-primary/50 transition-colors cursor-pointer"
-                >
-                  <CardContent className="p-6">
-                    <div
-                      className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
-                      onClick={() =>
-                        setExpandedId(
-                          expandedId === execution.id ? null : execution.id
-                        )
-                      }
-                    >
-                      <div className="flex-1">
-                        <div className="mb-2 flex items-start gap-3">
-                          <p className="font-semibold text-foreground break-words">
-                            {messagePreview}
-                          </p>
-                          <span
-                            className={`inline-block shrink-0 px-3 py-1 rounded-full text-xs font-semibold ${statusClass}`}
-                          >
-                            {statusText}
-                          </span>
-                        </div>
-
-                        <p className="text-sm text-muted-foreground">
-                          Executed {new Date(execution.executedAt).toLocaleString()}
-                        </p>
-
-                        {isPending && (
-                          <div className="mt-4 execution-processing-card">
-                            <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                              <span className="inline-flex items-center gap-2">
-                                <span className="execution-live-dot" />
-                                Processing message and preparing destination post
-                              </span>
-                              <span>{liveProgress}%</span>
-                            </div>
-                            <div className="mb-2 execution-flow-track">
-                              <span className="execution-platform-chip">
-                                {sourcePlatformId ? <PlatformIcon platformId={sourcePlatformId} size={14} /> : 'SRC'}
-                              </span>
-                              <span className="execution-flow-arrow">
-                                <ArrowRight size={14} />
-                              </span>
-                              <span className="execution-platform-chip">
-                                {targetPlatformId ? <PlatformIcon platformId={targetPlatformId} size={14} /> : 'DST'}
-                              </span>
-                            </div>
-                            <div className="execution-progress-track">
-                              <div
-                                className="execution-progress-fill"
-                                style={{ width: `${liveProgress}%` }}
-                              />
-                              <div className="execution-progress-indeterminate" />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 sm:ml-4 sm:self-start">
-                        <ChevronDown
-                          size={20}
-                          className={`transition-transform text-muted-foreground ${
-                            expandedId === execution.id ? 'rotate-180' : ''
-                          }`}
-                        />
-                      </div>
+                <Fragment key={groupId}>
+                  {routes.length > 1 ? (
+                    <div className="px-1 pt-2 text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">{taskLabel}</span>
+                      <span className="mx-1">•</span>
+                      <span>Grouped run with {routes.length} routes</span>
                     </div>
-
-                    {expandedId === execution.id && (
-                      <div className="mt-6 space-y-4 border-t border-border pt-6">
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                          <div>
-                            <p className="mb-1 text-xs text-muted-foreground">Source</p>
-                            <p className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
-                              {sourcePlatformId ? <PlatformIcon platformId={sourcePlatformId} size={14} /> : null}
-                              <span>{sourceAccountLabel}</span>
-                            </p>
-                          </div>
-                          <div>
-                            <p className="mb-1 text-xs text-muted-foreground">Target</p>
-                            <p className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
-                              {targetPlatformId ? <PlatformIcon platformId={targetPlatformId} size={14} /> : null}
-                              <span>{targetAccountLabel}</span>
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                          <div>
-                            <p className="mb-1 text-xs text-muted-foreground">Status</p>
-                            <p
-                              className={`text-sm font-semibold ${
-                                isSuccess
-                                  ? 'text-green-600 dark:text-green-400'
-                                  : isFailed
-                                    ? 'text-red-600 dark:text-red-400'
-                                    : 'text-amber-600 dark:text-amber-300'
-                              }`}
+                  ) : null}
+                  <Card className="hover:border-primary/50 transition-colors cursor-pointer">
+                    <CardContent className="p-6">
+                      <div
+                        className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+                        onClick={() => setExpandedId(isExpanded ? null : groupId)}
+                      >
+                        <div className="flex-1">
+                          <div className="mb-2 flex items-start gap-3">
+                            <p className="font-semibold text-foreground break-words">{messagePreview}</p>
+                            <span
+                              className={`inline-block shrink-0 px-3 py-1 rounded-full text-xs font-semibold ${statusClass}`}
                             >
                               {statusText}
-                            </p>
+                            </span>
                           </div>
-                          <div>
-                            <p className="mb-1 text-xs text-muted-foreground">Error Reason</p>
-                            <p className="text-sm text-foreground">
-                              {isPending
-                                ? 'Execution is still processing. Error details will appear only if the run fails.'
-                                : execution.error?.trim() || 'No error'}
-                            </p>
+
+                          <p className="text-sm text-muted-foreground">
+                            Executed {new Date(lead.executedAt).toLocaleString()}
+                          </p>
+                          <div className="mt-2 inline-flex max-w-full items-center gap-2 rounded-full border border-border/65 bg-card/70 px-2.5 py-1 text-xs text-foreground">
+                            {sourcePlatformId ? <PlatformIcon platformId={sourcePlatformId} size={13} /> : null}
+                            <span className="max-w-[180px] truncate">{sourceSummary}</span>
+                            <ArrowRight size={12} className="shrink-0 text-muted-foreground" />
+                            {targetPlatformId ? <PlatformIcon platformId={targetPlatformId} size={13} /> : null}
+                            <span className="max-w-[180px] truncate">{targetSummary}</span>
+                            <span className="ml-1 rounded-full border border-border/70 bg-background/80 px-1.5 py-0.5 text-[10px]">
+                              {routes.length} route{routes.length > 1 ? 's' : ''}
+                            </span>
                           </div>
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/80 px-2 py-1 text-foreground">
+                              <MessageKindIcon size={13} />
+                              <span>{messageKindLabel}</span>
+                            </span>
+                            {messageKind.mediaCount > 0 ? (
+                              <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/35 px-2 py-1 text-muted-foreground">
+                                {messageKind.mediaCount} media item{messageKind.mediaCount > 1 ? 's' : ''}
+                              </span>
+                            ) : null}
+                          </div>
+
+                          {hasPending && (
+                            <div className="mt-4 execution-processing-card">
+                              <div className="mb-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                                <span className="inline-flex items-center gap-2">
+                                  <span className="execution-live-dot" />
+                                  {liveStage}
+                                </span>
+                                <span>{liveProgress}%</span>
+                              </div>
+                              <div className="mb-2 execution-flow-track">
+                                <span className="execution-platform-chip">
+                                  {sourcePlatformId ? <PlatformIcon platformId={sourcePlatformId} size={14} /> : 'SRC'}
+                                </span>
+                                <span className="execution-flow-arrow">
+                                  <ArrowRight size={14} />
+                                </span>
+                                <span className="execution-platform-chip">
+                                  {targetPlatformId ? <PlatformIcon platformId={targetPlatformId} size={14} /> : 'DST'}
+                                </span>
+                              </div>
+                              <div className="execution-progress-track">
+                                <div
+                                  className="execution-progress-fill"
+                                  style={{ width: `${liveProgress}%` }}
+                                />
+                                <div className="execution-progress-indeterminate" />
+                              </div>
+                              <div className="mt-3 space-y-1.5">
+                                {steps.map((step) => (
+                                  <div key={step.id} className="flex items-center gap-2 text-xs">
+                                    <span
+                                      className={cn(
+                                        'h-2.5 w-2.5 shrink-0 rounded-full border',
+                                        step.state === 'done' && 'border-primary/35 bg-primary',
+                                        step.state === 'active' && 'border-accent/50 bg-accent animate-pulse',
+                                        step.state === 'pending' && 'border-border/75 bg-transparent',
+                                        step.state === 'failed' && 'border-destructive/45 bg-destructive'
+                                      )}
+                                    />
+                                    <span
+                                      className={cn(
+                                        'truncate',
+                                        step.state === 'done' && 'text-foreground',
+                                        step.state === 'active' && 'text-accent-foreground',
+                                        step.state === 'pending' && 'text-muted-foreground',
+                                        step.state === 'failed' && 'text-destructive'
+                                      )}
+                                    >
+                                      {step.label}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
 
-                        {isPending ? (
-                          <p className="text-xs text-muted-foreground">
-                            Result links will appear automatically once message processing is complete.
-                          </p>
-                        ) : isSuccess ? (
+                        <div className="flex items-center gap-2 sm:ml-4 sm:self-start">
+                          <ChevronDown
+                            size={20}
+                            className={`transition-transform text-muted-foreground ${
+                              isExpanded ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </div>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="mt-6 space-y-4 border-t border-border pt-6">
                           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div>
-                              <p className="mb-2 text-xs text-muted-foreground">Source Message Link</p>
-                              {messageLinks.sourceUrl ? (
-                                <a
-                                  href={messageLinks.sourceUrl}
-                                  target="_blank"
-                                  rel="noreferrer noopener"
-                                  onClick={(event) => event.stopPropagation()}
-                                  className="inline-flex items-center rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-primary hover:bg-accent"
-                                >
-                                  Open Source
-                                </a>
-                              ) : (
-                                <p className="text-xs text-muted-foreground">Not available</p>
-                              )}
+                              <p className="mb-1 text-xs text-muted-foreground">Source Accounts</p>
+                              <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
+                                {sourceLabels.map((label) => (
+                                  <span
+                                    key={`${groupId}:source:${label}`}
+                                    className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-card/60 px-2 py-1"
+                                  >
+                                    {sourcePlatformId ? <PlatformIcon platformId={sourcePlatformId} size={14} /> : null}
+                                    <span>{label}</span>
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                             <div>
-                              <p className="mb-2 text-xs text-muted-foreground">Target Message Link</p>
-                              {messageLinks.targetUrl ? (
-                                <a
-                                  href={messageLinks.targetUrl}
-                                  target="_blank"
-                                  rel="noreferrer noopener"
-                                  onClick={(event) => event.stopPropagation()}
-                                  className="inline-flex items-center rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-primary hover:bg-accent"
-                                >
-                                  Open Target
-                                </a>
-                              ) : (
-                                <p className="text-xs text-muted-foreground">Not available</p>
-                              )}
+                              <p className="mb-1 text-xs text-muted-foreground">Target Accounts</p>
+                              <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
+                                {targetLabels.map((label) => (
+                                  <span
+                                    key={`${groupId}:target:${label}`}
+                                    className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-card/60 px-2 py-1"
+                                  >
+                                    {targetPlatformId ? <PlatformIcon platformId={targetPlatformId} size={14} /> : null}
+                                    <span>{label}</span>
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                           </div>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">
-                            Message links appear when execution succeeds.
-                          </p>
-                        )}
 
-                        {!isSuccess && (
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void handleRetryTask(execution.taskId);
-                              }}
-                              disabled={retryingTaskId === execution.taskId || isPending}
-                            >
-                              {retryingTaskId === execution.taskId ? 'Retrying...' : 'Retry Task Now'}
-                            </Button>
+                          <div>
+                            <p className="mb-2 text-xs text-muted-foreground">Message Processing Steps</p>
+                            <div className="space-y-1.5 rounded-lg border border-border/65 bg-card/65 p-3">
+                              {steps.map((step) => (
+                                <div key={`${groupId}-${step.id}`} className="flex items-center gap-2 text-xs">
+                                  <span
+                                    className={cn(
+                                      'h-2.5 w-2.5 shrink-0 rounded-full border',
+                                      step.state === 'done' && 'border-primary/35 bg-primary',
+                                      step.state === 'active' && 'border-accent/50 bg-accent animate-pulse',
+                                      step.state === 'pending' && 'border-border/75 bg-transparent',
+                                      step.state === 'failed' && 'border-destructive/45 bg-destructive'
+                                    )}
+                                  />
+                                  <span
+                                    className={cn(
+                                      'truncate',
+                                      step.state === 'done' && 'text-foreground',
+                                      step.state === 'active' && 'text-accent-foreground',
+                                      step.state === 'pending' && 'text-muted-foreground',
+                                      step.state === 'failed' && 'text-destructive'
+                                    )}
+                                  >
+                                    {step.label}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+
+                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                              <p className="mb-1 text-xs text-muted-foreground">Status</p>
+                              <p
+                                className={`text-sm font-semibold ${
+                                  hasPending
+                                    ? 'text-secondary-foreground'
+                                    : hasFailed
+                                      ? 'text-destructive'
+                                      : 'text-primary'
+                                }`}
+                              >
+                                {statusText}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="mb-1 text-xs text-muted-foreground">Error Reason</p>
+                              <p className="text-sm text-foreground">
+                                {hasPending
+                                  ? 'Execution is still processing. Error details will appear only if one of the routes fails.'
+                                  : groupErrors[0] || 'No error'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div>
+                            <p className="mb-2 text-xs text-muted-foreground">Routes in this run</p>
+                            <div className="space-y-2">
+                              {routes.map((route, index) => {
+                                const routeSourceLabel =
+                                  route.sourceAccountName || route.sourceAccount || 'Unknown source';
+                                const routeTargetLabel =
+                                  route.targetAccountName || route.targetAccount || 'Unknown target';
+                                const routeStatusText =
+                                  route.status === 'success'
+                                    ? 'Success'
+                                    : route.status === 'failed'
+                                      ? 'Failed'
+                                      : 'Processing';
+                                const routeStatusClass =
+                                  route.status === 'success'
+                                    ? 'border border-primary/30 bg-primary/10 text-primary'
+                                    : route.status === 'failed'
+                                      ? 'border border-destructive/35 bg-destructive/10 text-destructive'
+                                      : 'border border-secondary/35 bg-secondary/20 text-secondary-foreground';
+                                const routeLinks = extractExecutionMessageLinks(route.responseData);
+
+                                return (
+                                  <div
+                                    key={route.id}
+                                    className="rounded-lg border border-border/65 bg-card/55 p-3"
+                                  >
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <span className="text-xs text-muted-foreground">Route {index + 1}</span>
+                                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${routeStatusClass}`}>
+                                        {routeStatusText}
+                                      </span>
+                                    </div>
+                                    <div className="mt-2 inline-flex max-w-full items-center gap-2 rounded-full border border-border/65 bg-card/70 px-2.5 py-1 text-xs text-foreground">
+                                      <span className="max-w-[170px] truncate">{routeSourceLabel}</span>
+                                      <ArrowRight size={12} className="shrink-0 text-muted-foreground" />
+                                      <span className="max-w-[170px] truncate">{routeTargetLabel}</span>
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                      {routeLinks.sourceUrl ? (
+                                        <a
+                                          href={routeLinks.sourceUrl}
+                                          target="_blank"
+                                          rel="noreferrer noopener"
+                                          onClick={(event) => event.stopPropagation()}
+                                          className="inline-flex items-center rounded-md border border-border bg-card px-2 py-1 text-[11px] font-medium text-primary hover:bg-accent"
+                                        >
+                                          Open Source
+                                        </a>
+                                      ) : null}
+                                      {routeLinks.targetUrl ? (
+                                        <a
+                                          href={routeLinks.targetUrl}
+                                          target="_blank"
+                                          rel="noreferrer noopener"
+                                          onClick={(event) => event.stopPropagation()}
+                                          className="inline-flex items-center rounded-md border border-border bg-card px-2 py-1 text-[11px] font-medium text-primary hover:bg-accent"
+                                        >
+                                          Open Target
+                                        </a>
+                                      ) : null}
+                                      {!routeLinks.sourceUrl && !routeLinks.targetUrl ? (
+                                        <span className="text-[11px] text-muted-foreground">No links available</span>
+                                      ) : null}
+                                    </div>
+                                    {route.status === 'failed' && route.error ? (
+                                      <p className="mt-2 text-xs text-destructive">{route.error}</p>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {hasFailed && (
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleRetryTask(lead.taskId);
+                                }}
+                                disabled={retryingTaskId === lead.taskId || hasPending}
+                              >
+                                {retryingTaskId === lead.taskId ? 'Retrying...' : 'Retry Task Now'}
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Fragment>
               );
             })}
           </div>

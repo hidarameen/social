@@ -1,6 +1,6 @@
-import { ensureTwitterPollingStarted } from '@/lib/services/twitter-poller';
 import { ensureTwitterStreamStarted } from '@/lib/services/twitter-stream';
 import { ensureSchedulerStarted } from '@/lib/services/task-scheduler';
+import { telegramPoller } from '@/lib/services/telegram-poller';
 import { ensureTelegramRealtimeStarted } from '@/lib/services/telegram-realtime';
 
 const REFRESH_COOLDOWN_MS = 20_000;
@@ -9,8 +9,9 @@ let inFlight: Promise<void> | null = null;
 let lastRunAt = 0;
 
 async function refreshBackgroundServices() {
+  // Telegram ingestion is realtime event-based only (no polling bootstrap).
+  telegramPoller.stop();
   await Promise.allSettled([
-    ensureTwitterPollingStarted(),
     ensureTwitterStreamStarted(),
     ensureTelegramRealtimeStarted(),
   ]);

@@ -18,6 +18,48 @@ async function triggerBackgroundRefresh(options?: { force?: boolean }) {
   }
 }
 
+const SENSITIVE_CREDENTIAL_KEY = /(token|secret|password|session|cookie|bearer|oauth|apiKey)/i;
+
+function redactCredentials(value: unknown): Record<string, unknown> {
+  const walk = (input: unknown): unknown => {
+    if (Array.isArray(input)) {
+      return input.map((item) => walk(item));
+    }
+    if (!input || typeof input !== 'object') {
+      return input;
+    }
+
+    const result: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(input as Record<string, unknown>)) {
+      if (SENSITIVE_CREDENTIAL_KEY.test(key)) continue;
+      result[key] = walk(nested);
+    }
+    return result;
+  };
+
+  const redacted = walk(value);
+  if (!redacted || typeof redacted !== 'object' || Array.isArray(redacted)) {
+    return {};
+  }
+  return redacted as Record<string, unknown>;
+}
+
+function toPresentationAccount(account: PlatformAccount) {
+  const credentials = redactCredentials(account.credentials || {});
+  return {
+    id: account.id,
+    userId: account.userId,
+    platformId: account.platformId,
+    accountName: account.accountName,
+    accountUsername: account.accountUsername,
+    accountId: account.accountId,
+    isActive: account.isActive,
+    createdAt: account.createdAt,
+    updatedAt: account.updatedAt,
+    credentials,
+  };
+}
+
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,8 +83,6 @@ export async function GET(request: NextRequest) {
     const platformId = request.nextUrl.searchParams.get('platformId') || undefined
     const isActiveParam = request.nextUrl.searchParams.get('isActive')
     const isActive = isActiveParam === null ? undefined : isActiveParam === 'true'
-    const presentationOnly = request.nextUrl.searchParams.get('presentation') === '1'
-
     const result = await db.getUserAccountsPaged({
       userId: user.id,
       limit: page.data.limit,
@@ -54,34 +94,7 @@ export async function GET(request: NextRequest) {
       sortDir: sort.data.sortDir,
     })
     
-    const accounts = presentationOnly
-      ? result.accounts.map((account) => {
-          const credentials = (account.credentials || {}) as Record<string, any>
-          const accountInfo =
-            credentials && typeof credentials.accountInfo === 'object'
-              ? (credentials.accountInfo as Record<string, any>)
-              : {}
-          return {
-            id: account.id,
-            userId: account.userId,
-            platformId: account.platformId,
-            accountName: account.accountName,
-            accountUsername: account.accountUsername,
-            accountId: account.accountId,
-            isActive: account.isActive,
-            createdAt: account.createdAt,
-            updatedAt: account.updatedAt,
-            credentials: {
-              profileImageUrl:
-                accountInfo.profileImageUrl ||
-                credentials.profileImageUrl ||
-                credentials.avatarUrl ||
-                credentials.picture ||
-                undefined,
-            },
-          }
-        })
-      : result.accounts
+    const accounts = result.accounts.map((account) => toPresentationAccount(account))
 
     return NextResponse.json({
       success: true,

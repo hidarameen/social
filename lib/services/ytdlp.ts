@@ -39,8 +39,14 @@ function parseJsonLine(stdout: string) {
   return null;
 }
 
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 export async function downloadTweetVideo(tweetUrl: string): Promise<DownloadResult> {
-  const outputTemplate = '/tmp/socialflow_ytdlp_%(id)s.%(ext)s';
+  const outputTemplate = '/tmp/socialflow_%(id)s.%(ext)s';
   const ffmpegPath = process.env.FFMPEG_PATH;
   const concurrentFragments = getEnvNumber('YTDLP_CONCURRENT_FRAGMENTS', 8);
   const retries = getEnvNumber('YTDLP_RETRIES', 3);
@@ -82,7 +88,12 @@ export async function downloadTweetVideo(tweetUrl: string): Promise<DownloadResu
     throw new Error('yt-dlp did not return video info');
   }
 
-  const videoPath = `/tmp/socialflow_${info.id}.mp4`;
+  const fallbackExt = asNonEmptyString(info.ext) || 'mp4';
+  const reportedPath =
+    asNonEmptyString(info._filename) ||
+    asNonEmptyString(info.filepath) ||
+    asNonEmptyString(info.requested_downloads?.[0]?.filepath);
+  const videoPath = reportedPath || `/tmp/socialflow_${info.id}.${fallbackExt}`;
   const thumbnailPath = `/tmp/socialflow_${info.id}.jpg`;
 
   return {

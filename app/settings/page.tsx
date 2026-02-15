@@ -18,7 +18,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useTheme } from 'next-themes';
 import { useSession } from 'next-auth/react';
-import { useThemePreset } from '@/components/theme-provider';
+import { useThemePreset, type ThemePreset } from '@/components/theme-provider';
 import { useShellPreferences } from '@/components/layout/shell-provider';
 
 const MANAGED_PLATFORM_IDS = [
@@ -105,8 +105,8 @@ const PLATFORM_FIELDS: Record<ManagedPlatformId, CredentialField[]> = {
   ],
 };
 
-const THEME_PRESETS: Array<{
-  id: 'orbit' | 'graphite' | 'sunrise';
+const THEME_PRESET_OPTIONS: Array<{
+  id: ThemePreset;
   name: string;
   description: string;
   swatches: [string, string, string];
@@ -114,8 +114,8 @@ const THEME_PRESETS: Array<{
   {
     id: 'orbit',
     name: 'Orbit',
-    description: 'Balanced blue-cyan premium look.',
-    swatches: ['#4f6dff', '#34c7d5', '#f6c65e'],
+    description: 'Formal enterprise palette (Carbon + Atlassian + Primer).',
+    swatches: ['#0F62FE', '#0052CC', '#57606A'],
   },
   {
     id: 'graphite',
@@ -128,6 +128,24 @@ const THEME_PRESETS: Array<{
     name: 'Sunrise',
     description: 'Warm editorial palette with high contrast.',
     swatches: ['#e57a39', '#edb84c', '#46b8a8'],
+  },
+  {
+    id: 'nord',
+    name: 'Nord',
+    description: 'Cool arctic blue-gray with clean contrast.',
+    swatches: ['#5e81ac', '#88c0d0', '#81a1c1'],
+  },
+  {
+    id: 'ocean',
+    name: 'Ocean',
+    description: 'Frost white floating cards over a soft airy blue-gray background.',
+    swatches: ['#EEF3F8', '#F8F8FA', '#2F84D4'],
+  },
+  {
+    id: 'warmlux',
+    name: 'Warm Luxe',
+    description: 'Soft warm neumorphism with elegant golden corporate accents.',
+    swatches: ['#E9E6DF', '#E5B73B', '#2C2C2C'],
   },
 ];
 
@@ -453,7 +471,7 @@ export default function SettingsPage() {
                   Theme Preset
                 </label>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {THEME_PRESETS.map((item) => {
+                  {THEME_PRESET_OPTIONS.map((item) => {
                     const active = preset === item.id;
                     return (
                       <button
@@ -472,7 +490,7 @@ export default function SettingsPage() {
                         <div className="mb-2 flex items-center justify-between">
                           <p className="text-sm font-semibold text-foreground">{item.name}</p>
                           {active && (
-                            <span className="text-[11px] font-semibold uppercase tracking-wide text-primary">
+                            <span className="text-sm font-semibold uppercase tracking-wide text-primary">
                               Active
                             </span>
                           )}
@@ -481,12 +499,12 @@ export default function SettingsPage() {
                           {item.swatches.map((color) => (
                             <span
                               key={color}
-                              className="h-4 w-4 rounded-full border border-black/10"
+                              className="h-4 w-4 rounded-full border border-border/60"
                               style={{ backgroundColor: color }}
                             />
                           ))}
                         </div>
-                        <p className="text-xs leading-relaxed text-muted-foreground">
+                        <p className="text-sm leading-relaxed text-muted-foreground">
                           {item.description}
                         </p>
                       </button>
@@ -533,7 +551,7 @@ export default function SettingsPage() {
               </div>
 
               <div className="rounded-xl border border-border/70 bg-card/45 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <p className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                   Productivity Shortcuts
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -704,9 +722,9 @@ export default function SettingsPage() {
             <CardContent className="space-y-4">
               <div className="p-4 rounded-lg bg-card/50 border border-border/50">
                 <p className="text-sm text-foreground mb-2">
-                  Database Status: <span className="font-semibold text-green-600">Connected</span>
+                  Database Status: <span className="font-semibold text-primary">Connected</span>
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   Platform API credentials and user data are now persisted in PostgreSQL per user.
                 </p>
               </div>

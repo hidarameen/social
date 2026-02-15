@@ -1,4 +1,7 @@
 import { buildPasswordResetEmailTemplate, buildVerificationEmailTemplate } from '@/lib/email/templates';
+import nodemailer from 'nodemailer';
+
+type EmailProvider = 'resend' | 'gmail-smtp';
 
 type SendVerificationEmailInput = {
   to: string;
@@ -24,8 +27,27 @@ function getEmailFrom(): string {
   return String(process.env.EMAIL_FROM || '').trim();
 }
 
+function getEmailProvider(): EmailProvider {
+  const raw = String(process.env.EMAIL_PROVIDER || 'resend')
+    .trim()
+    .toLowerCase();
+  if (!raw || raw === 'resend') return 'resend';
+  if (raw === 'gmail' || raw === 'gmail-smtp' || raw === 'gmail_smtp') return 'gmail-smtp';
+  throw new Error('Invalid EMAIL_PROVIDER. Supported values: resend, gmail-smtp.');
+}
+
 function getResendApiKey(): string {
   return String(process.env.RESEND_API_KEY || '').trim();
+}
+
+function getGmailSmtpUser(): string {
+  return String(process.env.GMAIL_SMTP_USER || '').trim();
+}
+
+function getGmailSmtpAppPassword(): string {
+  return String(process.env.GMAIL_SMTP_APP_PASSWORD || '')
+    .trim()
+    .replace(/\s+/g, '');
 }
 
 function getEmailReplyTo(): string | undefined {
@@ -34,7 +56,18 @@ function getEmailReplyTo(): string | undefined {
 }
 
 export function isEmailDeliveryConfigured(): boolean {
-  return Boolean(getEmailFrom() && getResendApiKey());
+  const from = getEmailFrom();
+  if (!from) return false;
+
+  try {
+    const provider = getEmailProvider();
+    if (provider === 'resend') {
+      return Boolean(getResendApiKey());
+    }
+    return Boolean(getGmailSmtpUser() && getGmailSmtpAppPassword());
+  } catch {
+    return false;
+  }
 }
 
 function parseErrorText(raw: string): string {
@@ -47,23 +80,44 @@ function parseErrorText(raw: string): string {
   }
 }
 
-export async function sendVerificationEmail(input: SendVerificationEmailInput): Promise<void> {
-  const apiKey = getResendApiKey();
-  const from = getEmailFrom();
-  if (!apiKey || !from) {
-    throw new Error('Email delivery is not configured. Set RESEND_API_KEY and EMAIL_FROM.');
+type RenderedEmail = {
+  subject: string;
+  html: string;
+  text: string;
+};
+
+let gmailTransporter: nodemailer.Transporter | undefined;
+
+function getGmailTransporter(): nodemailer.Transporter {
+  if (gmailTransporter) return gmailTransporter;
+
+  const user = getGmailSmtpUser();
+  const appPassword = getGmailSmtpAppPassword();
+  if (!user || !appPassword) {
+    throw new Error('Email delivery is not configured. Set GMAIL_SMTP_USER and GMAIL_SMTP_APP_PASSWORD.');
   }
 
-  const appName = getAppName();
-  const replyTo = getEmailReplyTo();
-  const template = buildVerificationEmailTemplate({
-    appName,
-    recipientName: input.recipientName,
-    code: input.code,
-    expiresInMinutes: input.expiresInMinutes,
-    verificationUrl: input.verificationUrl,
+  gmailTransporter = nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    auth: {
+      user,
+      pass: appPassword,
+    },
   });
 
+  return gmailTransporter;
+}
+
+async function sendWithResend(to: string, template: RenderedEmail): Promise<void> {
+  const from = getEmailFrom();
+  const apiKey = getResendApiKey();
+  if (!from || !apiKey) {
+    throw new Error('Email delivery is not configured. Set EMAIL_FROM and RESEND_API_KEY.');
+  }
+
+  const replyTo = getEmailReplyTo();
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -72,7 +126,7 @@ export async function sendVerificationEmail(input: SendVerificationEmailInput): 
     },
     body: JSON.stringify({
       from,
-      to: [input.to],
+      to: [to],
       subject: template.subject,
       html: template.html,
       text: template.text,
@@ -89,15 +143,54 @@ export async function sendVerificationEmail(input: SendVerificationEmailInput): 
   }
 }
 
-export async function sendPasswordResetEmail(input: SendPasswordResetEmailInput): Promise<void> {
-  const apiKey = getResendApiKey();
+async function sendWithGmailSmtp(to: string, template: RenderedEmail): Promise<void> {
   const from = getEmailFrom();
-  if (!apiKey || !from) {
-    throw new Error('Email delivery is not configured. Set RESEND_API_KEY and EMAIL_FROM.');
+  if (!from) {
+    throw new Error('Email delivery is not configured. Set EMAIL_FROM.');
   }
 
-  const appName = getAppName();
+  const transporter = getGmailTransporter();
   const replyTo = getEmailReplyTo();
+
+  try {
+    await transporter.sendMail({
+      from,
+      to,
+      subject: template.subject,
+      html: template.html,
+      text: template.text,
+      ...(replyTo ? { replyTo } : {}),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown SMTP error';
+    throw new Error(`Email provider failed (gmail-smtp): ${message}`);
+  }
+}
+
+async function sendTransactionalEmail(to: string, template: RenderedEmail): Promise<void> {
+  const provider = getEmailProvider();
+  if (provider === 'resend') {
+    await sendWithResend(to, template);
+    return;
+  }
+  await sendWithGmailSmtp(to, template);
+}
+
+export async function sendVerificationEmail(input: SendVerificationEmailInput): Promise<void> {
+  const appName = getAppName();
+  const template = buildVerificationEmailTemplate({
+    appName,
+    recipientName: input.recipientName,
+    code: input.code,
+    expiresInMinutes: input.expiresInMinutes,
+    verificationUrl: input.verificationUrl,
+  });
+
+  await sendTransactionalEmail(input.to, template);
+}
+
+export async function sendPasswordResetEmail(input: SendPasswordResetEmailInput): Promise<void> {
+  const appName = getAppName();
   const template = buildPasswordResetEmailTemplate({
     appName,
     recipientName: input.recipientName,
@@ -106,27 +199,5 @@ export async function sendPasswordResetEmail(input: SendPasswordResetEmailInput)
     resetUrl: input.resetUrl,
   });
 
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from,
-      to: [input.to],
-      subject: template.subject,
-      html: template.html,
-      text: template.text,
-      ...(replyTo ? { reply_to: replyTo } : {}),
-    }),
-  });
-
-  if (!response.ok) {
-    const raw = await response.text().catch(() => '');
-    const details = parseErrorText(raw);
-    throw new Error(
-      `Email provider failed (${response.status} ${response.statusText})${details ? `: ${details}` : ''}`
-    );
-  }
+  await sendTransactionalEmail(input.to, template);
 }

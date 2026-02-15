@@ -32,14 +32,33 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Task not found' }, { status: 404 });
     }
 
-    const executions = await executionQueue.enqueue({
-      label: 'api:task-run',
-      userId: user.id,
-      taskId: task.id,
-      dedupeKey: `api:task-run:${user.id}:${task.id}`,
-      run: async () => taskProcessor.processTask(id),
-    });
-    return NextResponse.json({ success: true, executions });
+    let enqueueError: unknown;
+    executionQueue
+      .enqueue({
+        label: 'api:task-run',
+        userId: user.id,
+        taskId: task.id,
+        dedupeKey: `api:task-run:${user.id}:${task.id}`,
+        run: async () => taskProcessor.processTask(id),
+      })
+      .catch((queueError) => {
+        enqueueError = queueError;
+        console.error('[API] Error executing queued task:', queueError);
+      });
+
+    // Flush immediate rejection microtasks so queue-full style failures are surfaced to the caller.
+    await Promise.resolve();
+    if (enqueueError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: enqueueError instanceof Error ? enqueueError.message : 'Failed to enqueue task run',
+        },
+        { status: 503 }
+      );
+    }
+
+    return NextResponse.json({ success: true, queued: true, taskId: task.id });
   } catch (error) {
     console.error('[API] Error running task:', error);
     return NextResponse.json({ success: false, error: 'Failed to run task' }, { status: 500 });

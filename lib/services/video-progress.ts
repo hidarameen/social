@@ -5,6 +5,13 @@ export type VideoProgressContext = {
   platform?: string;
   taskId?: string;
   targetId?: string;
+  onProgress?: (update: {
+    percent: number;
+    currentStep: number;
+    totalSteps: number;
+    stage: string;
+    meta?: Record<string, any>;
+  }) => void | Promise<void>;
 };
 
 const ASCII_SPINNER = ['|', '/', '-', '\\'];
@@ -47,13 +54,24 @@ function buildScope(context: VideoProgressContext): string {
 }
 
 export function createVideoProgressLogger(context: VideoProgressContext) {
-  let lastPercent = -1;
+  let lastLoggedPercent = -1;
   let lastLoggedAt = 0;
-  let lastCurrent = -1;
+  let lastLoggedCurrent = -1;
+  let lastProgressPercent = -1;
+  let lastProgressAt = 0;
+  let lastProgressCurrent = -1;
   let inlineLineLength = 0;
   let spinnerIndex = 0;
   const minPercentDelta = parsePositiveNumber(process.env.VIDEO_PROGRESS_MIN_PERCENT_DELTA, 2);
   const minIntervalMs = parsePositiveNumber(process.env.VIDEO_PROGRESS_MIN_INTERVAL_MS, 800);
+  const minProgressPercentDelta = parsePositiveNumber(
+    process.env.VIDEO_PROGRESS_CALLBACK_MIN_PERCENT_DELTA,
+    1
+  );
+  const minProgressIntervalMs = parsePositiveNumber(
+    process.env.VIDEO_PROGRESS_CALLBACK_MIN_INTERVAL_MS,
+    300
+  );
   const inlineEnabled =
     process.env.VIDEO_PROGRESS_INLINE !== 'false' &&
     Boolean(process.stdout?.isTTY) &&
@@ -65,32 +83,59 @@ export function createVideoProgressLogger(context: VideoProgressContext) {
     stage: string,
     meta?: Record<string, any>
   ) => {
-    if (!debugEnabled()) return;
-
     const safeTotal = Math.max(1, Math.trunc(totalSteps || 1));
     const safeCurrent = Math.min(safeTotal, Math.max(0, Math.trunc(currentStep || 0)));
     const percent = clampPercent((safeCurrent / safeTotal) * 100);
     const now = Date.now();
     const isFinal = safeCurrent >= safeTotal;
+    const progressed = safeCurrent > lastProgressCurrent;
+
+    const shouldEmitProgress =
+      safeTotal <= 1000 ||
+      isFinal ||
+      (progressed && percent - lastProgressPercent >= minProgressPercentDelta) ||
+      (progressed && now - lastProgressAt >= minProgressIntervalMs);
+
+    if (shouldEmitProgress && context.onProgress) {
+      lastProgressPercent = percent;
+      lastProgressAt = now;
+      lastProgressCurrent = safeCurrent;
+      try {
+        const maybePromise = context.onProgress({
+          percent,
+          currentStep: safeCurrent,
+          totalSteps: safeTotal,
+          stage: String(stage || 'progress'),
+          meta,
+        });
+        if (maybePromise && typeof (maybePromise as Promise<void>).then === 'function') {
+          void (maybePromise as Promise<void>).catch(() => undefined);
+        }
+      } catch {
+        // non-blocking progress callbacks should never break processing flows
+      }
+    }
 
     // Byte-sized totals (resumable chunk uploads) can emit thousands of updates.
     // Throttle logs to keep upload throughput high and logs readable.
     if (safeTotal > 1000) {
-      const percentAdvanced = percent - lastPercent;
-      const progressed = safeCurrent > lastCurrent;
+      const percentAdvanced = percent - lastLoggedPercent;
+      const loggedProgressed = safeCurrent > lastLoggedCurrent;
       const elapsed = now - lastLoggedAt;
       const shouldLog =
         isFinal ||
-        (progressed && percentAdvanced >= minPercentDelta) ||
-        (progressed && elapsed >= minIntervalMs);
+        (loggedProgressed && percentAdvanced >= minPercentDelta) ||
+        (loggedProgressed && elapsed >= minIntervalMs);
       if (!shouldLog) {
         return;
       }
     }
 
-    lastPercent = percent;
+    if (!debugEnabled()) return;
+
+    lastLoggedPercent = percent;
     lastLoggedAt = now;
-    lastCurrent = safeCurrent;
+    lastLoggedCurrent = safeCurrent;
 
     const counter =
       safeTotal > 1000

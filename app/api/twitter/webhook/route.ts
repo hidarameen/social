@@ -113,13 +113,60 @@ async function processTaskTweetsForSource({
     });
     const includeMedia = task.transformations?.includeMedia !== false;
     const enableYtDlp = task.transformations?.enableYtDlp === true;
+    const executionGroupId = `twitter-webhook:${task.id}:${tweet.id_str}`;
 
-    for (const target of targets) {
+    const targetResults = await Promise.allSettled(targets.map(async (target) => {
       let status: 'success' | 'failed' = 'success';
       let errorMessage: string | undefined;
       let responseData: Record<string, any> = { sourceTweetId: tweet.id_str, sourceUsername: username };
+      const liveExecution = await db.createExecution({
+        taskId: task.id,
+        sourceAccount: sourceAccount.id,
+        targetAccount: target.id,
+        originalContent: tweet.text || '',
+        transformedContent: message,
+        status: 'pending',
+        executedAt: new Date(),
+        responseData: {
+          sourcePlatformId: sourceAccount.platformId,
+          targetPlatformId: target.platformId,
+          executionGroupId,
+          progress: 12,
+          stage: 'processing',
+        },
+      });
+      let progressWriteChain = Promise.resolve();
+      let latestLiveProgress = 12;
+      const pushLiveProgress = (percent: number, stage: string) => {
+        const mappedProgress = Math.max(
+          latestLiveProgress,
+          Math.max(14, Math.min(94, Math.round(14 + percent * 0.8)))
+        );
+        latestLiveProgress = mappedProgress;
+        progressWriteChain = progressWriteChain
+          .then(async () => {
+            await db.updateExecution(liveExecution.id, {
+              responseData: {
+                sourcePlatformId: sourceAccount.platformId,
+                targetPlatformId: target.platformId,
+                progress: mappedProgress,
+                stage,
+              },
+            });
+          })
+          .catch(() => undefined);
+        return progressWriteChain;
+      };
 
       try {
+        await db.updateExecution(liveExecution.id, {
+          responseData: {
+            sourcePlatformId: sourceAccount.platformId,
+            targetPlatformId: target.platformId,
+            progress: 52,
+            stage: 'publishing',
+          },
+        });
         if (target.platformId === 'telegram') {
           debugLog('Twitter webhook -> Telegram start', { taskId: task.id, targetId: target.id });
           const chatId = target.credentials?.chatId;
@@ -156,6 +203,7 @@ async function processTaskTweetsForSource({
           );
 
           if (hasVideoMedia) {
+            await pushLiveProgress(28, 'downloading-video-from-twitter');
             const media = await prepareYouTubeVideoFromTweet(tweetItem, link, enableYtDlp);
             try {
               const result = await executeYouTubePublish({
@@ -170,6 +218,9 @@ async function processTaskTweetsForSource({
                   name: name || '',
                   date: tweetItem.createdAt,
                   link,
+                },
+                onProgress: ({ percent, stage }) => {
+                  void pushLiveProgress(percent, stage);
                 },
               });
 
@@ -212,6 +263,9 @@ async function processTaskTweetsForSource({
               : photoUrl
                 ? { kind: 'image', url: photoUrl }
                 : undefined,
+            onProgress: ({ percent, stage }) => {
+              void pushLiveProgress(percent, stage);
+            },
           });
           responseData = {
             ...responseData,
@@ -223,7 +277,7 @@ async function processTaskTweetsForSource({
             postId: facebookResult.id,
           });
         } else {
-          continue;
+          throw new Error(`Unsupported target platform: ${target.platformId}`);
         }
       } catch (error) {
         status = 'failed';
@@ -231,17 +285,31 @@ async function processTaskTweetsForSource({
         debugError('Twitter webhook target failed', error, { taskId: task.id, targetId: target.id });
       }
 
-      await db.createExecution({
-        taskId: task.id,
-        sourceAccount: sourceAccount.id,
-        targetAccount: target.id,
-        originalContent: tweet.text || '',
+      await progressWriteChain;
+      await db.updateExecution(liveExecution.id, {
         transformedContent: message,
         status,
         error: errorMessage,
         executedAt: new Date(),
-        responseData,
+        responseData: {
+          sourcePlatformId: sourceAccount.platformId,
+          targetPlatformId: target.platformId,
+          ...responseData,
+          progress: 100,
+          stage: status === 'success' ? 'completed' : 'failed',
+          failureReason: status === 'failed' ? errorMessage : undefined,
+        },
       });
+    }));
+
+    for (const result of targetResults) {
+      if (result.status === 'rejected') {
+        debugError('Twitter webhook target promise rejected', result.reason, {
+          taskId: task.id,
+          sourceAccountId: sourceAccount.id,
+          tweetId: tweet.id_str,
+        });
+      }
     }
   }
 }
@@ -343,7 +411,7 @@ export async function POST(request: NextRequest) {
     .enqueue({
       label: 'twitter:webhook',
       userId: sourceAccount.userId,
-      taskId: `twitter-account:${sourceAccount.id}`,
+      taskId: `twitter-account:${sourceAccount.id}:payload:${payloadHash}`,
       dedupeKey: `twitter:webhook:${sourceAccount.id}:${payloadHash}`,
       run: async () => {
         await processWebhookTweetsForSource(sourceAccount.id, tweets, payloadHash);

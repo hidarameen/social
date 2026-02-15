@@ -1009,7 +1009,7 @@ export function TaskWizard(props: { mode: WizardMode; taskId?: string }) {
                   isCurrent
                     ? 'border-primary/30 bg-primary/12 text-primary'
                     : 'border-border/70 bg-card text-muted-foreground',
-                  isDone && !isCurrent ? 'text-emerald-600 dark:text-emerald-400' : ''
+                  isDone && !isCurrent ? 'text-primary' : ''
                 )}
               >
                 {isDone && !isCurrent ? <CheckCircle2 size={16} /> : <Icon size={16} />}
@@ -1026,12 +1026,12 @@ export function TaskWizard(props: { mode: WizardMode; taskId?: string }) {
                     {title}
                   </span>
                   {issue ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
                       <AlertTriangle size={12} />
                       Missing
                     </span>
                   ) : (
-                    <span className="hidden sm:inline rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                    <span className="hidden sm:inline rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
                       Done
                     </span>
                   )}
@@ -1068,7 +1068,9 @@ export function TaskWizard(props: { mode: WizardMode; taskId?: string }) {
                   const err = validateStep(5, form) || validateStep(4, form) || validateStep(3, form) || validateStep(2, form) || validateStep(1, form);
                   if (err) return toast.error(err);
                   const ok = await saveToServer(form);
-                  if (ok) toast.success('Task saved');
+                  if (!ok) return;
+                  toast.success('Task saved');
+                  router.push('/tasks');
                 }}
                 disabled={isSaving}
               >
@@ -2002,7 +2004,9 @@ export function TaskWizard(props: { mode: WizardMode; taskId?: string }) {
                         const err = validateStep(5, form);
                         if (err) return toast.error(err);
                         const ok = await saveToServer(form);
-                        if (ok) toast.success('Task saved');
+                        if (!ok) return;
+                        toast.success('Task saved');
+                        router.push('/tasks');
                       }}
                       disabled={isSaving}
                     >

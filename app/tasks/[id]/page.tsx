@@ -234,7 +234,7 @@ export default function TaskDetailPage() {
       const res = await fetch(`/api/tasks/${taskId}/run`, { method: 'POST' });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to run task');
-      toast.success(`Task executed successfully (${data.executions.length} transfer(s))`);
+      toast.success('Task execution queued successfully');
 
       const detailsRes = await fetch(`/api/tasks/${taskId}/details`);
       const details = await detailsRes.json();
@@ -1213,8 +1213,8 @@ export default function TaskDetailPage() {
           <span
             className={`inline-block px-4 py-2 rounded-full text-sm font-semibold ${
               task.status === 'active'
-                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                ? 'border border-primary/30 bg-primary/10 text-primary'
+                : 'border border-border/70 bg-muted/55 text-muted-foreground'
             }`}
           >
             {task.status.toUpperCase()}
@@ -1233,7 +1233,7 @@ export default function TaskDetailPage() {
           <Card>
             <CardContent className="pt-6">
               <p className="text-muted-foreground text-sm mb-2">Successful</p>
-              <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+              <p className="text-3xl font-bold text-primary">
                 {stats.successful}
               </p>
             </CardContent>
@@ -1242,7 +1242,7 @@ export default function TaskDetailPage() {
           <Card>
             <CardContent className="pt-6">
               <p className="text-muted-foreground text-sm mb-2">Failed</p>
-              <p className="text-3xl font-bold text-red-600 dark:text-red-400">
+              <p className="text-3xl font-bold text-destructive">
                 {stats.failed}
               </p>
             </CardContent>
@@ -1327,9 +1327,9 @@ export default function TaskDetailPage() {
                       >
                         <div className="flex items-center gap-3 flex-1">
                           {exec.status === 'success' ? (
-                            <CheckCircle size={16} className="text-green-600 dark:text-green-400" />
+                            <CheckCircle size={16} className="text-primary" />
                           ) : (
-                            <AlertCircle size={16} className="text-red-600 dark:text-red-400" />
+                            <AlertCircle size={16} className="text-destructive" />
                           )}
                           <div className="text-sm">
                             <p className="font-medium text-foreground">
@@ -1355,7 +1355,7 @@ export default function TaskDetailPage() {
                           </div>
                         </div>
                         {exec.error && (
-                          <span className="text-xs text-red-600 dark:text-red-400">
+                          <span className="text-xs text-destructive">
                             {exec.error.substring(0, 50)}...
                           </span>
                         )}
@@ -1420,8 +1420,8 @@ export default function TaskDetailPage() {
                           failurePrediction.riskLevel > 50
                             ? 'bg-destructive'
                             : failurePrediction.riskLevel > 30
-                              ? 'bg-yellow-500'
-                              : 'bg-green-500'
+                              ? 'bg-secondary'
+                              : 'bg-primary'
                         }`}
                         style={{
                           width: `${failurePrediction.riskLevel}%`,

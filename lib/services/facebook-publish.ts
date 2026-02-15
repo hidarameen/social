@@ -4,6 +4,7 @@ import { open, readFile, stat, unlink } from 'fs/promises';
 import { basename } from 'path';
 import type { PlatformAccount } from '@/lib/db';
 import { createVideoProgressLogger } from '@/lib/services/video-progress';
+import type { VideoProgressContext } from '@/lib/services/video-progress';
 
 const FACEBOOK_GRAPH_API_BASE = 'https://graph.facebook.com/v22.0';
 const FACEBOOK_GRAPH_VIDEO_API_BASE = 'https://graph-video.facebook.com/v22.0';
@@ -27,6 +28,7 @@ export type FacebookPublishInput = {
   link?: string;
   media?: FacebookPublishMedia;
   scheduledPublishAt?: Date;
+  onProgress?: VideoProgressContext['onProgress'];
 };
 
 export type FacebookPublishResult = {
@@ -424,6 +426,7 @@ export async function publishToFacebook(input: FacebookPublishInput): Promise<Fa
     flow: 'video-to-facebook',
     platform: 'facebook',
     targetId: input.target.id,
+    onProgress: input.onProgress,
   });
   const message = cleanString(input.message);
   const media = input.media;
@@ -656,6 +659,7 @@ export async function publishFacebookPhotoAlbum(input: {
   message?: string;
   photos: FacebookAlbumMedia[];
   link?: string;
+  onProgress?: VideoProgressContext['onProgress'];
 }): Promise<FacebookPublishResult> {
   const nodeId = resolveTargetNodeId(input.target);
   const accessToken = resolveAccessToken(input.target);
@@ -672,6 +676,7 @@ export async function publishFacebookPhotoAlbum(input: {
     flow: 'telegram-album-to-facebook',
     platform: 'facebook',
     targetId: input.target.id,
+    onProgress: input.onProgress,
   });
   progress(1, totalSteps, 'album-prepare', { mediaTotal: photos.length });
 

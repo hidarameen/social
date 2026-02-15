@@ -6,7 +6,16 @@ import {
   type ThemeProviderProps,
 } from 'next-themes'
 
-type ThemePreset = 'orbit' | 'graphite' | 'sunrise'
+export const THEME_PRESETS = [
+  'orbit',
+  'graphite',
+  'sunrise',
+  'nord',
+  'ocean',
+  'warmlux',
+] as const
+
+export type ThemePreset = (typeof THEME_PRESETS)[number]
 
 type ThemePresetContextValue = {
   preset: ThemePreset
@@ -17,13 +26,21 @@ const THEME_PRESET_STORAGE_KEY = 'socialflow_theme_preset_v1'
 
 const ThemePresetContext = React.createContext<ThemePresetContextValue | null>(null)
 
+function isThemePreset(value: string | null): value is ThemePreset {
+  return !!value && THEME_PRESETS.some((preset) => preset === value)
+}
+
 function ThemePresetProvider({ children }: { children: React.ReactNode }) {
   const [preset, setPreset] = React.useState<ThemePreset>('orbit')
 
   React.useEffect(() => {
     try {
       const raw = window.localStorage.getItem(THEME_PRESET_STORAGE_KEY)
-      if (raw === 'orbit' || raw === 'graphite' || raw === 'sunrise') {
+      if (raw === 'ivory') {
+        setPreset('warmlux')
+        return
+      }
+      if (isThemePreset(raw)) {
         setPreset(raw)
       }
     } catch {

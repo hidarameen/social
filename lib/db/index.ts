@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { v4 as randomUUID } from 'uuid';
+import { executionEvents } from '@/lib/services/execution-events';
 
 export interface User {
   id: string;
@@ -146,6 +147,12 @@ const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: DATABASE_URL?.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
 });
+
+const MIN_PENDING_VISIBILITY_MS = (() => {
+  const parsed = Number(process.env.EXECUTION_MIN_PENDING_VISIBILITY_MS || '2200');
+  if (!Number.isFinite(parsed) || parsed < 0) return 2200;
+  return Math.floor(parsed);
+})();
 
 function mapUser(row: any): User {
   return {
@@ -1052,7 +1059,99 @@ class Database {
         execution.responseData ?? null,
       ]
     );
-    return mapExecution(result.rows[0]);
+    const created = mapExecution(result.rows[0]);
+    executionEvents.emitChanged();
+    return created;
+  }
+
+  async updateExecution(
+    executionId: string,
+    patch: Partial<{
+      transformedContent: string;
+      status: TaskExecution['status'];
+      error: string | null;
+      executedAt: Date;
+      responseData: Record<string, any> | null;
+    }>
+  ): Promise<TaskExecution> {
+    const currentRes = await pool.query(
+      `
+      SELECT id, task_id, source_account, target_account, original_content,
+        transformed_content, status, error, executed_at, response_data
+      FROM task_executions
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [executionId]
+    );
+    if (currentRes.rows.length === 0) {
+      throw new Error(`Execution not found: ${executionId}`);
+    }
+
+    const current = mapExecution(currentRes.rows[0]);
+    if (
+      MIN_PENDING_VISIBILITY_MS > 0 &&
+      current.status === 'pending' &&
+      patch.status !== undefined &&
+      patch.status !== 'pending'
+    ) {
+      const elapsed = Date.now() - current.executedAt.getTime();
+      const waitMs = MIN_PENDING_VISIBILITY_MS - elapsed;
+      if (waitMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+    }
+
+    const nextTransformedContent =
+      patch.transformedContent !== undefined
+        ? patch.transformedContent
+        : current.transformedContent;
+    const nextStatus = patch.status !== undefined ? patch.status : current.status;
+    const nextError = patch.error !== undefined ? patch.error : current.error ?? null;
+    const nextExecutedAt = patch.executedAt !== undefined ? patch.executedAt : current.executedAt;
+    const nextResponseData = (() => {
+      if (patch.responseData === undefined) {
+        return current.responseData ?? null;
+      }
+      if (patch.responseData === null) {
+        return null;
+      }
+      const currentData =
+        current.responseData && typeof current.responseData === 'object'
+          ? (current.responseData as Record<string, any>)
+          : {};
+      return {
+        ...currentData,
+        ...patch.responseData,
+      };
+    })();
+
+    const result = await pool.query(
+      `
+      UPDATE task_executions
+      SET
+        transformed_content = $2,
+        status = $3,
+        error = $4,
+        executed_at = $5,
+        response_data = $6
+      WHERE id = $1
+      RETURNING id, task_id, source_account, target_account, original_content,
+        transformed_content, status, error, executed_at, response_data
+      `,
+      [
+        executionId,
+        nextTransformedContent,
+        nextStatus,
+        nextError,
+        nextExecutedAt,
+        nextResponseData,
+      ]
+    );
+
+    const updated = mapExecution(result.rows[0]);
+    executionEvents.emitChanged();
+    return updated;
   }
 
   async getTaskExecutions(taskId: string, limit = 100): Promise<TaskExecution[]> {
@@ -1086,6 +1185,8 @@ class Database {
         taskName: string;
         sourceAccountName?: string;
         targetAccountName?: string;
+        sourcePlatformId?: string;
+        targetPlatformId?: string;
       }
     >;
   }> {
@@ -1131,8 +1232,10 @@ class Database {
         t.name AS task_name,
         source_account_row.account_name AS source_account_name,
         source_account_row.account_username AS source_account_username,
+        source_account_row.platform_id AS source_platform_id,
         target_account_row.account_name AS target_account_name,
-        target_account_row.account_username AS target_account_username
+        target_account_row.account_username AS target_account_username,
+        target_account_row.platform_id AS target_platform_id
       FROM task_executions e
       JOIN tasks t ON t.id = e.task_id
       LEFT JOIN platform_accounts source_account_row
@@ -1153,8 +1256,10 @@ class Database {
         taskName: row.task_name,
         sourceAccountName:
           row.source_account_name || row.source_account_username || undefined,
+        sourcePlatformId: row.source_platform_id || undefined,
         targetAccountName:
           row.target_account_name || row.target_account_username || undefined,
+        targetPlatformId: row.target_platform_id || undefined,
       })),
     };
   }

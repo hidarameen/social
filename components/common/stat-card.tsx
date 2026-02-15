@@ -31,7 +31,7 @@ export function StatCard({
   return (
     <Card className="animate-fade-up">
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium tracking-wide text-muted-foreground">
+        <CardTitle className="text-sm font-semibold tracking-tight text-muted-foreground">
           {title}
         </CardTitle>
       </CardHeader>
@@ -42,10 +42,10 @@ export function StatCard({
             {trend && (
               <p
                 className={cn(
-                  'mt-2 inline-flex items-center gap-1 text-xs font-semibold',
+                  'mt-2 inline-flex items-center gap-1 text-sm font-semibold',
                   trend.direction === 'up'
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-red-600 dark:text-red-400'
+                    ? 'text-primary'
+                    : 'text-destructive'
                 )}
               >
                 {trend.direction === 'up' ? (

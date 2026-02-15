@@ -106,6 +106,20 @@ export default function RootLayout({
   if (resolvedTheme === 'dark') root.classList.add('dark');
   else root.classList.remove('dark');
 
+  var presetKey = 'socialflow_theme_preset_v1';
+  var storedPreset = readStorage(presetKey);
+  var normalizedStoredPreset = storedPreset === 'ivory' ? 'warmlux' : storedPreset;
+  var resolvedPreset =
+    normalizedStoredPreset === 'orbit' ||
+    normalizedStoredPreset === 'graphite' ||
+    normalizedStoredPreset === 'sunrise' ||
+    normalizedStoredPreset === 'nord' ||
+    normalizedStoredPreset === 'ocean' ||
+    normalizedStoredPreset === 'warmlux'
+      ? normalizedStoredPreset
+      : 'orbit';
+  root.setAttribute('data-preset', resolvedPreset);
+
   var shellSidebarKey = 'socialflow_shell_sidebar_collapsed_v1';
   var shellReducedMotionKey = 'socialflow_shell_reduced_motion_v1';
   var shellDensityKey = 'socialflow_shell_density_v1';

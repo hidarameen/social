@@ -325,13 +325,13 @@ export default function AnalyticsPage() {
                           {stat.totalExecutions}
                         </td>
                         <td className="py-4 px-4 text-center">
-                          <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                          <span className="inline-block rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
                             {stat.successful}
                           </span>
                         </td>
                         <td className="py-4 px-4 text-center">
                           {stat.failed > 0 ? (
-                            <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                            <span className="inline-block rounded-full border border-destructive/35 bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive">
                               {stat.failed}
                             </span>
                           ) : (
@@ -380,7 +380,7 @@ export default function AnalyticsPage() {
                         <span className="text-sm text-foreground">
                           {stat.taskName}
                         </span>
-                        <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+                        <span className="text-sm font-semibold text-primary">
                           {stat.successRate}%
                         </span>
                       </div>
@@ -415,7 +415,7 @@ export default function AnalyticsPage() {
                         Overall
                       </p>
                     </div>
-                    <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+                    <span className="text-sm font-semibold text-primary">
                       Excellent
                     </span>
                   </div>

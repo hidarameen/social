@@ -8,6 +8,7 @@ import {
 import { DEFAULT_YOUTUBE_CATEGORY_ID, resolveYouTubeCategoryId } from '@/lib/youtube-categories';
 import { getOAuthClientCredentials } from '@/lib/platform-credentials';
 import { createVideoProgressLogger } from '@/lib/services/video-progress';
+import type { VideoProgressContext } from '@/lib/services/video-progress';
 
 type TemplateContext = {
   text?: string;
@@ -25,6 +26,7 @@ export type YouTubePublishInput = {
   mimeType?: string;
   transformations?: Task['transformations'];
   context?: TemplateContext;
+  onProgress?: VideoProgressContext['onProgress'];
 };
 
 type NormalizedYouTubeActions = {
@@ -168,6 +170,7 @@ export async function executeYouTubePublish(input: YouTubePublishInput): Promise
     platform: 'youtube',
     taskId: input.context?.taskId,
     targetId: input.target.id,
+    onProgress: input.onProgress,
   });
   let accessToken = input.target.accessToken;
   let refreshToken = input.target.refreshToken;

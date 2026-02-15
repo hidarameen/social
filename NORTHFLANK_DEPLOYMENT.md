@@ -40,9 +40,12 @@ If using OAuth/providers:
 If using email verification/reset:
 
 - `EMAIL_VERIFICATION_ENABLED`
-- `RESEND_API_KEY`
+- `EMAIL_PROVIDER` (`resend` or `gmail-smtp`)
 - `EMAIL_FROM`
 - `EMAIL_REPLY_TO`
+- `RESEND_API_KEY` (when `EMAIL_PROVIDER=resend`)
+- `GMAIL_SMTP_USER` (when `EMAIL_PROVIDER=gmail-smtp`)
+- `GMAIL_SMTP_APP_PASSWORD` (when `EMAIL_PROVIDER=gmail-smtp`)
 
 ## Notes
 

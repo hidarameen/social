@@ -6,15 +6,16 @@ import { toast } from 'sonner';
 import {
   Plus,
   Search,
-  Edit2,
-  Play,
-  Pause,
+  SquarePen,
+  CirclePlay,
+  CirclePause,
+  Trash,
+  ScrollText,
   ArrowRight,
-  Loader2,
+  ArrowDown,
+  Clock3,
   Sparkles,
   AlertTriangle,
-  Settings2,
-  RotateCcw,
 } from 'lucide-react';
 
 import { Sidebar } from '@/components/layout/sidebar';
@@ -23,7 +24,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { useConfirmDialog } from '@/components/common/use-confirm-dialog';
 import { PlatformIcon } from '@/components/common/platform-icon';
 
@@ -39,7 +39,7 @@ const STATUS_META: Record<Task['status'], { label: string; tone: string }> = {
     tone: 'status-pill--success',
   },
   paused: {
-    label: 'Paused',
+    label: 'Disabled',
     tone: 'status-pill--neutral',
   },
   completed: {
@@ -51,6 +51,15 @@ const STATUS_META: Record<Task['status'], { label: string; tone: string }> = {
     tone: 'status-pill--error',
   },
 };
+
+function normalizeTaskStatus(rawStatus: unknown): Task['status'] {
+  const value = String(rawStatus || '').trim().toLowerCase();
+  if (value === 'active' || value === 'enabled' || value === 'running') return 'active';
+  if (value === 'paused' || value === 'inactive' || value === 'disabled') return 'paused';
+  if (value === 'completed' || value === 'done' || value === 'success') return 'completed';
+  if (value === 'error' || value === 'failed' || value === 'failure') return 'error';
+  return 'paused';
+}
 
 function getRelativeLastRun(value?: Date | string | null): string {
   if (!value) return 'Never';
@@ -73,11 +82,6 @@ function getSuccessRate(executionCount?: number, failureCount?: number): number 
   if (total <= 0) return 100;
   const successful = Math.max(0, total - failed);
   return Math.round((successful / total) * 100);
-}
-
-function getModeLabel(executionType?: Task['executionType']): string {
-  if (executionType === 'scheduled' || executionType === 'recurring') return 'Scheduled';
-  return 'Live routing';
 }
 
 const PLATFORM_LABELS: Record<PlatformId, string> = {
@@ -138,7 +142,7 @@ function TasksPageContent() {
   const [hasMore, setHasMore] = useState(false);
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [runningTaskIds, setRunningTaskIds] = useState<Record<string, boolean>>({});
+  const [taskActionState, setTaskActionState] = useState<Record<string, 'toggle' | 'delete' | undefined>>({});
 
   const pageSize = 50;
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 300);
@@ -179,7 +183,10 @@ function TasksPageContent() {
         if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load tasks');
         if (cancelled) return;
 
-        const list = data.tasks || [];
+        const list = ((data.tasks || []) as Task[]).map((task) => ({
+          ...task,
+          status: normalizeTaskStatus((task as any)?.status),
+        }));
         const nextAccountMap = normalizeAccountMap(data.accountsById);
         const nextOffset = data.nextOffset || 0;
         const nextHasMore = Boolean(data.hasMore);
@@ -247,7 +254,13 @@ function TasksPageContent() {
       );
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load tasks');
-      const next = [...tasks, ...(data.tasks || [])];
+      const next = [
+        ...tasks,
+        ...((data.tasks || []) as Task[]).map((task) => ({
+          ...task,
+          status: normalizeTaskStatus((task as any)?.status),
+        })),
+      ];
       const nextAccountMap = normalizeAccountMap(data.accountsById);
       setTasks(next);
       setFilteredTasks(next);
@@ -264,6 +277,7 @@ function TasksPageContent() {
   };
 
   const handleDelete = async (taskId: string) => {
+    if (taskActionState[taskId]) return;
     const accepted = await confirm({
       title: 'Delete Task?',
       description: 'This action is permanent and cannot be undone.',
@@ -272,6 +286,7 @@ function TasksPageContent() {
     });
     if (!accepted) return;
 
+    setTaskActionState((prev) => ({ ...prev, [taskId]: 'delete' }));
     try {
       const res = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
       const data = await res.json();
@@ -280,11 +295,24 @@ function TasksPageContent() {
       toast.success('Task deleted successfully');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete task');
+    } finally {
+      setTaskActionState((prev) => ({ ...prev, [taskId]: undefined }));
     }
   };
 
   const handleToggleStatus = async (task: Task) => {
-    const newStatus = task.status === 'active' ? 'paused' : 'active';
+    if (taskActionState[task.id]) return;
+    const currentStatus = normalizeTaskStatus(task.status);
+    const previousStatus = currentStatus;
+    const newStatus: Task['status'] = currentStatus === 'active' ? 'paused' : 'active';
+    const applyStatus = (status: Task['status']) => {
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
+      setFilteredTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status } : t)));
+    };
+
+    // Optimistic UI for instant feedback.
+    applyStatus(newStatus);
+    setTaskActionState((prev) => ({ ...prev, [task.id]: 'toggle' }));
     try {
       const res = await fetch(`/api/tasks/${task.id}`, {
         method: 'PATCH',
@@ -293,41 +321,16 @@ function TasksPageContent() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'Failed to update task');
-      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, status: newStatus as any } : t)));
+      const serverStatus = normalizeTaskStatus(data?.task?.status || newStatus);
+      applyStatus(serverStatus);
       toast.success(newStatus === 'active' ? 'Task resumed' : 'Task paused');
     } catch (error) {
+      // Revert optimistic state when request fails.
+      applyStatus(previousStatus);
       toast.error(error instanceof Error ? error.message : 'Failed to update task');
-    }
-  };
-
-  const handleRunNow = async (task: Task) => {
-    if (runningTaskIds[task.id]) return;
-    setRunningTaskIds((prev) => ({ ...prev, [task.id]: true }));
-    try {
-      const res = await fetch(`/api/tasks/${task.id}/run`, { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to run task');
-      const executionCount = Array.isArray(data.executions) ? data.executions.length : 0;
-      setTasks((prev) =>
-        prev.map((item) =>
-          item.id === task.id
-            ? {
-                ...item,
-                lastExecuted: new Date(),
-              }
-            : item
-        )
-      );
-      toast.success(executionCount > 0 ? `Task executed (${executionCount} transfer(s))` : 'Task run started');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to run task');
     } finally {
-      setRunningTaskIds((prev) => ({ ...prev, [task.id]: false }));
+      setTaskActionState((prev) => ({ ...prev, [task.id]: undefined }));
     }
-  };
-
-  const handleRetryTask = async (task: Task) => {
-    await handleRunNow(task);
   };
   const availablePlatformFilters = [...new Set(tasks.flatMap((task) => uniquePlatformIdsForTask(task, accountById)))]
     .filter(Boolean)
@@ -352,7 +355,7 @@ function TasksPageContent() {
             </p>
             <h1 className="page-title">My Tasks</h1>
             <p className="page-subtitle">Manage and monitor your automation tasks</p>
-            <div className="mt-4 flex flex-wrap gap-2 text-xs">
+            <div className="mt-4 flex flex-wrap gap-2 text-sm">
               {isInitialLoading ? (
                 <>
                   <span className="kpi-pill">Loading tasks...</span>
@@ -498,194 +501,195 @@ function TasksPageContent() {
           </Card>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {filteredTasks.map((task) => {
-                const statusMeta = STATUS_META[task.status] || STATUS_META.paused;
+                const normalizedStatus = normalizeTaskStatus(task.status);
+                const statusMeta = STATUS_META[normalizedStatus] || STATUS_META.paused;
+                const isActionBusy = Boolean(taskActionState[task.id]);
                 const routeCount =
                   Math.max(1, task.sourceAccounts.length) * Math.max(1, task.targetAccounts.length);
-                const sourcePlatformIds = [
-                  ...new Set(
-                    task.sourceAccounts.map((id) => accountById[id]?.platformId as PlatformId | undefined).filter(Boolean)
-                  ),
-                ] as PlatformId[];
-                const targetPlatformIds = [
-                  ...new Set(
-                    task.targetAccounts.map((id) => accountById[id]?.platformId as PlatformId | undefined).filter(Boolean)
-                  ),
-                ] as PlatformId[];
-                const sourceVisiblePlatforms = sourcePlatformIds.slice(0, 3);
-                const targetVisiblePlatforms = targetPlatformIds.slice(0, 3);
-                const sourceOverflow = Math.max(0, sourcePlatformIds.length - sourceVisiblePlatforms.length);
-                const targetOverflow = Math.max(0, targetPlatformIds.length - targetVisiblePlatforms.length);
+                const sourceNodes = task.sourceAccounts
+                  .map((id) => accountById[id])
+                  .filter(Boolean)
+                  .map((account) => ({
+                    id: account.id,
+                    platformId: account.platformId as PlatformId,
+                  }));
+                const targetNodes = task.targetAccounts
+                  .map((id) => accountById[id])
+                  .filter(Boolean)
+                  .map((account) => ({
+                    id: account.id,
+                    platformId: account.platformId as PlatformId,
+                  }));
+                const sourceVisibleNodes = sourceNodes;
+                const targetVisibleNodes = targetNodes;
                 const successRate = getSuccessRate(task.executionCount, task.failureCount);
                 const lastRunLabel = getRelativeLastRun(task.lastExecuted);
-                const modeLabel = getModeLabel(task.executionType);
                 const hasAuthWarning = taskHasAuthWarning(task, accountById);
-                const runtimeState = runningTaskIds[task.id] ? 'Running' : task.status === 'error' ? 'Error' : 'Idle';
+                const baseDescription = String(task.description || '').trim();
                 const descriptionText =
-                  task.status === 'error'
+                  normalizedStatus === 'error'
                     ? `Error: ${String(task.lastError || '').trim() || 'Failed to fetch data'}`
-                    : String(task.description || '').trim() || 'No description provided.';
-                const toneBorderClass =
-                  task.status === 'active'
-                    ? 'border-l-emerald-500'
-                    : task.status === 'error'
-                      ? 'border-l-red-500'
-                      : task.status === 'completed'
-                        ? 'border-l-sky-500'
-                        : 'border-l-amber-500';
+                    : baseDescription;
+                const showDescription = normalizedStatus === 'error' || baseDescription.length > 0;
+                const statusBadgeClass =
+                  normalizedStatus === 'active'
+                    ? 'bg-primary/10 text-primary border-primary/30'
+                    : normalizedStatus === 'error'
+                      ? 'bg-destructive/10 text-destructive border-destructive/35'
+                      : 'bg-secondary/20 text-secondary-foreground border-secondary/35';
 
                 return (
                   <Card
                     key={task.id}
-                    className={cn(
-                      'animate-fade-up border-l-4 border-border/70 bg-card shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md',
-                      toneBorderClass
-                    )}
+                    className="animate-fade-up overflow-hidden rounded-xl border border-border/70 bg-card shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-foreground/10"
                   >
-                    <CardContent className="p-6">
-                      <div className="space-y-5">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex min-w-0 flex-1 items-start gap-3">
-                            <div className="min-w-0">
-                              <h3 className="truncate text-xl font-semibold tracking-tight text-foreground">{task.name}</h3>
-                              <p
-                                className={cn(
-                                  'mt-2 line-clamp-1 text-sm text-muted-foreground',
-                                  task.status === 'error' && 'inline-flex items-center gap-1.5 text-destructive'
-                                )}
-                              >
-                                {task.status === 'error' ? <AlertTriangle size={14} /> : null}
-                                <span>{descriptionText}</span>
-                              </p>
+                    <CardContent className="p-3 sm:p-3.5">
+                      <div className="space-y-2.5">
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="min-w-0 flex-1">
+                            <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                              <span className={cn('rounded-full border px-2.5 py-1 text-sm font-black uppercase tracking-[0.14em]', statusBadgeClass)}>
+                                {statusMeta.label}
+                              </span>
+                              <span className="rounded-full border border-border/70 bg-background px-2 py-0.5 text-sm font-semibold text-muted-foreground">
+                                Success {successRate}%
+                              </span>
+                              {hasAuthWarning ? (
+                                <span className="rounded-full border border-secondary/40 bg-secondary/24 px-2 py-0.5 text-sm font-medium text-secondary-foreground">
+                                  OAuth Warning
+                                </span>
+                              ) : null}
+                            </div>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <h3 className="truncate text-xl font-extrabold tracking-tight text-foreground sm:text-2xl">{task.name}</h3>
+                                {showDescription ? (
+                                  <p className={cn('mt-0.5 line-clamp-2 text-base font-medium text-muted-foreground', normalizedStatus === 'error' && 'inline-flex items-center gap-1.5 text-destructive')}>
+                                    {normalizedStatus === 'error' ? <AlertTriangle size={14} /> : null}
+                                    <span>{descriptionText}</span>
+                                  </p>
+                                ) : null}
+                              </div>
+                              <div className="ml-1 inline-flex shrink-0 items-center gap-2">
+                                <Button
+                                  variant="ghost"
+                                  className={cn(
+                                    'h-10 w-10 rounded-lg border-0 bg-transparent p-0 text-muted-foreground shadow-none transition-all duration-150 hover:bg-transparent hover:text-foreground',
+                                    normalizedStatus === 'active'
+                                      ? 'text-secondary-foreground hover:text-secondary-foreground'
+                                      : 'text-primary hover:text-primary'
+                                  )}
+                                  onClick={() => handleToggleStatus(task)}
+                                  title={normalizedStatus === 'active' ? 'Disable task' : 'Enable task'}
+                                  aria-label={normalizedStatus === 'active' ? 'Disable task' : 'Enable task'}
+                                  disabled={isActionBusy}
+                                >
+                                  {normalizedStatus === 'active' ? <CirclePause size={21} /> : <CirclePlay size={21} />}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  className="h-10 w-10 rounded-lg border-0 bg-transparent p-0 text-muted-foreground shadow-none transition-all duration-150 hover:bg-transparent hover:text-primary"
+                                  onClick={() => router.push(`/tasks/${task.id}/edit`)}
+                                  title="Edit task"
+                                  aria-label="Edit task"
+                                  disabled={isActionBusy}
+                                >
+                                  <SquarePen size={19} />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  className="h-10 w-10 rounded-lg border-0 bg-transparent p-0 text-muted-foreground shadow-none transition-all duration-150 hover:bg-transparent hover:text-foreground"
+                                  onClick={() =>
+                                    router.push(
+                                      `/executions?taskId=${encodeURIComponent(task.id)}&taskName=${encodeURIComponent(task.name)}`
+                                    )
+                                  }
+                                  title="View logs"
+                                  aria-label="View logs"
+                                  disabled={isActionBusy}
+                                >
+                                  <ScrollText size={19} />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  className="h-10 w-10 rounded-lg border-0 bg-transparent p-0 text-muted-foreground shadow-none transition-all duration-150 hover:bg-transparent hover:text-destructive"
+                                  onClick={() => void handleDelete(task.id)}
+                                  title="Delete task"
+                                  aria-label="Delete task"
+                                  disabled={isActionBusy}
+                                >
+                                  <Trash size={19} />
+                                </Button>
+                              </div>
                             </div>
                           </div>
-
-                          <div className="flex shrink-0 items-center gap-2">
-                            <span className={cn('status-pill', statusMeta.tone)}>{statusMeta.label.toUpperCase()}</span>
-                            <span className="rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[11px] text-muted-foreground">
-                              {modeLabel}
-                            </span>
-                            {hasAuthWarning ? (
-                              <span className="rounded-full border border-amber-300/60 bg-amber-100/70 px-2.5 py-1 text-[11px] font-medium text-amber-700">
-                                OAuth Warning
-                              </span>
-                            ) : null}
-                          </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/65 bg-background/60 p-3">
-                          {sourceVisiblePlatforms.length > 0 ? (
-                            sourceVisiblePlatforms.map((platformId, index) => (
-                              <span key={`source-platform-${task.id}-${platformId}`} className="inline-flex items-center gap-2">
-                                {index > 0 ? <span className="text-xs text-muted-foreground">+</span> : null}
-                                <span
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-card"
-                                  title={PLATFORM_LABELS[platformId] || platformId}
-                                >
-                                  <PlatformIcon platformId={platformId} size={17} />
+                        <div className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-border/70 bg-muted/35 p-2 md:flex-row">
+                          <div className="flex min-w-0 flex-wrap items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2 py-1.5 shadow-sm">
+                            {sourceVisibleNodes.length > 0 ? (
+                              sourceVisibleNodes.map((node, index) => (
+                                <span key={`${task.id}-source-${node.id}`} className="inline-flex min-w-0 items-center gap-1.5">
+                                  {index > 0 ? <span className="text-muted-foreground/60">+</span> : null}
+                                  <span
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/70 bg-card"
+                                    title={PLATFORM_LABELS[node.platformId] || node.platformId}
+                                  >
+                                    <PlatformIcon platformId={node.platformId} size={17} />
+                                  </span>
                                 </span>
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-xs text-muted-foreground">No source</span>
-                          )}
-                          {sourceOverflow > 0 ? (
-                            <span className="rounded-full border border-border/70 px-2 py-0.5 text-xs text-muted-foreground">
-                              +{sourceOverflow}
-                            </span>
-                          ) : null}
-                          <span className="mx-1 inline-flex h-8 w-8 items-center justify-center rounded-full bg-muted/45 text-muted-foreground">
-                            <ArrowRight size={16} />
+                              ))
+                            ) : (
+                              <span className="text-sm text-muted-foreground">No source</span>
+                            )}
+                          </div>
+
+                          <span className="hidden h-7 w-7 items-center justify-center rounded-full bg-card text-muted-foreground/70 md:inline-flex">
+                            <ArrowRight size={13} />
                           </span>
-                          {targetVisiblePlatforms.length > 0 ? (
-                            targetVisiblePlatforms.map((platformId, index) => (
-                              <span key={`target-platform-${task.id}-${platformId}`} className="inline-flex items-center gap-2">
-                                {index > 0 ? <span className="text-xs text-muted-foreground">+</span> : null}
-                                <span
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-card"
-                                  title={PLATFORM_LABELS[platformId] || platformId}
-                                >
-                                  <PlatformIcon platformId={platformId} size={17} />
+                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-card text-muted-foreground/70 md:hidden">
+                            <ArrowDown size={13} />
+                          </span>
+
+                          <div className="flex min-w-0 flex-wrap items-center gap-1.5 rounded-lg border border-border/70 bg-background px-2 py-1.5 shadow-sm">
+                            {targetVisibleNodes.length > 0 ? (
+                              targetVisibleNodes.map((node, index) => (
+                                <span key={`${task.id}-target-${node.id}`} className="inline-flex min-w-0 items-center gap-1.5">
+                                  {index > 0 ? <span className="text-muted-foreground/60">+</span> : null}
+                                  <span
+                                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/70 bg-card"
+                                    title={PLATFORM_LABELS[node.platformId] || node.platformId}
+                                  >
+                                    <PlatformIcon platformId={node.platformId} size={17} />
+                                  </span>
                                 </span>
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-xs text-muted-foreground">No target</span>
-                          )}
-                          {targetOverflow > 0 ? (
-                            <span className="rounded-full border border-border/70 px-2 py-0.5 text-xs text-muted-foreground">
-                              +{targetOverflow}
-                            </span>
-                          ) : null}
+                              ))
+                            ) : (
+                              <span className="text-sm text-muted-foreground">No target</span>
+                            )}
+                          </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-3">
-                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                            <span className="rounded-full border border-border/70 px-2.5 py-1">
-                              Sources: {task.sourceAccounts.length}
+                        <div className="flex flex-wrap items-center justify-between gap-1.5">
+                          <div className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+                            <span className="rounded-full border border-border/70 bg-background px-1.5 py-0.5">
+                              Accounts: {task.sourceAccounts.length + task.targetAccounts.length}
                             </span>
-                            <span className="rounded-full border border-border/70 px-2.5 py-1">
-                              Targets: {task.targetAccounts.length}
+                            <span className="rounded-full border border-border/70 bg-background px-1.5 py-0.5">
+                              Transfers: {task.executionCount || 0}
                             </span>
-                            <span className="rounded-full border border-border/70 px-2.5 py-1">Routes: {routeCount}</span>
-                            <span className="rounded-full border border-border/70 px-2.5 py-1">Last run: {lastRunLabel}</span>
-                            <span className="rounded-full border border-border/70 px-2.5 py-1">
-                              Transferred: {task.executionCount || 0}
-                            </span>
-                            <span className="rounded-full border border-border/70 px-2.5 py-1">Success: {successRate}%</span>
-                            <span
-                              className={cn(
-                                'rounded-full border px-2.5 py-1',
-                                runtimeState === 'Running'
-                                  ? 'border-blue-300/70 bg-blue-100/70 text-blue-700'
-                                  : runtimeState === 'Error'
-                                    ? 'border-red-300/70 bg-red-100/70 text-red-700'
-                                    : 'border-border/70'
-                              )}
-                            >
-                              {runtimeState}
+                            <span className="rounded-full border border-border/70 bg-background px-1.5 py-0.5">
+                              Routes: {routeCount}
                             </span>
                           </div>
-                          <Switch
-                            checked={task.status === 'active'}
-                            onCheckedChange={() => handleToggleStatus(task)}
-                            aria-label={task.status === 'active' ? 'Pause task' : 'Activate task'}
-                          />
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Clock3 size={13} />
+                            <span className="text-sm font-semibold tracking-tight">Last run: {lastRunLabel}</span>
+                          </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
-                          {task.status === 'error' ? (
-                            <Button variant="outline" size="sm" onClick={() => void handleRetryTask(task)}>
-                              <RotateCcw size={14} />
-                              Retry
-                            </Button>
-                          ) : null}
-                          <Button
-                            size="sm"
-                            variant={task.status === 'active' ? 'secondary' : 'default'}
-                            onClick={() => handleToggleStatus(task)}
-                          >
-                            {task.status === 'active' ? <Pause size={14} /> : <Play size={14} />}
-                            {task.status === 'active' ? 'Pause' : 'Run'}
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => router.push(`/tasks/${task.id}/edit`)}>
-                            <Edit2 size={14} />
-                            Edit
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              router.push(
-                                `/executions?taskId=${encodeURIComponent(task.id)}&taskName=${encodeURIComponent(task.name)}`
-                              )
-                            }
-                          >
-                            <Settings2 size={14} />
-                            Logs
-                          </Button>
-                        </div>
                       </div>
                     </CardContent>
                   </Card>

@@ -420,6 +420,7 @@ async function processTelegramTaskMessage(params: {
   sourceClient: MtprotoTelegramClient;
 }): Promise<void> {
   const { task, source, targets, text, mediaItems, sourceClient } = params;
+  const executionGroupId = `telegram-realtime:${task.id}:${source.id}:${Date.now()}:${randomUUID().slice(0, 8)}`;
   let failures = 0;
   const cachedDownloads = new Map<string, Promise<{ tempPath: string; size: number }>>();
   const cachedTempPaths = new Set<string>();
@@ -445,13 +446,59 @@ async function processTelegramTaskMessage(params: {
   };
 
   try {
-    for (const target of targets) {
+    const targetResults = await Promise.allSettled(targets.map(async (target) => {
       let status: 'success' | 'failed' = 'success';
       let errorMessage: string | undefined;
       let responseData: Record<string, any> | undefined;
       const transformedContent = text;
+      const liveExecution = await db.createExecution({
+        taskId: task.id,
+        sourceAccount: source.id,
+        targetAccount: target.id,
+        originalContent: text,
+        transformedContent,
+        status: 'pending',
+        executedAt: new Date(),
+        responseData: {
+          sourcePlatformId: source.platformId,
+          targetPlatformId: target.platformId,
+          executionGroupId,
+          progress: 12,
+          stage: 'processing',
+        },
+      });
+      let progressWriteChain = Promise.resolve();
+      let latestLiveProgress = 12;
+      const pushLiveProgress = (percent: number, stage: string) => {
+        const mappedProgress = Math.max(
+          latestLiveProgress,
+          Math.max(14, Math.min(94, Math.round(14 + percent * 0.8)))
+        );
+        latestLiveProgress = mappedProgress;
+        progressWriteChain = progressWriteChain
+          .then(async () => {
+            await db.updateExecution(liveExecution.id, {
+              responseData: {
+                sourcePlatformId: source.platformId,
+                targetPlatformId: target.platformId,
+                progress: mappedProgress,
+                stage,
+              },
+            });
+          })
+          .catch(() => undefined);
+        return progressWriteChain;
+      };
 
       try {
+        await db.updateExecution(liveExecution.id, {
+          responseData: {
+            sourcePlatformId: source.platformId,
+            targetPlatformId: target.platformId,
+            progress: 30,
+            stage: 'publishing',
+          },
+        });
         if (target.platformId === 'twitter') {
           responseData = await withTwitterClientRetry(target, async (twitterClient) => {
             const mediaPlan = selectTwitterMediaForTweet(mediaItems);
@@ -462,6 +509,9 @@ async function processTelegramTaskMessage(params: {
               platform: 'twitter',
               taskId: task.id,
               targetId: target.id,
+              onProgress: ({ percent, stage }) => {
+                void pushLiveProgress(percent, stage);
+              },
             });
 
             progress(1, totalProgressSteps, 'prepare-media-upload', {
@@ -472,19 +522,41 @@ async function processTelegramTaskMessage(params: {
             let progressStep = 1;
             for (let idx = 0; idx < mediaPlan.selected.length; idx += 1) {
               const media = mediaPlan.selected[idx];
+              void pushLiveProgress(
+                Math.round((progressStep / totalProgressSteps) * 100),
+                `downloading-${media.kind}-from-telegram`
+              );
               const downloaded = await getDownloadedMedia(media);
 
               progressStep += 1;
-              progress(progressStep, totalProgressSteps, 'media-downloaded', {
+              progress(progressStep, totalProgressSteps, `${media.kind}-downloaded-from-telegram`, {
                 mediaIndex: idx + 1,
                 mediaTotal: mediaPlan.selected.length,
                 mediaKind: media.kind,
                 size: downloaded.size,
               });
 
+              const uploadWindowStartPercent = Math.round((progressStep / totalProgressSteps) * 100);
+              const uploadWindowEndPercent = Math.round(((progressStep + 1) / totalProgressSteps) * 100);
+
               const mediaId = await twitterClient.uploadMediaFromFile(downloaded.tempPath, media.mimeType, {
                 durationSec: media.kind === 'video' ? media.durationSec : undefined,
                 premiumVideo: Boolean((target.credentials as any)?.twitterPremiumVideo),
+                onProgress: ({ percent, stage }) => {
+                  const stageWithContext =
+                    stage === 'upload-start'
+                      ? `starting-${media.kind}-upload-to-twitter`
+                      : stage === 'uploading'
+                        ? `uploading-${media.kind}-to-twitter`
+                        : stage === 'upload-complete' || stage === 'done'
+                          ? `${media.kind}-uploaded-to-twitter`
+                          : stage;
+                  const bounded = Math.max(0, Math.min(100, Number(percent) || 0));
+                  const windowPercent =
+                    uploadWindowStartPercent +
+                    Math.round(((uploadWindowEndPercent - uploadWindowStartPercent) * bounded) / 100);
+                  void pushLiveProgress(windowPercent, stageWithContext);
+                },
               });
 
               uploadedMedia.push({
@@ -493,7 +565,7 @@ async function processTelegramTaskMessage(params: {
               });
 
               progressStep += 1;
-              progress(progressStep, totalProgressSteps, 'media-uploaded-to-twitter', {
+              progress(progressStep, totalProgressSteps, `${media.kind}-uploaded-to-twitter`, {
                 mediaIndex: idx + 1,
                 mediaTotal: mediaPlan.selected.length,
                 mediaKind: media.kind,
@@ -554,6 +626,7 @@ async function processTelegramTaskMessage(params: {
           const firstVideo = videos[0];
 
           if (firstVideo) {
+            void pushLiveProgress(20, 'downloading-video-from-telegram');
             const downloaded = await getDownloadedMedia(firstVideo);
             const result = await executeYouTubePublish({
               target,
@@ -564,6 +637,9 @@ async function processTelegramTaskMessage(params: {
                 taskId: task.id,
                 text,
                 date: new Date().toISOString(),
+              },
+              onProgress: ({ percent, stage }) => {
+                void pushLiveProgress(percent, stage);
               },
             });
 
@@ -586,6 +662,7 @@ async function processTelegramTaskMessage(params: {
             const selectedPhotos = photos.slice(0, 10);
             const albumPhotos: Array<{ filePath: string; mimeType?: string }> = [];
             for (const photo of selectedPhotos) {
+              void pushLiveProgress(22, 'downloading-image-from-telegram');
               const downloaded = await getDownloadedMedia(photo);
               albumPhotos.push({
                 filePath: downloaded.tempPath,
@@ -597,6 +674,9 @@ async function processTelegramTaskMessage(params: {
               target,
               message: text,
               photos: albumPhotos,
+              onProgress: ({ percent, stage }) => {
+                void pushLiveProgress(percent, stage);
+              },
             });
 
             responseData = {
@@ -608,6 +688,7 @@ async function processTelegramTaskMessage(params: {
             };
           } else if (videos.length > 0) {
             const firstVideo = videos[0];
+            void pushLiveProgress(20, 'downloading-video-from-telegram');
             const downloaded = await getDownloadedMedia(firstVideo);
             const result = await publishToFacebook({
               target,
@@ -616,6 +697,9 @@ async function processTelegramTaskMessage(params: {
                 kind: 'video',
                 filePath: downloaded.tempPath,
                 mimeType: firstVideo.mimeType || 'video/mp4',
+              },
+              onProgress: ({ percent, stage }) => {
+                void pushLiveProgress(percent, stage);
               },
             });
 
@@ -626,6 +710,7 @@ async function processTelegramTaskMessage(params: {
             };
           } else if (photos.length === 1) {
             const firstPhoto = photos[0];
+            void pushLiveProgress(20, 'downloading-image-from-telegram');
             const downloaded = await getDownloadedMedia(firstPhoto);
             const result = await publishToFacebook({
               target,
@@ -634,6 +719,9 @@ async function processTelegramTaskMessage(params: {
                 kind: 'image',
                 filePath: downloaded.tempPath,
                 mimeType: firstPhoto.mimeType || 'image/jpeg',
+              },
+              onProgress: ({ percent, stage }) => {
+                void pushLiveProgress(percent, stage);
               },
             });
 
@@ -646,6 +734,9 @@ async function processTelegramTaskMessage(params: {
             const result = await publishToFacebook({
               target,
               message: text,
+              onProgress: ({ percent, stage }) => {
+                void pushLiveProgress(percent, stage);
+              },
             });
 
             responseData = {
@@ -659,7 +750,6 @@ async function processTelegramTaskMessage(params: {
         }
       } catch (error) {
         status = 'failed';
-        failures += 1;
         errorMessage = getErrorMessage(error);
         debugError('Telegram realtime target failed', error, {
           taskId: task.id,
@@ -668,18 +758,29 @@ async function processTelegramTaskMessage(params: {
         });
       }
 
-      await db.createExecution({
-        taskId: task.id,
-        sourceAccount: source.id,
-        targetAccount: target.id,
-        originalContent: text,
+      await progressWriteChain;
+      await db.updateExecution(liveExecution.id, {
         transformedContent,
         status,
         error: errorMessage,
         executedAt: new Date(),
-        responseData,
+        responseData: {
+          sourcePlatformId: source.platformId,
+          targetPlatformId: target.platformId,
+          ...(responseData || {}),
+          progress: 100,
+          stage: status === 'success' ? 'completed' : 'failed',
+          failureReason: status === 'failed' ? errorMessage : undefined,
+        },
       });
-    }
+      return status === 'failed';
+    }));
+    failures += targetResults.reduce((count, result) => {
+      if (result.status === 'fulfilled') {
+        return count + (result.value ? 1 : 0);
+      }
+      return count + 1;
+    }, 0);
   } finally {
     await Promise.all([...cachedTempPaths].map((tempPath) => cleanupTempFile(tempPath)));
   }

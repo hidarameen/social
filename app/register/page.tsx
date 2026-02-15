@@ -180,12 +180,12 @@ export default function RegisterPage() {
         description="Your account has been created. Verify your email to activate secure sign in."
       >
         <div className="space-y-5">
-          <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-sm">
-            <div className="mb-2 inline-flex items-center gap-2 font-semibold text-emerald-700 dark:text-emerald-300">
+          <div className="rounded-2xl border border-primary/30 bg-primary/10 p-4 text-sm">
+            <div className="mb-2 inline-flex items-center gap-2 font-semibold text-primary">
               <MailCheck size={16} />
               Verification Required
             </div>
-            <p className="text-emerald-700/90 dark:text-emerald-200">
+            <p className="text-primary/90">
               We sent a verification code to <span className="font-semibold">{successEmail}</span>.
             </p>
           </div>
@@ -306,8 +306,8 @@ export default function RegisterPage() {
                   passwordStrength <= 2
                     ? 'bg-destructive'
                     : passwordStrength <= 4
-                      ? 'bg-amber-500'
-                      : 'bg-emerald-500'
+                      ? 'bg-secondary'
+                      : 'bg-primary'
                 }`}
                 style={{ width: `${(passwordStrength / PASSWORD_RULES.length) * 100}%` }}
               />
@@ -318,7 +318,7 @@ export default function RegisterPage() {
                 <li
                   key={rule.id}
                   className={`inline-flex items-center gap-1.5 ${
-                    rule.pass ? 'text-emerald-600 dark:text-emerald-400' : ''
+                    rule.pass ? 'text-primary' : ''
                   }`}
                 >
                   {rule.pass ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}

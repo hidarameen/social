@@ -2,6 +2,7 @@ import { TwitterContent, TwitterTweet } from './types'
 import { promises as fs } from 'fs'
 import { debugError, debugLog } from '@/lib/debug'
 import { createVideoProgressLogger } from '@/lib/services/video-progress'
+import type { VideoProgressContext } from '@/lib/services/video-progress'
 import crypto from 'crypto'
 
 const TWITTER_API_V2 = 'https://api.x.com/2'
@@ -24,6 +25,7 @@ const TWITTER_APPEND_RETRYABLE_STATUSES = [408, 409, 429, 500, 502, 503, 504]
 type UploadMediaOptions = {
   durationSec?: number
   premiumVideo?: boolean
+  onProgress?: VideoProgressContext['onProgress']
 }
 
 export type TwitterOAuth1Credentials = {
@@ -492,6 +494,7 @@ export class TwitterClient {
       flow: 'twitter-media-upload',
       platform: 'twitter',
       targetId: mediaId,
+      onProgress: options.onProgress,
     });
     progress(0, progressTotal, 'upload-start', {
       filePath,

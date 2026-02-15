@@ -24,14 +24,14 @@ import {
 } from 'lucide-react'
 
 const platforms = [
-  { id: 'facebook', name: 'Facebook', color: 'bg-blue-600' },
-  { id: 'instagram', name: 'Instagram', color: 'bg-gradient-to-r from-purple-600 to-pink-600' },
-  { id: 'twitter', name: 'Twitter', color: 'bg-sky-500' },
-  { id: 'tiktok', name: 'TikTok', color: 'bg-black' },
-  { id: 'youtube', name: 'YouTube', color: 'bg-red-600' },
-  { id: 'telegram', name: 'Telegram', color: 'bg-sky-400' },
-  { id: 'linkedin', name: 'LinkedIn', color: 'bg-blue-700' },
-] satisfies Array<{ id: PlatformId; name: string; color: string }>
+  { id: 'facebook', name: 'Facebook' },
+  { id: 'instagram', name: 'Instagram' },
+  { id: 'twitter', name: 'Twitter' },
+  { id: 'tiktok', name: 'TikTok' },
+  { id: 'youtube', name: 'YouTube' },
+  { id: 'telegram', name: 'Telegram' },
+  { id: 'linkedin', name: 'LinkedIn' },
+] satisfies Array<{ id: PlatformId; name: string }>
 
 export default function AccountsPage() {
   const { confirm, ConfirmDialog } = useConfirmDialog()
@@ -173,7 +173,7 @@ export default function AccountsPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border/40 bg-card/50 backdrop-blur-sm sticky top-0 z-40">
+      <header className="glass-toolbar sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Manage Accounts</h1>

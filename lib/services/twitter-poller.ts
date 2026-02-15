@@ -192,8 +192,9 @@ export class TwitterPoller {
           tweet.author?.username || source.credentials?.accountInfo?.username || '',
           tweet.id
         );
+        const executionGroupId = `twitter-poller:${task.id}:${source.id}:${tweet.id}`;
 
-        for (const target of activeTargets) {
+        const targetResults = await Promise.allSettled(activeTargets.map(async (target) => {
           let status: 'success' | 'failed' = 'success';
           let errorMessage: string | undefined;
           let responseData: Record<string, any> = {
@@ -203,8 +204,54 @@ export class TwitterPoller {
                 ? String(filters.twitterUsername || '').toLowerCase()
                 : source.credentials?.accountInfo?.username,
           };
+          const liveExecution = await db.createExecution({
+            taskId: task.id,
+            sourceAccount: source.id,
+            targetAccount: target.id,
+            originalContent: tweet.text,
+            transformedContent: message,
+            status: 'pending',
+            executedAt: new Date(),
+            responseData: {
+              sourcePlatformId: source.platformId,
+              targetPlatformId: target.platformId,
+              executionGroupId,
+              progress: 12,
+              stage: 'processing',
+            },
+          });
+          let progressWriteChain = Promise.resolve();
+          let latestLiveProgress = 12;
+          const pushLiveProgress = (percent: number, stage: string) => {
+            const mappedProgress = Math.max(
+              latestLiveProgress,
+              Math.max(14, Math.min(94, Math.round(14 + percent * 0.8)))
+            );
+            latestLiveProgress = mappedProgress;
+            progressWriteChain = progressWriteChain
+              .then(async () => {
+                await db.updateExecution(liveExecution.id, {
+                  responseData: {
+                    sourcePlatformId: source.platformId,
+                    targetPlatformId: target.platformId,
+                    progress: mappedProgress,
+                    stage,
+                  },
+                });
+              })
+              .catch(() => undefined);
+            return progressWriteChain;
+          };
 
           try {
+            await db.updateExecution(liveExecution.id, {
+              responseData: {
+                sourcePlatformId: source.platformId,
+                targetPlatformId: target.platformId,
+                progress: 52,
+                stage: 'publishing',
+              },
+            });
             if (target.platformId === 'telegram') {
               debugLog('Twitter poller -> Telegram start', { taskId: task.id, targetId: target.id });
               const overrideChatId = String((task.transformations as any)?.telegramTargetChatId || '').trim();
@@ -242,6 +289,7 @@ export class TwitterPoller {
               );
 
               if (hasVideoMedia) {
+                await pushLiveProgress(28, 'downloading-video-from-twitter');
                 const media = await prepareYouTubeVideoFromTweet(tweet, link, enableYtDlp);
                 try {
                   const result = await executeYouTubePublish({
@@ -256,6 +304,9 @@ export class TwitterPoller {
                       name: tweet.author?.name || source.credentials?.accountInfo?.name || '',
                       date: tweet.createdAt,
                       link,
+                    },
+                    onProgress: ({ percent, stage }) => {
+                      void pushLiveProgress(percent, stage);
                     },
                   });
                   responseData = {
@@ -296,6 +347,9 @@ export class TwitterPoller {
                   : photoUrl
                     ? { kind: 'image', url: photoUrl }
                     : undefined,
+                onProgress: ({ percent, stage }) => {
+                  void pushLiveProgress(percent, stage);
+                },
               });
               responseData = {
                 ...responseData,
@@ -307,7 +361,7 @@ export class TwitterPoller {
                 postId: facebookResult.id,
               });
             } else {
-              continue;
+              throw new Error(`Unsupported target platform: ${target.platformId}`);
             }
           } catch (error) {
             status = 'failed';
@@ -315,17 +369,31 @@ export class TwitterPoller {
             debugError('Twitter poller target failed', error, { taskId: task.id, targetId: target.id });
           }
 
-          await db.createExecution({
-            taskId: task.id,
-            sourceAccount: source.id,
-            targetAccount: target.id,
-            originalContent: tweet.text,
+          await progressWriteChain;
+          await db.updateExecution(liveExecution.id, {
             transformedContent: message,
             status,
             error: errorMessage,
             executedAt: new Date(),
-            responseData,
+            responseData: {
+              sourcePlatformId: source.platformId,
+              targetPlatformId: target.platformId,
+              ...responseData,
+              progress: 100,
+              stage: status === 'success' ? 'completed' : 'failed',
+              failureReason: status === 'failed' ? errorMessage : undefined,
+            },
           });
+        }));
+
+        for (const result of targetResults) {
+          if (result.status === 'rejected') {
+            debugError('Twitter poller target promise rejected', result.reason, {
+              taskId: task.id,
+              sourceId: source.id,
+              tweetId: tweet.id,
+            });
+          }
         }
       }
     }

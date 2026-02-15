@@ -329,13 +329,63 @@ export class TwitterStream {
     const includeMedia = task.transformations?.includeMedia !== false;
     const enableYtDlp = task.transformations?.enableYtDlp === true;
     const link = buildTweetLink(author.username || '', tweetItem.id);
+    const executionGroupId = `twitter-stream:${task.id}:${tweetItem.id}`;
 
-    for (const target of targets) {
+    const targetResults = await Promise.allSettled(targets.map(async (target) => {
       let status: 'success' | 'failed' = 'success';
       let errorMessage: string | undefined;
       let responseData: Record<string, any> = { sourceTweetId: tweetItem.id, sourceUsername: author.username };
+      const sourceAccountId = resolvedSourceAccountId || task.sourceAccounts[0] || '';
+      const sourcePlatformId =
+        sourceAccountId && userAccounts.find((account) => account.id === sourceAccountId)?.platformId;
+      const liveExecution = await db.createExecution({
+        taskId: task.id,
+        sourceAccount: sourceAccountId,
+        targetAccount: target.id,
+        originalContent: tweetItem.text,
+        transformedContent: message,
+        status: 'pending',
+        executedAt: new Date(),
+        responseData: {
+          sourcePlatformId,
+          targetPlatformId: target.platformId,
+          executionGroupId,
+          progress: 12,
+          stage: 'processing',
+        },
+      });
+      let progressWriteChain = Promise.resolve();
+      let latestLiveProgress = 12;
+      const pushLiveProgress = (percent: number, stage: string) => {
+        const mappedProgress = Math.max(
+          latestLiveProgress,
+          Math.max(14, Math.min(94, Math.round(14 + percent * 0.8)))
+        );
+        latestLiveProgress = mappedProgress;
+        progressWriteChain = progressWriteChain
+          .then(async () => {
+            await db.updateExecution(liveExecution.id, {
+              responseData: {
+                sourcePlatformId,
+                targetPlatformId: target.platformId,
+                progress: mappedProgress,
+                stage,
+              },
+            });
+          })
+          .catch(() => undefined);
+        return progressWriteChain;
+      };
 
       try {
+        await db.updateExecution(liveExecution.id, {
+          responseData: {
+            sourcePlatformId,
+            targetPlatformId: target.platformId,
+            progress: 52,
+            stage: 'publishing',
+          },
+        });
         if (target.platformId === 'telegram') {
           debugLog('Twitter -> Telegram start', { taskId: task.id, targetId: target.id });
           const overrideChatId = String((task.transformations as any)?.telegramTargetChatId || '').trim();
@@ -373,6 +423,7 @@ export class TwitterStream {
           );
 
           if (hasVideoMedia) {
+            await pushLiveProgress(28, 'downloading-video-from-twitter');
             const media = await prepareYouTubeVideoFromTweet(tweetItem, link, enableYtDlp);
             try {
               const result = await executeYouTubePublish({
@@ -387,6 +438,9 @@ export class TwitterStream {
                   name: author.name || '',
                   date: tweetItem.createdAt,
                   link,
+                },
+                onProgress: ({ percent, stage }) => {
+                  void pushLiveProgress(percent, stage);
                 },
               });
               responseData = {
@@ -427,6 +481,9 @@ export class TwitterStream {
               : photoUrl
                 ? { kind: 'image', url: photoUrl }
                 : undefined,
+            onProgress: ({ percent, stage }) => {
+              void pushLiveProgress(percent, stage);
+            },
           });
           responseData = {
             ...responseData,
@@ -438,7 +495,7 @@ export class TwitterStream {
             postId: facebookResult.id,
           });
         } else {
-          continue;
+          throw new Error(`Unsupported target platform: ${target.platformId}`);
         }
       } catch (error) {
         status = 'failed';
@@ -446,17 +503,30 @@ export class TwitterStream {
         debugError('Twitter stream target failed', error, { taskId: task.id, targetId: target.id });
       }
 
-      await db.createExecution({
-        taskId: task.id,
-        sourceAccount: resolvedSourceAccountId || task.sourceAccounts[0] || '',
-        targetAccount: target.id,
-        originalContent: tweetItem.text,
+      await progressWriteChain;
+      await db.updateExecution(liveExecution.id, {
         transformedContent: message,
         status,
         error: errorMessage,
         executedAt: new Date(),
-        responseData,
+        responseData: {
+          sourcePlatformId,
+          targetPlatformId: target.platformId,
+          ...responseData,
+          progress: 100,
+          stage: status === 'success' ? 'completed' : 'failed',
+          failureReason: status === 'failed' ? errorMessage : undefined,
+        },
       });
+    }));
+
+    for (const result of targetResults) {
+      if (result.status === 'rejected') {
+        debugError('Twitter stream target promise rejected', result.reason, {
+          taskId: task.id,
+          tweetId: tweetItem.id,
+        });
+      }
     }
   }
 

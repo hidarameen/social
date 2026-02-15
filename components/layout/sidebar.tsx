@@ -114,7 +114,7 @@ function SidebarContent() {
                 <p className="truncate text-sm font-semibold">
                   {t('sidebar.toggleSidebar', 'Toggle Sidebar')}
                 </p>
-                <p className="truncate text-xs text-sidebar-foreground/65">
+                <p className="truncate text-sm text-sidebar-foreground/65">
                   {t('sidebar.toggleSidebarCaption', 'Collapse or expand navigation')}
                 </p>
               </div>
@@ -156,7 +156,7 @@ function SidebarContent() {
                     <p className="truncate text-sm font-semibold">{itemContent.label}</p>
                     <p
                       className={cn(
-                        'truncate text-xs',
+                        'truncate text-sm',
                         isActive
                           ? 'text-sidebar-primary-foreground/85'
                           : 'text-sidebar-foreground/65'
@@ -177,11 +177,11 @@ function SidebarContent() {
           <div className="rounded-2xl border border-sidebar-border/70 bg-sidebar-accent/45 p-4">
             <div className="mb-2 flex items-center gap-2 text-sidebar-foreground">
               <Activity size={14} className="text-accent animate-pulse-glow rounded-full" />
-              <span className="text-xs font-semibold uppercase tracking-wider">
+              <span className="text-sm font-semibold uppercase tracking-wider">
                 {t('sidebar.liveStatus', 'Live Status')}
               </span>
             </div>
-            <p className="text-xs leading-relaxed text-sidebar-foreground/70">
+            <p className="text-sm leading-relaxed text-sidebar-foreground/70">
               {t(
                 'sidebar.liveStatusDescription',
                 'Runtime healthy. Last sync cycle completed and all services online.'

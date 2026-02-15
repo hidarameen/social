@@ -259,7 +259,7 @@ export default function LoginPageClient({
             disabled={isBusy}
             required
           />
-          {emailError ? <p className="text-xs text-destructive">{emailError}</p> : null}
+          {emailError ? <p className="text-sm text-destructive">{emailError}</p> : null}
         </div>
 
         <div className="space-y-2">
@@ -295,11 +295,11 @@ export default function LoginPageClient({
             </Button>
           </div>
           {capsLockOn ? (
-            <p className="text-xs text-amber-600 dark:text-amber-400">
+            <p className="text-sm text-secondary-foreground">
               {isArabic ? 'زر Caps Lock مفعل.' : 'Caps Lock is on.'}
             </p>
           ) : null}
-          {passwordError ? <p className="text-xs text-destructive">{passwordError}</p> : null}
+          {passwordError ? <p className="text-sm text-destructive">{passwordError}</p> : null}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -314,7 +314,7 @@ export default function LoginPageClient({
             />
             {isArabic ? 'تذكرني' : 'Remember me'}
           </label>
-          <Link href="/forgot-password" className="text-xs font-medium text-primary underline-offset-4 hover:underline">
+          <Link href="/forgot-password" className="text-sm font-medium text-primary underline-offset-4 hover:underline">
             {isArabic ? 'نسيت كلمة المرور؟' : 'Forgot password?'}
           </Link>
         </div>
@@ -329,12 +329,12 @@ export default function LoginPageClient({
         </div>
 
         {needsVerification && (
-          <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-3 text-sm">
-            <p className="mb-2 inline-flex items-center gap-2 font-medium text-amber-700 dark:text-amber-300">
+          <div className="rounded-xl border border-secondary/40 bg-secondary/20 p-3 text-sm">
+            <p className="mb-2 inline-flex items-center gap-2 font-medium text-secondary-foreground">
               <MailWarning size={14} />
               {isArabic ? 'التحقق من البريد الإلكتروني مطلوب' : 'Email verification pending'}
             </p>
-            <p className="mb-3 text-amber-700/90 dark:text-amber-200">
+            <p className="mb-3 text-secondary-foreground/90">
               {isArabic ? 'تحقق من بريدك الإلكتروني أولاً ثم سجّل الدخول مرة أخرى.' : 'Verify your email first, then sign in again.'}
             </p>
             <Button
@@ -375,7 +375,7 @@ export default function LoginPageClient({
             {t('auth.createOne', 'Create one')}
           </Link>
         </p>
-        <p className="text-center text-xs text-muted-foreground">
+        <p className="text-center text-sm text-muted-foreground">
           {isArabic ? 'بتسجيل الدخول فأنت توافق على' : 'By signing in, you agree to our'}{' '}
           <Link href="/terms" className="font-medium text-primary underline-offset-4 hover:underline">
             {isArabic ? 'شروط الخدمة' : 'Terms of Service'}
@@ -386,7 +386,7 @@ export default function LoginPageClient({
           </Link>
           .
         </p>
-        <p className="text-center text-[11px] text-muted-foreground/90">{creditLine}</p>
+        <p className="text-center text-sm text-muted-foreground/90">{creditLine}</p>
       </form>
     </AuthShell>
   );

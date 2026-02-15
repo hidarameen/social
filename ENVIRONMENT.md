@@ -32,9 +32,12 @@ TikTok:
 
 Email (real verification code delivery):
 - `EMAIL_VERIFICATION_ENABLED` (default `true`; set `false` to auto-verify newly registered emails and skip verification requirement)
-- `RESEND_API_KEY`
+- `EMAIL_PROVIDER` (`resend` or `gmail-smtp`; default `resend`)
 - `EMAIL_FROM` (example: `SocialFlow <no-reply@your-domain.com>`)
 - `EMAIL_REPLY_TO` (optional)
+- `RESEND_API_KEY` (required when `EMAIL_PROVIDER=resend`)
+- `GMAIL_SMTP_USER` (required when `EMAIL_PROVIDER=gmail-smtp`)
+- `GMAIL_SMTP_APP_PASSWORD` (required when `EMAIL_PROVIDER=gmail-smtp`)
 - `EMAIL_VERIFY_CODE_TTL_MINUTES` (default `15`, range `5`-`60`)
 - `EMAIL_RESET_CODE_TTL_MINUTES` (default `15`, range `5`-`60`)
 

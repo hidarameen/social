@@ -37,10 +37,29 @@ export class ExecutionQueue {
   private draining = false;
 
   constructor() {
-    this.maxGlobalConcurrency = parsePositiveInt(process.env.WORKER_GLOBAL_CONCURRENCY, 8);
-    this.maxPerUserConcurrency = parsePositiveInt(process.env.WORKER_PER_USER_CONCURRENCY, 2);
-    this.maxPerTaskConcurrency = parsePositiveInt(process.env.WORKER_PER_TASK_CONCURRENCY, 1);
-    this.maxQueueSize = parsePositiveInt(process.env.WORKER_QUEUE_MAX_SIZE, 2000);
+    const rawGlobal = process.env.WORKER_GLOBAL_CONCURRENCY;
+    const rawPerUser = process.env.WORKER_PER_USER_CONCURRENCY;
+    const rawPerTask = process.env.WORKER_PER_TASK_CONCURRENCY;
+    const rawQueueMax = process.env.WORKER_QUEUE_MAX_SIZE;
+
+    this.maxGlobalConcurrency = parsePositiveInt(rawGlobal, 8);
+    this.maxPerUserConcurrency = parsePositiveInt(rawPerUser, 2);
+    this.maxPerTaskConcurrency = parsePositiveInt(rawPerTask, 1);
+    this.maxQueueSize = parsePositiveInt(rawQueueMax, 2000);
+
+    if (String(process.env.DEBUG_LOGS || '').toLowerCase() === 'true') {
+      if (!rawPerTask) {
+        console.warn(
+          '[ExecutionQueue] WORKER_PER_TASK_CONCURRENCY is not set; using fallback 1 (serial per task id).'
+        );
+      }
+      console.log('[ExecutionQueue] Config', {
+        maxGlobalConcurrency: this.maxGlobalConcurrency,
+        maxPerUserConcurrency: this.maxPerUserConcurrency,
+        maxPerTaskConcurrency: this.maxPerTaskConcurrency,
+        maxQueueSize: this.maxQueueSize,
+      });
+    }
   }
 
   enqueue<T>(options: QueueJobOptions<T>): Promise<T> {

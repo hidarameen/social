@@ -170,7 +170,7 @@ export default function ResetPasswordPageClient({ token, queryEmail, queryCode }
           </div>
           <ul className="grid grid-cols-1 gap-1 text-xs text-muted-foreground sm:grid-cols-2">
             {passwordChecks.map((rule) => (
-              <li key={rule.id} className={rule.pass ? 'text-emerald-600 dark:text-emerald-400' : ''}>
+              <li key={rule.id} className={rule.pass ? 'text-primary' : ''}>
                 {rule.label}
               </li>
             ))}
