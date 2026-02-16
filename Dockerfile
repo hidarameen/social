@@ -13,11 +13,18 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lo
 FROM cirrusci/flutter:stable AS apk_builder
 ARG ANDROID_ORG=com.socialflow.app
 ARG APP_URL
+ENV CI=true
+ENV GRADLE_USER_HOME=/tmp/nf-gradle
+ENV GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.caching=false"
+ENV PUB_CACHE=/tmp/nf-pub-cache
 
 WORKDIR /src
 RUN flutter create --platforms=android,web --org "${ANDROID_ORG}" app
 
 WORKDIR /src/app
+RUN if [ -f android/gradle.properties ]; then \
+      printf '\norg.gradle.daemon=false\norg.gradle.parallel=false\norg.gradle.caching=false\n' >> android/gradle.properties; \
+    fi
 
 COPY flutter_app/pubspec.yaml ./pubspec.yaml
 COPY flutter_app/analysis_options.yaml ./analysis_options.yaml
@@ -27,6 +34,8 @@ RUN flutter pub get
 RUN test -n "${APP_URL}"
 RUN flutter build apk --release --dart-define=APP_URL="${APP_URL}"
 RUN flutter build web --release --dart-define=APP_URL="${APP_URL}"
+RUN (cd android && ./gradlew --stop || true) \
+  && rm -rf /root/.gradle "${GRADLE_USER_HOME}" /src/app/.gradle "${PUB_CACHE}" || true
 
 FROM base AS builder
 WORKDIR /app
