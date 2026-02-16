@@ -78,15 +78,8 @@ class _WebShellState extends State<WebShell> {
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvoked: (didPop) async {
-        if (didPop) return;
-        final shouldClose = await _handleBack();
-        if (shouldClose && mounted) {
-          Navigator.of(context).pop();
-        }
-      },
+    return WillPopScope(
+      onWillPop: _handleBack,
       child: Scaffold(
         body: SafeArea(
           child: Stack(
@@ -142,4 +135,3 @@ class _WebShellState extends State<WebShell> {
     );
   }
 }
-
