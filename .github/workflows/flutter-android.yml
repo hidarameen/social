@@ -28,6 +28,8 @@ jobs:
           cp -R flutter_app/lib _flutter_build_app/
           cp flutter_app/pubspec.yaml _flutter_build_app/
           cp flutter_app/analysis_options.yaml _flutter_build_app/
+          # webview_flutter_android requires minSdkVersion >= 19. Flutter templates can default to 16.
+          sed -i -E 's/minSdkVersion[[:space:]]+flutter\\.minSdkVersion/minSdkVersion 19/g; s/minSdkVersion[[:space:]]+16/minSdkVersion 19/g' _flutter_build_app/android/app/build.gradle
 
       - name: Install deps
         working-directory: _flutter_build_app
@@ -50,4 +52,3 @@ jobs:
         with:
           name: socialflow-flutter-apk
           path: _flutter_build_app/build/app/outputs/flutter-apk/app-release.apk
-
