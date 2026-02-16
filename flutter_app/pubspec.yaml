@@ -16,7 +16,8 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.2
+  # Keep CI compatible with older Dart SDKs (2.19.x).
+  # Add flutter_lints back when your build image uses Dart 3+.
 
 flutter:
   uses-material-design: true
