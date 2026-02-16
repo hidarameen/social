@@ -12,7 +12,7 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lo
 
 FROM cirrusci/flutter:stable AS apk_builder
 ARG ANDROID_ORG=com.socialflow.app
-ARG APP_URL=https://example.com/
+ARG APP_URL
 
 WORKDIR /src
 RUN flutter create --platforms=android --org "${ANDROID_ORG}" app
@@ -32,6 +32,7 @@ COPY flutter_app/analysis_options.yaml ./analysis_options.yaml
 COPY flutter_app/lib ./lib
 
 RUN flutter pub get
+RUN test -n "${APP_URL}"
 RUN flutter build apk --release --dart-define=APP_URL="${APP_URL}"
 
 FROM base AS builder
