@@ -16,7 +16,6 @@ ARG APP_URL
 ENV CI=true
 ENV GRADLE_USER_HOME=/tmp/nf-gradle
 ENV GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.caching=false"
-ENV PUB_CACHE=/tmp/nf-pub-cache
 
 WORKDIR /src
 RUN flutter create --platforms=android,web --org "${ANDROID_ORG}" app
@@ -30,11 +29,13 @@ COPY flutter_app/pubspec.yaml ./pubspec.yaml
 COPY flutter_app/analysis_options.yaml ./analysis_options.yaml
 COPY flutter_app/lib ./lib
 
-RUN --mount=type=cache,id=flutter-pub-cache,target=/tmp/nf-pub-cache flutter pub get
+RUN --mount=type=cache,id=flutter-pub-cache,target=/root/.pub-cache flutter pub get
 RUN test -n "${APP_URL}"
 RUN --mount=type=cache,id=flutter-gradle-cache,target=/tmp/nf-gradle \
+  --mount=type=cache,id=flutter-pub-cache,target=/root/.pub-cache \
   flutter build apk --release --dart-define=APP_URL="${APP_URL}"
 RUN --mount=type=cache,id=flutter-gradle-cache,target=/tmp/nf-gradle \
+  --mount=type=cache,id=flutter-pub-cache,target=/root/.pub-cache \
   flutter build web --release --dart-define=APP_URL="${APP_URL}"
 RUN (cd android && ./gradlew --stop || true) && rm -rf /root/.gradle /src/app/.gradle || true
 
