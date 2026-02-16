@@ -30,12 +30,13 @@ COPY flutter_app/pubspec.yaml ./pubspec.yaml
 COPY flutter_app/analysis_options.yaml ./analysis_options.yaml
 COPY flutter_app/lib ./lib
 
-RUN flutter pub get
+RUN --mount=type=cache,id=flutter-pub-cache,target=/tmp/nf-pub-cache flutter pub get
 RUN test -n "${APP_URL}"
-RUN flutter build apk --release --dart-define=APP_URL="${APP_URL}"
-RUN flutter build web --release --dart-define=APP_URL="${APP_URL}"
-RUN (cd android && ./gradlew --stop || true) \
-  && rm -rf /root/.gradle "${GRADLE_USER_HOME}" /src/app/.gradle "${PUB_CACHE}" || true
+RUN --mount=type=cache,id=flutter-gradle-cache,target=/tmp/nf-gradle \
+  flutter build apk --release --dart-define=APP_URL="${APP_URL}"
+RUN --mount=type=cache,id=flutter-gradle-cache,target=/tmp/nf-gradle \
+  flutter build web --release --dart-define=APP_URL="${APP_URL}"
+RUN (cd android && ./gradlew --stop || true) && rm -rf /root/.gradle /src/app/.gradle || true
 
 FROM base AS builder
 WORKDIR /app
