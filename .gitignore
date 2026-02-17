@@ -25,3 +25,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# flutter
+flutter_app/.dart_tool/
+flutter_app/build/
+flutter_app/.flutter-plugins-dependencies

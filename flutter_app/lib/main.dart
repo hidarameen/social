@@ -122,9 +122,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (_token == null || _token!.isEmpty) {
@@ -142,11 +140,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
 }
 
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({
-    super.key,
-    required this.api,
-    required this.onSignedIn,
-  });
+  const AuthScreen({super.key, required this.api, required this.onSignedIn});
 
   final ApiClient api;
   final Future<void> Function(AuthSession session) onSignedIn;
@@ -160,14 +154,22 @@ class _AuthScreenState extends State<AuthScreen> {
   final GlobalKey<FormState> _registerFormKey = GlobalKey<FormState>();
 
   final TextEditingController _loginEmailController = TextEditingController();
-  final TextEditingController _loginPasswordController = TextEditingController();
+  final TextEditingController _loginPasswordController =
+      TextEditingController();
 
   final TextEditingController _registerNameController = TextEditingController();
-  final TextEditingController _registerEmailController = TextEditingController();
-  final TextEditingController _registerPasswordController = TextEditingController();
+  final TextEditingController _registerEmailController =
+      TextEditingController();
+  final TextEditingController _registerPasswordController =
+      TextEditingController();
+  final TextEditingController _verificationCodeController =
+      TextEditingController();
 
   bool _busy = false;
+  bool _showVerificationForm = false;
   String _infoMessage = '';
+  String _pendingVerificationEmail = '';
+  String _pendingVerificationPassword = '';
 
   @override
   void dispose() {
@@ -176,6 +178,7 @@ class _AuthScreenState extends State<AuthScreen> {
     _registerNameController.dispose();
     _registerEmailController.dispose();
     _registerPasswordController.dispose();
+    _verificationCodeController.dispose();
     super.dispose();
   }
 
@@ -196,7 +199,8 @@ class _AuthScreenState extends State<AuthScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _infoMessage = error is ApiException ? error.message : 'Failed to sign in.';
+        _infoMessage =
+            error is ApiException ? error.message : 'Failed to sign in.';
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -206,6 +210,9 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _submitRegister() async {
     if (!_registerFormKey.currentState!.validate()) return;
 
+    final registerEmail = _registerEmailController.text.trim().toLowerCase();
+    final registerPassword = _registerPasswordController.text;
+
     setState(() {
       _busy = true;
       _infoMessage = '';
@@ -214,32 +221,138 @@ class _AuthScreenState extends State<AuthScreen> {
     try {
       final registerResponse = await widget.api.register(
         name: _registerNameController.text.trim(),
-        email: _registerEmailController.text.trim(),
-        password: _registerPasswordController.text,
+        email: registerEmail,
+        password: registerPassword,
       );
 
-      final verificationRequired = registerResponse['verificationRequired'] == true;
+      final verificationRequired =
+          registerResponse['verificationRequired'] == true;
       if (verificationRequired) {
+        final debugCode = _extractDebugVerificationCode(registerResponse);
         setState(() {
-          _infoMessage =
-              'Account created. Email verification is required before sign-in.';
+          _showVerificationForm = true;
+          _pendingVerificationEmail = registerEmail;
+          _pendingVerificationPassword = registerPassword;
+          _verificationCodeController.text = debugCode;
+          _infoMessage = debugCode.isNotEmpty
+              ? 'Account created. Enter your email verification code. (debug code: $debugCode)'
+              : 'Account created. Enter your email verification code to continue.';
         });
         return;
       }
 
       final session = await widget.api.login(
-        email: _registerEmailController.text.trim(),
-        password: _registerPasswordController.text,
+        email: registerEmail,
+        password: registerPassword,
       );
       await widget.onSignedIn(session);
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _infoMessage = error is ApiException ? error.message : 'Failed to register.';
+        _infoMessage =
+            error is ApiException ? error.message : 'Failed to register.';
       });
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  String _normalizeVerificationCode(String input) {
+    return input.replaceAll(RegExp(r'[^0-9]'), '').trim();
+  }
+
+  String _extractDebugVerificationCode(Map<String, dynamic> registerResponse) {
+    final debug = registerResponse['debug'];
+    if (debug is! Map<String, dynamic>) return '';
+    return _normalizeVerificationCode(
+      debug['verificationCode']?.toString() ?? '',
+    );
+  }
+
+  Future<void> _submitVerificationCode() async {
+    final code = _normalizeVerificationCode(_verificationCodeController.text);
+    if (_pendingVerificationEmail.isEmpty) {
+      setState(() {
+        _infoMessage = 'Missing email for verification.';
+      });
+      return;
+    }
+    if (code.length != 6) {
+      setState(() {
+        _infoMessage = 'Enter a valid 6-digit verification code.';
+      });
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _infoMessage = '';
+    });
+
+    try {
+      await widget.api.verifyEmail(
+        email: _pendingVerificationEmail,
+        code: code,
+      );
+      final session = await widget.api.login(
+        email: _pendingVerificationEmail,
+        password: _pendingVerificationPassword,
+      );
+      await widget.onSignedIn(session);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _infoMessage =
+            error is ApiException ? error.message : 'Failed to verify email.';
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _resendVerificationCode() async {
+    if (_pendingVerificationEmail.isEmpty) return;
+
+    setState(() {
+      _busy = true;
+      _infoMessage = '';
+    });
+
+    try {
+      final response = await widget.api.resendVerification(
+        email: _pendingVerificationEmail,
+      );
+      final debugCode = _extractDebugVerificationCode(response);
+      if (!mounted) return;
+      setState(() {
+        if (debugCode.isNotEmpty) {
+          _verificationCodeController.text = debugCode;
+          _infoMessage =
+              'Verification code sent again. (debug code: $debugCode)';
+        } else {
+          _infoMessage =
+              'If the account exists, a verification code has been sent.';
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _infoMessage = error is ApiException
+            ? error.message
+            : 'Failed to resend verification code.';
+      });
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  bool _isErrorMessage(String message) {
+    final value = message.toLowerCase();
+    return value.contains('failed') ||
+        value.contains('invalid') ||
+        value.contains('error') ||
+        value.contains('unauthorized') ||
+        value.contains('unable');
   }
 
   InputDecoration _inputDecoration(String label, IconData icon) {
@@ -263,7 +376,9 @@ class _AuthScreenState extends State<AuthScreen> {
                 constraints: const BoxConstraints(maxWidth: 520),
                 child: Card(
                   elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(
@@ -271,7 +386,10 @@ class _AuthScreenState extends State<AuthScreen> {
                       children: [
                         const Text(
                           'SocialFlow',
-                          style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+                          style: TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Text(
@@ -287,7 +405,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                         const SizedBox(height: 16),
                         SizedBox(
-                          height: 430,
+                          height: _showVerificationForm ? 560 : 430,
                           child: TabBarView(
                             children: [
                               Form(
@@ -296,24 +414,34 @@ class _AuthScreenState extends State<AuthScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     TextFormField(
+                                      key: const Key('login-email-field'),
                                       controller: _loginEmailController,
                                       keyboardType: TextInputType.emailAddress,
-                                      decoration:
-                                          _inputDecoration('Email', Icons.alternate_email_rounded),
+                                      decoration: _inputDecoration(
+                                        'Email',
+                                        Icons.alternate_email_rounded,
+                                      ),
                                       validator: (value) {
                                         final input = (value ?? '').trim();
-                                        if (input.isEmpty) return 'Email is required.';
-                                        if (!input.contains('@')) return 'Enter a valid email.';
+                                        if (input.isEmpty)
+                                          return 'Email is required.';
+                                        if (!input.contains('@'))
+                                          return 'Enter a valid email.';
                                         return null;
                                       },
                                     ),
                                     const SizedBox(height: 12),
                                     TextFormField(
+                                      key: const Key('login-password-field'),
                                       controller: _loginPasswordController,
                                       obscureText: true,
-                                      decoration: _inputDecoration('Password', Icons.lock_rounded),
+                                      decoration: _inputDecoration(
+                                        'Password',
+                                        Icons.lock_rounded,
+                                      ),
                                       validator: (value) {
-                                        if ((value ?? '').isEmpty) return 'Password is required.';
+                                        if ((value ?? '').isEmpty)
+                                          return 'Password is required.';
                                         return null;
                                       },
                                     ),
@@ -321,12 +449,16 @@ class _AuthScreenState extends State<AuthScreen> {
                                     SizedBox(
                                       width: double.infinity,
                                       child: FilledButton.icon(
+                                        key: const Key('login-submit-button'),
                                         onPressed: _busy ? null : _submitLogin,
                                         icon: _busy
                                             ? const SizedBox(
                                                 width: 16,
                                                 height: 16,
-                                                child: CircularProgressIndicator(strokeWidth: 2),
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                ),
                                               )
                                             : const Icon(Icons.login_rounded),
                                         label: const Text('Sign In'),
@@ -341,8 +473,12 @@ class _AuthScreenState extends State<AuthScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     TextFormField(
+                                      key: const Key('register-name-field'),
                                       controller: _registerNameController,
-                                      decoration: _inputDecoration('Name', Icons.person_rounded),
+                                      decoration: _inputDecoration(
+                                        'Name',
+                                        Icons.person_rounded,
+                                      ),
                                       validator: (value) {
                                         final input = (value ?? '').trim();
                                         if (input.length < 2) {
@@ -353,22 +489,31 @@ class _AuthScreenState extends State<AuthScreen> {
                                     ),
                                     const SizedBox(height: 12),
                                     TextFormField(
+                                      key: const Key('register-email-field'),
                                       controller: _registerEmailController,
                                       keyboardType: TextInputType.emailAddress,
-                                      decoration:
-                                          _inputDecoration('Email', Icons.alternate_email_rounded),
+                                      decoration: _inputDecoration(
+                                        'Email',
+                                        Icons.alternate_email_rounded,
+                                      ),
                                       validator: (value) {
                                         final input = (value ?? '').trim();
-                                        if (input.isEmpty) return 'Email is required.';
-                                        if (!input.contains('@')) return 'Enter a valid email.';
+                                        if (input.isEmpty)
+                                          return 'Email is required.';
+                                        if (!input.contains('@'))
+                                          return 'Enter a valid email.';
                                         return null;
                                       },
                                     ),
                                     const SizedBox(height: 12),
                                     TextFormField(
+                                      key: const Key('register-password-field'),
                                       controller: _registerPasswordController,
                                       obscureText: true,
-                                      decoration: _inputDecoration('Password', Icons.lock_rounded),
+                                      decoration: _inputDecoration(
+                                        'Password',
+                                        Icons.lock_rounded,
+                                      ),
                                       validator: (value) {
                                         final input = value ?? '';
                                         if (input.length < 8) {
@@ -381,17 +526,114 @@ class _AuthScreenState extends State<AuthScreen> {
                                     SizedBox(
                                       width: double.infinity,
                                       child: FilledButton.icon(
-                                        onPressed: _busy ? null : _submitRegister,
+                                        key:
+                                            const Key('register-submit-button'),
+                                        onPressed:
+                                            _busy ? null : _submitRegister,
                                         icon: _busy
                                             ? const SizedBox(
                                                 width: 16,
                                                 height: 16,
-                                                child: CircularProgressIndicator(strokeWidth: 2),
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                ),
                                               )
-                                            : const Icon(Icons.person_add_alt_1_rounded),
+                                            : const Icon(
+                                                Icons.person_add_alt_1_rounded,
+                                              ),
                                         label: const Text('Create Account'),
                                       ),
                                     ),
+                                    if (_showVerificationForm) ...[
+                                      const SizedBox(height: 14),
+                                      TextFormField(
+                                        key: const Key(
+                                          'register-verification-code-field',
+                                        ),
+                                        controller: _verificationCodeController,
+                                        keyboardType: TextInputType.number,
+                                        decoration: _inputDecoration(
+                                          'Verification code',
+                                          Icons.mark_email_read_rounded,
+                                        ),
+                                        maxLength: 6,
+                                        onChanged: (value) {
+                                          final normalized =
+                                              _normalizeVerificationCode(value);
+                                          if (normalized != value) {
+                                            _verificationCodeController.value =
+                                                TextEditingValue(
+                                              text: normalized,
+                                              selection:
+                                                  TextSelection.collapsed(
+                                                offset: normalized.length,
+                                              ),
+                                            );
+                                          }
+                                        },
+                                        validator: (value) {
+                                          if (!_showVerificationForm)
+                                            return null;
+                                          final normalized =
+                                              _normalizeVerificationCode(
+                                            value ?? '',
+                                          );
+                                          if (normalized.isEmpty) {
+                                            return 'Verification code is required.';
+                                          }
+                                          if (normalized.length != 6) {
+                                            return 'Verification code must be 6 digits.';
+                                          }
+                                          return null;
+                                        },
+                                      ),
+                                      const SizedBox(height: 8),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: FilledButton.icon(
+                                          key: const Key(
+                                            'register-verify-button',
+                                          ),
+                                          onPressed: _busy
+                                              ? null
+                                              : _submitVerificationCode,
+                                          icon: _busy
+                                              ? const SizedBox(
+                                                  width: 16,
+                                                  height: 16,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                    strokeWidth: 2,
+                                                  ),
+                                                )
+                                              : const Icon(
+                                                  Icons.verified_rounded,
+                                                ),
+                                          label: const Text(
+                                            'Verify Email and Sign In',
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: OutlinedButton.icon(
+                                          key: const Key(
+                                            'register-resend-button',
+                                          ),
+                                          onPressed: _busy
+                                              ? null
+                                              : _resendVerificationCode,
+                                          icon: const Icon(
+                                            Icons.refresh_rounded,
+                                          ),
+                                          label: const Text(
+                                            'Resend Verification Code',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -403,8 +645,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           Text(
                             _infoMessage,
                             style: TextStyle(
-                              color: _infoMessage.toLowerCase().contains('failed') ||
-                                      _infoMessage.toLowerCase().contains('invalid')
+                              color: _isErrorMessage(_infoMessage)
                                   ? Colors.red
                                   : Colors.green,
                             ),
@@ -443,17 +684,14 @@ class SocialShell extends StatefulWidget {
   State<SocialShell> createState() => _SocialShellState();
 }
 
-enum PanelKind {
-  dashboard,
-  tasks,
-  accounts,
-  executions,
-  analytics,
-  settings,
-}
+enum PanelKind { dashboard, tasks, accounts, executions, analytics, settings }
 
 class PanelSpec {
-  const PanelSpec({required this.kind, required this.label, required this.icon});
+  const PanelSpec({
+    required this.kind,
+    required this.label,
+    required this.icon,
+  });
 
   final PanelKind kind;
   final String label;
@@ -461,22 +699,40 @@ class PanelSpec {
 }
 
 const List<PanelSpec> kPanelSpecs = <PanelSpec>[
-  PanelSpec(kind: PanelKind.dashboard, label: 'Dashboard', icon: Icons.space_dashboard_rounded),
-  PanelSpec(kind: PanelKind.tasks, label: 'Tasks', icon: Icons.task_alt_rounded),
-  PanelSpec(kind: PanelKind.accounts, label: 'Accounts', icon: Icons.groups_rounded),
-  PanelSpec(kind: PanelKind.executions, label: 'Executions', icon: Icons.list_alt_rounded),
-  PanelSpec(kind: PanelKind.analytics, label: 'Analytics', icon: Icons.query_stats_rounded),
-  PanelSpec(kind: PanelKind.settings, label: 'Settings', icon: Icons.settings_rounded),
+  PanelSpec(
+    kind: PanelKind.dashboard,
+    label: 'Dashboard',
+    icon: Icons.space_dashboard_rounded,
+  ),
+  PanelSpec(
+    kind: PanelKind.tasks,
+    label: 'Tasks',
+    icon: Icons.task_alt_rounded,
+  ),
+  PanelSpec(
+    kind: PanelKind.accounts,
+    label: 'Accounts',
+    icon: Icons.groups_rounded,
+  ),
+  PanelSpec(
+    kind: PanelKind.executions,
+    label: 'Executions',
+    icon: Icons.list_alt_rounded,
+  ),
+  PanelSpec(
+    kind: PanelKind.analytics,
+    label: 'Analytics',
+    icon: Icons.query_stats_rounded,
+  ),
+  PanelSpec(
+    kind: PanelKind.settings,
+    label: 'Settings',
+    icon: Icons.settings_rounded,
+  ),
 ];
 
 class _PanelState {
-  _PanelState({
-    this.loading = false,
-    this.data,
-    this.error,
-  });
-
-  bool loading;
+  bool loading = false;
   Map<String, dynamic>? data;
   String? error;
 }
@@ -524,13 +780,22 @@ class _SocialShellState extends State<SocialShell> {
           payload = await widget.api.fetchTasks(widget.accessToken, limit: 60);
           break;
         case PanelKind.accounts:
-          payload = await widget.api.fetchAccounts(widget.accessToken, limit: 60);
+          payload = await widget.api.fetchAccounts(
+            widget.accessToken,
+            limit: 60,
+          );
           break;
         case PanelKind.executions:
-          payload = await widget.api.fetchExecutions(widget.accessToken, limit: 60);
+          payload = await widget.api.fetchExecutions(
+            widget.accessToken,
+            limit: 60,
+          );
           break;
         case PanelKind.analytics:
-          payload = await widget.api.fetchAnalytics(widget.accessToken, limit: 60);
+          payload = await widget.api.fetchAnalytics(
+            widget.accessToken,
+            limit: 60,
+          );
           break;
         case PanelKind.settings:
           payload = await widget.api.fetchProfile(widget.accessToken);
@@ -547,7 +812,8 @@ class _SocialShellState extends State<SocialShell> {
       if (!mounted) return;
       setState(() {
         state.loading = false;
-        state.error = error is ApiException ? error.message : 'Failed to load panel.';
+        state.error =
+            error is ApiException ? error.message : 'Failed to load panel.';
       });
     }
   }
@@ -635,7 +901,11 @@ class _SocialShellState extends State<SocialShell> {
     );
   }
 
-  Widget _buildStatCard({required String title, required String value, required IconData icon}) {
+  Widget _buildStatCard({
+    required String title,
+    required String value,
+    required IconData icon,
+  }) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -647,9 +917,18 @@ class _SocialShellState extends State<SocialShell> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 3),
-                  Text(value, style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -679,7 +958,11 @@ class _SocialShellState extends State<SocialShell> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.error_outline_rounded, size: 42, color: Colors.redAccent),
+                  const Icon(
+                    Icons.error_outline_rounded,
+                    size: 42,
+                    color: Colors.redAccent,
+                  ),
                   const SizedBox(height: 10),
                   Text(panelState.error!, textAlign: TextAlign.center),
                   const SizedBox(height: 12),
@@ -718,7 +1001,9 @@ class _SocialShellState extends State<SocialShell> {
     final stats = data['stats'] is Map<String, dynamic>
         ? data['stats'] as Map<String, dynamic>
         : <String, dynamic>{};
-    final recentTasks = data['recentTasks'] is List ? (data['recentTasks'] as List) : const <dynamic>[];
+    final recentTasks = data['recentTasks'] is List
+        ? (data['recentTasks'] as List)
+        : const <dynamic>[];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -768,7 +1053,10 @@ class _SocialShellState extends State<SocialShell> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Recent Tasks', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const Text(
+                  'Recent Tasks',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 8),
                 if (recentTasks.isEmpty)
                   const Text('No tasks found.')
@@ -793,10 +1081,13 @@ class _SocialShellState extends State<SocialShell> {
   }
 
   Widget _buildTasks(Map<String, dynamic> data) {
-    final tasks = data['tasks'] is List ? (data['tasks'] as List) : const <dynamic>[];
+    final tasks =
+        data['tasks'] is List ? (data['tasks'] as List) : const <dynamic>[];
 
     final filtered = tasks.where((raw) {
-      final item = raw is Map<String, dynamic> ? raw : Map<String, dynamic>.from(raw as Map);
+      final item = raw is Map<String, dynamic>
+          ? raw
+          : Map<String, dynamic>.from(raw as Map);
       if (_tasksQuery.isEmpty) return true;
       final query = _tasksQuery.toLowerCase();
       final name = item['name']?.toString().toLowerCase() ?? '';
@@ -810,7 +1101,10 @@ class _SocialShellState extends State<SocialShell> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Tasks', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const Text(
+              'Tasks',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 10),
             TextField(
               decoration: const InputDecoration(
@@ -838,12 +1132,18 @@ class _SocialShellState extends State<SocialShell> {
                     title: Text(item['name']?.toString() ?? 'Unnamed task'),
                     subtitle: Text(item['description']?.toString() ?? ''),
                     trailing: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.16),
+                        color: statusColor.withValues(alpha: 0.16),
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: Text(statusText, style: TextStyle(color: statusColor)),
+                      child: Text(
+                        statusText,
+                        style: TextStyle(color: statusColor),
+                      ),
                     ),
                   ),
                 );
@@ -855,16 +1155,22 @@ class _SocialShellState extends State<SocialShell> {
   }
 
   Widget _buildAccounts(Map<String, dynamic> data) {
-    final accounts = data['accounts'] is List ? (data['accounts'] as List) : const <dynamic>[];
+    final accounts = data['accounts'] is List
+        ? (data['accounts'] as List)
+        : const <dynamic>[];
 
     final filtered = accounts.where((raw) {
-      final item = raw is Map<String, dynamic> ? raw : Map<String, dynamic>.from(raw as Map);
+      final item = raw is Map<String, dynamic>
+          ? raw
+          : Map<String, dynamic>.from(raw as Map);
       if (_accountsQuery.isEmpty) return true;
       final query = _accountsQuery.toLowerCase();
       final name = item['accountName']?.toString().toLowerCase() ?? '';
       final username = item['accountUsername']?.toString().toLowerCase() ?? '';
       final platform = item['platformId']?.toString().toLowerCase() ?? '';
-      return name.contains(query) || username.contains(query) || platform.contains(query);
+      return name.contains(query) ||
+          username.contains(query) ||
+          platform.contains(query);
     }).toList();
 
     return Card(
@@ -873,7 +1179,10 @@ class _SocialShellState extends State<SocialShell> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Accounts', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const Text(
+              'Accounts',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 10),
             TextField(
               decoration: const InputDecoration(
@@ -881,7 +1190,8 @@ class _SocialShellState extends State<SocialShell> {
                 hintText: 'Search accounts by platform/name/username',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (value) => setState(() => _accountsQuery = value.trim()),
+              onChanged: (value) =>
+                  setState(() => _accountsQuery = value.trim()),
             ),
             const SizedBox(height: 10),
             if (filtered.isEmpty)
@@ -902,7 +1212,9 @@ class _SocialShellState extends State<SocialShell> {
                       '${item['platformId'] ?? 'unknown'} • @${item['accountUsername'] ?? '-'}',
                     ),
                     trailing: Icon(
-                      active ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                      active
+                          ? Icons.check_circle_rounded
+                          : Icons.cancel_rounded,
                       color: active ? Colors.green : Colors.red,
                     ),
                   ),
@@ -915,10 +1227,14 @@ class _SocialShellState extends State<SocialShell> {
   }
 
   Widget _buildExecutions(Map<String, dynamic> data) {
-    final executions = data['executions'] is List ? (data['executions'] as List) : const <dynamic>[];
+    final executions = data['executions'] is List
+        ? (data['executions'] as List)
+        : const <dynamic>[];
 
     final filtered = executions.where((raw) {
-      final item = raw is Map<String, dynamic> ? raw : Map<String, dynamic>.from(raw as Map);
+      final item = raw is Map<String, dynamic>
+          ? raw
+          : Map<String, dynamic>.from(raw as Map);
       if (_executionsQuery.isEmpty) return true;
       final query = _executionsQuery.toLowerCase();
       final taskName = item['taskName']?.toString().toLowerCase() ?? '';
@@ -932,7 +1248,10 @@ class _SocialShellState extends State<SocialShell> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Executions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const Text(
+              'Executions',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 10),
             TextField(
               decoration: const InputDecoration(
@@ -940,7 +1259,8 @@ class _SocialShellState extends State<SocialShell> {
                 hintText: 'Search executions by task or status',
                 border: OutlineInputBorder(),
               ),
-              onChanged: (value) => setState(() => _executionsQuery = value.trim()),
+              onChanged: (value) =>
+                  setState(() => _executionsQuery = value.trim()),
             ),
             const SizedBox(height: 10),
             if (filtered.isEmpty)
@@ -957,15 +1277,23 @@ class _SocialShellState extends State<SocialShell> {
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
                     leading: const Icon(Icons.history_rounded),
-                    title: Text(item['taskName']?.toString() ?? 'Task execution'),
+                    title: Text(
+                      item['taskName']?.toString() ?? 'Task execution',
+                    ),
                     subtitle: Text(item['executedAt']?.toString() ?? ''),
                     trailing: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.16),
+                        color: statusColor.withValues(alpha: 0.16),
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: Text(statusText, style: TextStyle(color: statusColor)),
+                      child: Text(
+                        statusText,
+                        style: TextStyle(color: statusColor),
+                      ),
                     ),
                   ),
                 );
@@ -980,11 +1308,15 @@ class _SocialShellState extends State<SocialShell> {
     final totals = data['totals'] is Map<String, dynamic>
         ? data['totals'] as Map<String, dynamic>
         : <String, dynamic>{};
-    final taskStats = data['taskStats'] is List ? (data['taskStats'] as List) : const <dynamic>[];
+    final taskStats = data['taskStats'] is List
+        ? (data['taskStats'] as List)
+        : const <dynamic>[];
 
     final totalExecutions = (totals['executions'] as num?)?.toDouble() ?? 0;
-    final successfulExecutions = (totals['successfulExecutions'] as num?)?.toDouble() ?? 0;
-    final successRate = totalExecutions > 0 ? successfulExecutions / totalExecutions : 0.0;
+    final successfulExecutions =
+        (totals['successfulExecutions'] as num?)?.toDouble() ?? 0;
+    final successRate =
+        totalExecutions > 0 ? successfulExecutions / totalExecutions : 0.0;
 
     return Column(
       children: [
@@ -1025,7 +1357,10 @@ class _SocialShellState extends State<SocialShell> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Success Rate', style: TextStyle(fontWeight: FontWeight.w700)),
+                const Text(
+                  'Success Rate',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 8),
                 LinearProgressIndicator(value: successRate.clamp(0.0, 1.0)),
                 const SizedBox(height: 6),
@@ -1041,7 +1376,10 @@ class _SocialShellState extends State<SocialShell> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Top Task Stats', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const Text(
+                  'Top Task Stats',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 8),
                 if (taskStats.isEmpty)
                   const Text('No analytics data yet.')
@@ -1050,12 +1388,15 @@ class _SocialShellState extends State<SocialShell> {
                     final item = raw is Map<String, dynamic>
                         ? raw
                         : Map<String, dynamic>.from(raw as Map);
-                    final itemRate = (item['successRate'] as num?)?.toDouble() ?? 0;
+                    final itemRate =
+                        (item['successRate'] as num?)?.toDouble() ?? 0;
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.bar_chart_rounded),
                       title: Text(item['taskName']?.toString() ?? 'Task'),
-                      subtitle: Text('Executions: ${item['totalExecutions'] ?? 0}'),
+                      subtitle: Text(
+                        'Executions: ${item['totalExecutions'] ?? 0}',
+                      ),
                       trailing: Text('${itemRate.toStringAsFixed(1)}%'),
                     );
                   }),
@@ -1078,7 +1419,10 @@ class _SocialShellState extends State<SocialShell> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const Text(
+              'Settings',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 10),
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -1115,7 +1459,9 @@ class _SocialShellState extends State<SocialShell> {
 
   Color _statusColor(String status) {
     final normalized = status.toLowerCase();
-    if (normalized.contains('success') || normalized.contains('active') || normalized.contains('completed')) {
+    if (normalized.contains('success') ||
+        normalized.contains('active') ||
+        normalized.contains('completed')) {
       return Colors.green;
     }
     if (normalized.contains('error') || normalized.contains('failed')) {
@@ -1130,17 +1476,32 @@ class _SocialShellState extends State<SocialShell> {
   Widget _buildCurrentPanel() {
     switch (_currentKind) {
       case PanelKind.dashboard:
-        return _buildPanelFrame(kind: PanelKind.dashboard, builder: _buildDashboard);
+        return _buildPanelFrame(
+          kind: PanelKind.dashboard,
+          builder: _buildDashboard,
+        );
       case PanelKind.tasks:
         return _buildPanelFrame(kind: PanelKind.tasks, builder: _buildTasks);
       case PanelKind.accounts:
-        return _buildPanelFrame(kind: PanelKind.accounts, builder: _buildAccounts);
+        return _buildPanelFrame(
+          kind: PanelKind.accounts,
+          builder: _buildAccounts,
+        );
       case PanelKind.executions:
-        return _buildPanelFrame(kind: PanelKind.executions, builder: _buildExecutions);
+        return _buildPanelFrame(
+          kind: PanelKind.executions,
+          builder: _buildExecutions,
+        );
       case PanelKind.analytics:
-        return _buildPanelFrame(kind: PanelKind.analytics, builder: _buildAnalytics);
+        return _buildPanelFrame(
+          kind: PanelKind.analytics,
+          builder: _buildAnalytics,
+        );
       case PanelKind.settings:
-        return _buildPanelFrame(kind: PanelKind.settings, builder: _buildSettings);
+        return _buildPanelFrame(
+          kind: PanelKind.settings,
+          builder: _buildSettings,
+        );
     }
   }
 
@@ -1209,9 +1570,12 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  ApiClient({required this.baseUri});
+  ApiClient({required this.baseUri, http.Client? httpClient})
+      : _httpClient = httpClient ?? http.Client();
 
   final Uri baseUri;
+  final http.Client _httpClient;
+  static const Duration _requestTimeout = Duration(seconds: 20);
 
   Uri _resolve(String path, [Map<String, String>? query]) {
     final target = AppConfig.resolvePath(path);
@@ -1236,15 +1600,48 @@ class ApiClient {
     }
 
     late final http.Response response;
-
-    if (method == 'GET') {
-      response = await http.get(uri, headers: headers);
-    } else if (method == 'POST') {
-      response = await http.post(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{}));
-    } else if (method == 'PATCH') {
-      response = await http.patch(uri, headers: headers, body: jsonEncode(body ?? <String, dynamic>{}));
-    } else {
-      throw const ApiException('Unsupported request method');
+    try {
+      if (method == 'GET') {
+        response = await _httpClient
+            .get(uri, headers: headers)
+            .timeout(_requestTimeout);
+      } else if (method == 'POST') {
+        response = await _httpClient
+            .post(
+              uri,
+              headers: headers,
+              body: jsonEncode(body ?? <String, dynamic>{}),
+            )
+            .timeout(_requestTimeout);
+      } else if (method == 'PATCH') {
+        response = await _httpClient
+            .patch(
+              uri,
+              headers: headers,
+              body: jsonEncode(body ?? <String, dynamic>{}),
+            )
+            .timeout(_requestTimeout);
+      } else {
+        throw const ApiException('Unsupported request method');
+      }
+    } catch (error) {
+      final raw = error.toString().toLowerCase();
+      if (raw.contains('timed out')) {
+        throw const ApiException(
+          'Request timed out. Please check your server and network.',
+        );
+      }
+      if (raw.contains('socketexception') ||
+          raw.contains('failed host lookup') ||
+          raw.contains('connection refused') ||
+          raw.contains('clientexception')) {
+        throw ApiException(
+          'Unable to reach ${baseUri.toString()}. '
+          'If testing on Android emulator locally, use APP_URL or 10.0.2.2.',
+        );
+      }
+      if (error is ApiException) rethrow;
+      throw ApiException('Network request failed: $error');
     }
 
     Map<String, dynamic> decoded = <String, dynamic>{};
@@ -1260,21 +1657,22 @@ class ApiClient {
     }
 
     if (response.statusCode >= 400 || decoded['success'] == false) {
-      final message = decoded['error']?.toString() ?? 'Request failed (${response.statusCode}).';
+      final message = decoded['error']?.toString() ??
+          'Request failed (${response.statusCode}).';
       throw ApiException(message, statusCode: response.statusCode);
     }
 
     return decoded;
   }
 
-  Future<AuthSession> login({required String email, required String password}) async {
+  Future<AuthSession> login({
+    required String email,
+    required String password,
+  }) async {
     final payload = await _request(
       method: 'POST',
       path: '/api/mobile/login',
-      body: <String, dynamic>{
-        'email': email,
-        'password': password,
-      },
+      body: <String, dynamic>{'email': email, 'password': password},
     );
 
     final user = payload['user'] is Map<String, dynamic>
@@ -1317,6 +1715,28 @@ class ApiClient {
         : <String, dynamic>{};
 
     return user;
+  }
+
+  Future<Map<String, dynamic>> verifyEmail({
+    required String email,
+    required String code,
+  }) {
+    return _request(
+      method: 'POST',
+      path: '/api/auth/verify-email',
+      body: <String, dynamic>{
+        'email': email.toLowerCase().trim(),
+        'code': code.trim(),
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> resendVerification({required String email}) {
+    return _request(
+      method: 'POST',
+      path: '/api/auth/resend-verification',
+      body: <String, dynamic>{'email': email.toLowerCase().trim()},
+    );
   }
 
   Future<Map<String, dynamic>> fetchDashboard(String token) {
