@@ -46,7 +46,7 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=apk_builder /src/app/build/app/outputs/flutter-apk/app-release.apk ./public/app-release.apk
 COPY --from=apk_builder /src/app/build/web ./public/flutter-web
-RUN pnpm build
+RUN --mount=type=cache,id=next-cache,target=/app/.next/cache pnpm build
 RUN pnpm prune --prod
 
 FROM node:20-bookworm-slim AS runner
@@ -71,15 +71,13 @@ RUN groupadd --system --gid 1001 nodejs \
 RUN mkdir -p /home/nextjs/.cache \
   && chown -R nextjs:nodejs /home/nextjs
 
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/next.config.mjs ./next.config.mjs
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/bin ./bin
-
-RUN chmod +x /app/bin/yt-dlp /app/bin/ffmpeg || true \
-  && chown -R nextjs:nodejs /app
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=nextjs:nodejs /app/next.config.mjs ./next.config.mjs
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nextjs:nodejs --chmod=0755 /app/bin/yt-dlp ./bin/yt-dlp
+COPY --from=builder --chown=nextjs:nodejs --chmod=0755 /app/bin/ffmpeg ./bin/ffmpeg
 
 USER nextjs
 
