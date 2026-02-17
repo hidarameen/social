@@ -74,15 +74,16 @@ COPY lib ./lib
 COPY styles ./styles
 COPY public ./public
 COPY db ./db
-COPY platforms ./platforms
-COPY scripts ./scripts
-COPY types ./types
-COPY bin ./bin
-COPY attached_assets ./attached_assets
-COPY twitter_cookies.txt ./twitter_cookies.txt
-ENV NEXT_TELEMETRY_DISABLED=1
-RUN --mount=type=cache,id=next-cache,target=/app/.next/cache pnpm build
-RUN pnpm prune --prod
+ COPY platforms ./platforms
+ COPY scripts ./scripts
+ COPY types ./types
+ COPY bin ./bin
+ # attached_assets is optional (can be absent in some build contexts). Keep the path in the image.
+ RUN mkdir -p attached_assets
+ COPY twitter_cookies.txt ./twitter_cookies.txt
+ ENV NEXT_TELEMETRY_DISABLED=1
+ RUN --mount=type=cache,id=next-cache,target=/app/.next/cache pnpm build
+ RUN pnpm prune --prod
 
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
