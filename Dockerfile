@@ -30,7 +30,18 @@ COPY flutter_app/pubspec.yaml ./pubspec.yaml
 COPY flutter_app/analysis_options.yaml ./analysis_options.yaml
 COPY flutter_app/lib ./lib
 COPY flutter_app/android/app/src/main/AndroidManifest.xml ./android/app/src/main/AndroidManifest.xml
-RUN pkg="${ANDROID_PACKAGE:-${ANDROID_ORG}.app}" && sed -i "s|__PACKAGE__|${pkg}|g" android/app/src/main/AndroidManifest.xml
+RUN pkg="${ANDROID_PACKAGE:-${ANDROID_ORG}.app}" \
+  && sed -i "s|__PACKAGE__|${pkg}|g" android/app/src/main/AndroidManifest.xml \
+  # AGP 8+ requires android.namespace. If the generated template lacks it, add it.
+  && for f in android/app/build.gradle android/app/build.gradle.kts; do \
+       if [ -f "$f" ] && ! grep -qE '^[[:space:]]*namespace[[:space:]]+' "$f"; then \
+         if echo "$f" | grep -q '\\.kts$'; then \
+           sed -i "0,/^android[[:space:]]*{[[:space:]]*$/s//android {\\n    namespace = \\\"${pkg}\\\"/" "$f"; \
+         else \
+           sed -i "0,/^android[[:space:]]*{[[:space:]]*$/s//android {\\n    namespace \\\"${pkg}\\\"/" "$f"; \
+         fi; \
+       fi; \
+     done
 
 RUN --mount=type=cache,id=flutter-pub-cache,target=/root/.pub-cache flutter pub get
 RUN test -n "${APP_URL}"
@@ -45,10 +56,20 @@ RUN (cd android && ./gradlew --stop || true) && rm -rf /root/.gradle /src/app/.g
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY package.json pnpm-lock.yaml next.config.mjs tsconfig.json postcss.config.mjs middleware.ts instrumentation.ts next-env.d.ts components.json ./
+COPY app ./app
+COPY components ./components
+COPY lib ./lib
+COPY styles ./styles
+COPY public ./public
+COPY db ./db
+COPY platforms ./platforms
+COPY scripts ./scripts
+COPY types ./types
+COPY bin ./bin
+COPY attached_assets ./attached_assets
+COPY twitter_cookies.txt ./twitter_cookies.txt
 ENV NEXT_TELEMETRY_DISABLED=1
-COPY --from=apk_builder /src/app/build/app/outputs/flutter-apk/app-release.apk ./public/app-release.apk
-COPY --from=apk_builder /src/app/build/web ./public/flutter-web
 RUN --mount=type=cache,id=next-cache,target=/app/.next/cache pnpm build
 RUN pnpm prune --prod
 
@@ -81,6 +102,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs --chmod=0755 /app/bin/yt-dlp ./bin/yt-dlp
 COPY --from=builder --chown=nextjs:nodejs --chmod=0755 /app/bin/ffmpeg ./bin/ffmpeg
+COPY --from=apk_builder --chown=nextjs:nodejs /src/app/build/app/outputs/flutter-apk/app-release.apk ./public/app-release.apk
+COPY --from=apk_builder --chown=nextjs:nodejs /src/app/build/web ./public/flutter-web
 
 USER nextjs
 

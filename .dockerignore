@@ -10,6 +10,7 @@ node_modules
 tmp
 *.log
 *.pid
+package-lock.json
 .env
 .env.local
 .env.*.local
