@@ -32,3 +32,7 @@ next-env.d.ts
 flutter_app/.dart_tool/
 flutter_app/build/
 flutter_app/.flutter-plugins-dependencies
+
+# firebase
+firebase-debug.log
+flutter_app/firebase-debug.log

@@ -68,7 +68,6 @@ class _StateLoaderState extends State<_StateLoader> {
     final darkScheme = ColorScheme.fromSeed(
       seedColor: const Color(0xFF0D1422),
       brightness: Brightness.dark,
-      surface: const Color(0xFF0F162A),
     );
 
     return AnimatedBuilder(
@@ -92,6 +91,8 @@ class _StateLoaderState extends State<_StateLoader> {
           darkTheme: ThemeData(
             useMaterial3: true,
             colorScheme: darkScheme,
+            scaffoldBackgroundColor: const Color(0xFF0F162A),
+            canvasColor: const Color(0xFF0F162A),
             fontFamily: 'Tajawal',
             inputDecorationTheme: InputDecorationTheme(
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
@@ -918,6 +919,11 @@ class _PanelState {
 class _SocialShellState extends State<SocialShell> {
   int _selectedIndex = 0;
   String _tasksQuery = '';
+  String _tasksStatusFilter = 'all';
+  String _tasksSortBy = 'createdAt';
+  String _tasksSortDir = 'desc';
+  bool _tasksLoadingMore = false;
+  Timer? _tasksDebounceTimer;
   String _accountsQuery = '';
   String _executionsQuery = '';
   final Map<String, String> _taskActionState = <String, String>{};
@@ -945,6 +951,7 @@ class _SocialShellState extends State<SocialShell> {
   @override
   void dispose() {
     _dashboardRefreshTimer?.cancel();
+    _tasksDebounceTimer?.cancel();
     super.dispose();
   }
 
@@ -972,7 +979,15 @@ class _SocialShellState extends State<SocialShell> {
           payload = await widget.api.fetchDashboard(widget.accessToken);
           break;
         case PanelKind.tasks:
-          payload = await widget.api.fetchTasks(widget.accessToken, limit: 60);
+          payload = await widget.api.fetchTasks(
+            widget.accessToken,
+            limit: 50,
+            offset: 0,
+            search: _tasksQuery,
+            status: _tasksStatusFilter == 'all' ? null : _tasksStatusFilter,
+            sortBy: _tasksSortBy,
+            sortDir: _tasksSortDir,
+          );
           break;
         case PanelKind.accounts:
           payload = await widget.api.fetchAccounts(
@@ -1034,6 +1049,93 @@ class _SocialShellState extends State<SocialShell> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  static const int _kTasksPageSize = 50;
+
+  int _readInt(dynamic value, {int fallback = 0}) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? fallback;
+  }
+
+  Future<void> _reloadTasks() async {
+    await _loadTasksPage(reset: true, showPanelLoading: true);
+  }
+
+  Future<void> _loadMoreTasks() async {
+    if (_tasksLoadingMore) return;
+    final state = _panelStates[PanelKind.tasks]!;
+    final data = state.data ?? <String, dynamic>{};
+    if (data['hasMore'] != true) return;
+
+    setState(() => _tasksLoadingMore = true);
+    try {
+      await _loadTasksPage(reset: false, showPanelLoading: false);
+    } finally {
+      if (mounted) setState(() => _tasksLoadingMore = false);
+    }
+  }
+
+  Future<void> _loadTasksPage({
+    required bool reset,
+    required bool showPanelLoading,
+  }) async {
+    final state = _panelStates[PanelKind.tasks]!;
+    final currentData = state.data;
+    final currentTasks = currentData?['tasks'] is List
+        ? (currentData!['tasks'] as List)
+        : const <dynamic>[];
+    final currentOffset = _readInt(currentData?['nextOffset'], fallback: 0);
+    final offset = reset ? 0 : currentOffset;
+
+    if (showPanelLoading) {
+      setState(() {
+        state.loading = true;
+        state.error = null;
+      });
+    }
+
+    try {
+      final payload = await widget.api.fetchTasks(
+        widget.accessToken,
+        limit: _kTasksPageSize,
+        offset: offset,
+        search: _tasksQuery,
+        status: _tasksStatusFilter == 'all' ? null : _tasksStatusFilter,
+        sortBy: _tasksSortBy,
+        sortDir: _tasksSortDir,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        state.loading = false;
+        state.error = null;
+        if (reset || currentData == null) {
+          state.data = payload;
+          return;
+        }
+
+        final nextTasksRaw =
+            payload['tasks'] is List ? (payload['tasks'] as List) : const <dynamic>[];
+        final mergedTasks = <dynamic>[
+          ...currentTasks,
+          ...nextTasksRaw,
+        ];
+
+        final merged = Map<String, dynamic>.from(payload);
+        merged['tasks'] = mergedTasks;
+        state.data = merged;
+      });
+    } catch (error) {
+      final message =
+          error is ApiException ? error.message : 'Failed to load tasks.';
+      if (!mounted) return;
+      setState(() {
+        state.loading = false;
+        state.error = message;
+      });
+      _toast(message);
+    }
   }
 
   Future<void> _openCreateTaskSheet() async {
@@ -1378,7 +1480,7 @@ class _SocialShellState extends State<SocialShell> {
       final colorScheme = Theme.of(context).colorScheme;
       return Card(
         elevation: 0,
-        color: colorScheme.surfaceContainerHighest.withAlpha((0.55 * 255).round()),
+        color: colorScheme.surface.withAlpha((0.55 * 255).round()),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -1421,8 +1523,8 @@ class _SocialShellState extends State<SocialShell> {
                   if (hasAuthWarnings)
                     pill(
                       i18n.t('dashboard.kpi.oauthAttention', 'OAuth attention needed'),
-                      bg: colorScheme.tertiary.withAlpha((0.18 * 255).round()),
-                      fg: colorScheme.tertiary,
+                      bg: Colors.orange.shade700.withAlpha((0.18 * 255).round()),
+                      fg: Colors.orange.shade700,
                       icon: Icons.shield_rounded,
                     ),
                 ],
@@ -1475,7 +1577,7 @@ class _SocialShellState extends State<SocialShell> {
       final scheme = Theme.of(context).colorScheme;
       if (normalized == 'active') return scheme.primary;
       if (normalized == 'paused') return scheme.secondary;
-      if (normalized == 'completed') return scheme.tertiary;
+      if (normalized == 'completed') return Colors.green.shade700;
       return scheme.error;
     }
 
@@ -1537,7 +1639,7 @@ class _SocialShellState extends State<SocialShell> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           border: Border.all(
-            color: Theme.of(context).colorScheme.outlineVariant,
+            color: Theme.of(context).colorScheme.onSurface.withAlpha((0.12 * 255).round()),
           ),
           borderRadius: BorderRadius.circular(999),
         ),
@@ -1689,9 +1791,9 @@ class _SocialShellState extends State<SocialShell> {
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: scheme.surfaceContainerHighest.withAlpha((0.45 * 255).round()),
+                      color: scheme.surface.withAlpha((0.45 * 255).round()),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: scheme.outlineVariant),
+                      border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1771,7 +1873,7 @@ class _SocialShellState extends State<SocialShell> {
                           decoration: BoxDecoration(
                             color: scheme.surface.withAlpha((0.55 * 255).round()),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: scheme.outlineVariant),
+                            border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
                           ),
                           child: Wrap(
                             spacing: 8,
@@ -1831,8 +1933,8 @@ class _SocialShellState extends State<SocialShell> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: scheme.outlineVariant),
-                  color: scheme.surfaceContainerHighest.withAlpha((0.40 * 255).round()),
+                  border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
+                  color: scheme.surface.withAlpha((0.40 * 255).round()),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1849,7 +1951,7 @@ class _SocialShellState extends State<SocialShell> {
                         pill('Active ${td('active')}', fg: scheme.primary),
                         pill('Paused ${td('paused')}', fg: scheme.secondary, bg: scheme.secondary.withAlpha((0.16 * 255).round())),
                         pill('Errors ${td('error')}', fg: scheme.error, bg: scheme.error.withAlpha((0.12 * 255).round())),
-                        pill('Done ${td('completed')}', fg: scheme.tertiary, bg: scheme.tertiary.withAlpha((0.14 * 255).round())),
+                        pill('Done ${td('completed')}', fg: Colors.green.shade700, bg: Colors.green.shade700.withAlpha((0.14 * 255).round())),
                       ],
                     ),
                   ],
@@ -1860,8 +1962,8 @@ class _SocialShellState extends State<SocialShell> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: scheme.outlineVariant),
-                  color: scheme.surfaceContainerHighest.withAlpha((0.40 * 255).round()),
+                  border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
+                  color: scheme.surface.withAlpha((0.40 * 255).round()),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1900,8 +2002,8 @@ class _SocialShellState extends State<SocialShell> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: scheme.outlineVariant),
-                  color: scheme.surfaceContainerHighest.withAlpha((0.40 * 255).round()),
+                  border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
+                  color: scheme.surface.withAlpha((0.40 * 255).round()),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1960,17 +2062,17 @@ class _SocialShellState extends State<SocialShell> {
                   final content = (execution['originalContent']?.toString() ?? '').trim();
                   final preview = content.isEmpty ? 'No text content' : content;
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: scheme.outlineVariant),
-                      color: scheme.surfaceContainerHighest.withAlpha((0.40 * 255).round()),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
+                        color: scheme.surface.withAlpha((0.40 * 255).round()),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                         Row(
                           children: [
                             Expanded(
@@ -2052,17 +2154,17 @@ class _SocialShellState extends State<SocialShell> {
                           ? scheme.secondary
                           : scheme.error;
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: scheme.outlineVariant),
-                      color: scheme.surfaceContainerHighest.withAlpha((0.40 * 255).round()),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
+                        color: scheme.surface.withAlpha((0.40 * 255).round()),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                         Row(
                           children: [
                             Expanded(
@@ -2868,17 +2970,17 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
               const SizedBox(height: 8),
               if (_error.trim().isNotEmpty)
                 Card(
-                  color: scheme.errorContainer,
+                  color: scheme.error.withAlpha((0.12 * 255).round()),
                   child: Padding(
                     padding: const EdgeInsets.all(12),
                     child: Row(
                       children: [
-                        Icon(Icons.error_outline_rounded, color: scheme.onErrorContainer),
+                        Icon(Icons.error_outline_rounded, color: scheme.error),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             _error,
-                            style: TextStyle(color: scheme.onErrorContainer, fontWeight: FontWeight.w700),
+                            style: TextStyle(color: scheme.error, fontWeight: FontWeight.w700),
                           ),
                         ),
                       ],

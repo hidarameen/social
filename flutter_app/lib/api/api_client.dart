@@ -269,12 +269,37 @@ class ApiClient {
     );
   }
 
-  Future<Map<String, dynamic>> fetchTasks(String token, {int limit = 30}) {
+  Future<Map<String, dynamic>> fetchTasks(
+    String token, {
+    int limit = 50,
+    int offset = 0,
+    String? search,
+    String? status,
+    String sortBy = 'createdAt',
+    String sortDir = 'desc',
+  }) {
+    final query = <String, String>{
+      'limit': '$limit',
+      'offset': '$offset',
+      'sortBy': sortBy,
+      'sortDir': sortDir,
+    };
+
+    final normalizedSearch = (search ?? '').trim();
+    if (normalizedSearch.isNotEmpty) {
+      query['search'] = normalizedSearch;
+    }
+
+    final normalizedStatus = (status ?? '').trim();
+    if (normalizedStatus.isNotEmpty) {
+      query['status'] = normalizedStatus;
+    }
+
     return _request(
       method: 'GET',
       path: '/api/tasks',
       token: token,
-      query: {'limit': '$limit'},
+      query: query,
     );
   }
 
