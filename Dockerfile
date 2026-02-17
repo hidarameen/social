@@ -25,6 +25,16 @@ RUN if [ -f android/gradle.properties ]; then \
       printf '\norg.gradle.daemon=false\norg.gradle.parallel=false\norg.gradle.caching=false\n' >> android/gradle.properties; \
     fi
 
+# Ensure the generated Android app can make network requests in release builds.
+# Some Flutter templates/environments may not include INTERNET permission by default.
+RUN if [ -f android/app/src/main/AndroidManifest.xml ]; then \
+      if ! grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml; then \
+        awk 'BEGIN{done=0} {print $0; if(!done && $0 ~ /<manifest/){print \"    <uses-permission android:name=\\\"android.permission.INTERNET\\\"/>\"; done=1}}' \
+          android/app/src/main/AndroidManifest.xml > /tmp/AndroidManifest.xml && \
+        mv /tmp/AndroidManifest.xml android/app/src/main/AndroidManifest.xml; \
+      fi; \
+    fi
+
 COPY flutter_app/pubspec.yaml ./pubspec.yaml
 COPY flutter_app/analysis_options.yaml ./analysis_options.yaml
 COPY flutter_app/lib ./lib

@@ -1634,10 +1634,19 @@ class ApiClient {
       if (raw.contains('socketexception') ||
           raw.contains('failed host lookup') ||
           raw.contains('connection refused') ||
-          raw.contains('clientexception')) {
+          raw.contains('clientexception') ||
+          raw.contains('handshake') ||
+          raw.contains('certificate') ||
+          raw.contains('permission denied') ||
+          raw.contains('operation not permitted')) {
+        final permissionHint = (raw.contains('permission denied') ||
+                raw.contains('operation not permitted'))
+            ? ' Android may be blocking network access (missing INTERNET permission).'
+            : '';
         throw ApiException(
           'Unable to reach ${baseUri.toString()}. '
-          'If testing on Android emulator locally, use APP_URL or 10.0.2.2.',
+          'If testing on Android emulator locally, use APP_URL or 10.0.2.2.'
+          '$permissionHint',
         );
       }
       if (error is ApiException) rethrow;
