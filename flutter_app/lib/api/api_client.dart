@@ -81,6 +81,10 @@ class ApiClient {
               body: jsonEncode(body ?? <String, dynamic>{}),
             )
             .timeout(_requestTimeout);
+      } else if (method == 'DELETE') {
+        response = await _httpClient
+            .delete(uri, headers: headers)
+            .timeout(_requestTimeout);
       } else {
         throw const ApiException('Unsupported request method');
       }
@@ -114,9 +118,18 @@ class ApiClient {
     }
 
     Map<String, dynamic> decoded = <String, dynamic>{};
-    if (response.body.trim().isNotEmpty) {
+    final bodyText = (() {
       try {
-        final raw = jsonDecode(response.body);
+        // Force UTF-8 decoding regardless of server headers to avoid garbled Arabic text.
+        return utf8.decode(response.bodyBytes);
+      } catch (_) {
+        return response.body;
+      }
+    })();
+
+    if (bodyText.trim().isNotEmpty) {
+      try {
+        final raw = jsonDecode(bodyText);
         if (raw is Map<String, dynamic>) {
           decoded = raw;
         }
@@ -247,8 +260,13 @@ class ApiClient {
     );
   }
 
-  Future<Map<String, dynamic>> fetchDashboard(String token) {
-    return _request(method: 'GET', path: '/api/dashboard', token: token);
+  Future<Map<String, dynamic>> fetchDashboard(String token, {int limit = 12}) {
+    return _request(
+      method: 'GET',
+      path: '/api/dashboard',
+      token: token,
+      query: {'limit': '$limit'},
+    );
   }
 
   Future<Map<String, dynamic>> fetchTasks(String token, {int limit = 30}) {
@@ -290,5 +308,45 @@ class ApiClient {
   Future<Map<String, dynamic>> fetchProfile(String token) {
     return _request(method: 'GET', path: '/api/profile', token: token);
   }
-}
 
+  Future<Map<String, dynamic>> createTask(
+    String token, {
+    required Map<String, dynamic> body,
+  }) {
+    return _request(
+      method: 'POST',
+      path: '/api/tasks',
+      token: token,
+      body: body,
+    );
+  }
+
+  Future<Map<String, dynamic>> updateTask(
+    String token,
+    String taskId, {
+    required Map<String, dynamic> body,
+  }) {
+    return _request(
+      method: 'PATCH',
+      path: '/api/tasks/$taskId',
+      token: token,
+      body: body,
+    );
+  }
+
+  Future<Map<String, dynamic>> runTask(String token, String taskId) {
+    return _request(
+      method: 'POST',
+      path: '/api/tasks/$taskId/run',
+      token: token,
+    );
+  }
+
+  Future<Map<String, dynamic>> deleteTask(String token, String taskId) {
+    return _request(
+      method: 'DELETE',
+      path: '/api/tasks/$taskId',
+      token: token,
+    );
+  }
+}
