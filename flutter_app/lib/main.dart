@@ -1137,7 +1137,7 @@ class _SocialShellState extends State<SocialShell> {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.16),
+                        color: statusColor.withAlpha((0.16 * 255).round()),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
@@ -1287,7 +1287,7 @@ class _SocialShellState extends State<SocialShell> {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.16),
+                        color: statusColor.withAlpha((0.16 * 255).round()),
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
