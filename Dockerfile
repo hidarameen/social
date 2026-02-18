@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
+ARG APK_STAGE=apk_builder
+
 FROM node:20-bookworm-slim AS base
 # Avoid Corepack signature/key issues in CI by pinning pnpm explicitly.
 RUN npm i -g pnpm@9.15.9 --no-fund --no-audit
@@ -72,7 +74,6 @@ RUN mkdir -p build/app/outputs/flutter-apk build/web \
   && printf '%s\n' 'APK build disabled for this image.' > build/app/outputs/flutter-apk/app-release.apk
 
 # Select which stage provides APK + Flutter web artifacts.
-ARG APK_STAGE=apk_builder
 FROM ${APK_STAGE} AS apk_artifacts
 
 FROM base AS builder
