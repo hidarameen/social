@@ -7,7 +7,7 @@ RUN npm i -g pnpm@9.15.9 --no-fund --no-audit
 FROM base AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml ./
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 # cirrusci/flutter is no longer updated (stable is stuck on Flutter 3.7.x).
 # Use the maintained Cirrus Labs image from GHCR and pin for reproducible builds.
@@ -16,7 +16,7 @@ ARG ANDROID_ORG=com.socialflow.app
 ARG ANDROID_PACKAGE
 ARG APP_URL
 ENV CI=true
-ENV GRADLE_USER_HOME=/tmp/nf-gradle
+ENV GRADLE_USER_HOME=/tmp/gradle
 ENV GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.parallel=false -Dorg.gradle.caching=false"
 
 WORKDIR /src
@@ -47,19 +47,17 @@ RUN pkg="${ANDROID_PACKAGE:-${ANDROID_ORG}.app}" \
        fi; \
      done
 
-RUN --mount=type=cache,id=flutter-pub-cache,target=/root/.pub-cache flutter pub get
+# Intentionally avoid BuildKit cache mounts here. Northflank builds can fail if
+# a persistent cache becomes full/corrupted (ENOSPC/unzip failures).
+RUN flutter pub get
 RUN if [ -z "${APP_URL:-}" ]; then \
       echo >&2 "ERROR: Missing required build arg APP_URL."; \
       echo >&2 "Northflank: set APP_URL under Build settings -> Build arguments (not only runtime Environment)."; \
       exit 1; \
     fi
 # NOTE: cache IDs are versioned to avoid reusing corrupted Gradle wrapper distributions in CI.
-RUN --mount=type=cache,id=flutter-gradle-cache-v2,target=/tmp/nf-gradle \
-  --mount=type=cache,id=flutter-pub-cache,target=/root/.pub-cache \
-  flutter build apk --release --dart-define=APP_URL="${APP_URL}"
-RUN --mount=type=cache,id=flutter-gradle-cache-v2,target=/tmp/nf-gradle \
-  --mount=type=cache,id=flutter-pub-cache,target=/root/.pub-cache \
-  flutter build web --release --dart-define=APP_URL="${APP_URL}"
+RUN flutter build apk --release --dart-define=APP_URL="${APP_URL}"
+RUN flutter build web --release --dart-define=APP_URL="${APP_URL}"
 RUN (cd android && ./gradlew --stop || true) && rm -rf /root/.gradle /src/app/.gradle || true
 
 FROM base AS builder
