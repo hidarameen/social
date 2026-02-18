@@ -852,12 +852,16 @@ class PanelSpec {
     required this.kind,
     required this.labelKey,
     required this.fallbackLabel,
+    required this.captionKey,
+    required this.fallbackCaption,
     required this.icon,
   });
 
   final PanelKind kind;
   final String labelKey;
   final String fallbackLabel;
+  final String captionKey;
+  final String fallbackCaption;
   final IconData icon;
 }
 
@@ -866,36 +870,48 @@ const List<PanelSpec> kPanelSpecs = <PanelSpec>[
     kind: PanelKind.dashboard,
     labelKey: 'nav.dashboard',
     fallbackLabel: 'Dashboard',
+    captionKey: 'nav.dashboard.caption',
+    fallbackCaption: 'Live KPIs, health, and quick actions.',
     icon: Icons.space_dashboard_rounded,
   ),
   PanelSpec(
     kind: PanelKind.tasks,
     labelKey: 'nav.tasks',
     fallbackLabel: 'Tasks',
+    captionKey: 'nav.tasks.caption',
+    fallbackCaption: 'Automations, filters, and bulk actions.',
     icon: Icons.task_alt_rounded,
   ),
   PanelSpec(
     kind: PanelKind.accounts,
     labelKey: 'nav.accounts',
     fallbackLabel: 'Accounts',
+    captionKey: 'nav.accounts.caption',
+    fallbackCaption: 'Connections, platforms, and auth health.',
     icon: Icons.groups_rounded,
   ),
   PanelSpec(
     kind: PanelKind.executions,
     labelKey: 'nav.executions',
     fallbackLabel: 'Executions',
+    captionKey: 'nav.executions.caption',
+    fallbackCaption: 'Runs, failures, and diagnostics.',
     icon: Icons.list_alt_rounded,
   ),
   PanelSpec(
     kind: PanelKind.analytics,
     labelKey: 'nav.analytics',
     fallbackLabel: 'Analytics',
+    captionKey: 'nav.analytics.caption',
+    fallbackCaption: 'Performance insights and exports.',
     icon: Icons.query_stats_rounded,
   ),
   PanelSpec(
     kind: PanelKind.settings,
     labelKey: 'nav.settings',
     fallbackLabel: 'Settings',
+    captionKey: 'nav.settings.caption',
+    fallbackCaption: 'Profile, theme, credentials, and privacy.',
     icon: Icons.settings_rounded,
   ),
 ];
@@ -920,6 +936,14 @@ class _SocialShellState extends State<SocialShell> {
   final TextEditingController _tasksSearchController = TextEditingController();
   String _accountsQuery = '';
   String _executionsQuery = '';
+  String _analyticsQuery = '';
+  String _analyticsSortBy = 'successRate';
+  String _analyticsSortDir = 'desc';
+  int _analyticsOffset = 0;
+  bool _analyticsHasMore = false;
+  bool _analyticsLoadingMore = false;
+  Timer? _analyticsDebounceTimer;
+  final TextEditingController _analyticsSearchController = TextEditingController();
   final Map<String, String> _taskActionState = <String, String>{};
   Timer? _dashboardRefreshTimer;
 
@@ -952,6 +976,7 @@ class _SocialShellState extends State<SocialShell> {
   void initState() {
     super.initState();
     _tasksSearchController.text = _tasksQuery;
+    _analyticsSearchController.text = _analyticsQuery;
     unawaited(_loadCurrentPanel(force: true));
 
     _dashboardRefreshTimer = Timer.periodic(
@@ -968,7 +993,9 @@ class _SocialShellState extends State<SocialShell> {
   void dispose() {
     _dashboardRefreshTimer?.cancel();
     _tasksDebounceTimer?.cancel();
+    _analyticsDebounceTimer?.cancel();
     _tasksSearchController.dispose();
+    _analyticsSearchController.dispose();
     _settingsNameController.dispose();
     _settingsImageUrlController.dispose();
     _settingsCurrentPasswordController.dispose();
@@ -1029,7 +1056,11 @@ class _SocialShellState extends State<SocialShell> {
         case PanelKind.analytics:
           payload = await widget.api.fetchAnalytics(
             widget.accessToken,
-            limit: 60,
+            limit: 50,
+            offset: 0,
+            search: _analyticsQuery,
+            sortBy: _analyticsSortBy,
+            sortDir: _analyticsSortDir,
           );
           break;
         case PanelKind.settings:
@@ -1043,6 +1074,10 @@ class _SocialShellState extends State<SocialShell> {
         state.loading = false;
         state.data = payload;
         state.error = null;
+        if (kind == PanelKind.analytics) {
+          _analyticsOffset = _readInt(payload['nextOffset'], fallback: 0);
+          _analyticsHasMore = payload['hasMore'] == true;
+        }
       });
     } catch (error) {
       if (!mounted) return;
@@ -1371,6 +1406,60 @@ class _SocialShellState extends State<SocialShell> {
     }
   }
 
+  Future<void> _loadMoreAnalytics() async {
+    if (_analyticsLoadingMore) return;
+    if (!_analyticsHasMore) return;
+    final state = _panelStates[PanelKind.analytics]!;
+    final current = state.data ?? <String, dynamic>{};
+    if (current['hasMore'] != true && _analyticsHasMore == false) return;
+
+    setState(() => _analyticsLoadingMore = true);
+    try {
+      final payload = await widget.api.fetchAnalytics(
+        widget.accessToken,
+        limit: 50,
+        offset: _analyticsOffset,
+        search: _analyticsQuery,
+        sortBy: _analyticsSortBy,
+        sortDir: _analyticsSortDir,
+      );
+
+      final prevList = current['taskStats'];
+      final prev = prevList is List ? prevList : const <dynamic>[];
+      final nextList = payload['taskStats'] is List ? (payload['taskStats'] as List) : const <dynamic>[];
+
+      final merged = <dynamic>[...prev, ...nextList];
+      final mergedPayload = <String, dynamic>{
+        ...payload,
+        'taskStats': merged,
+      };
+
+      if (!mounted) return;
+      setState(() {
+        state.data = mergedPayload;
+        _analyticsOffset = _readInt(payload['nextOffset'], fallback: merged.length);
+        _analyticsHasMore = payload['hasMore'] == true;
+        _analyticsLoadingMore = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _analyticsLoadingMore = false);
+      final message = error is ApiException ? error.message : 'Failed to load analytics.';
+      _toast(message);
+    }
+  }
+
+  void _onAnalyticsQueryChanged(String value) {
+    final next = value.trim();
+    if (_analyticsQuery == next) return;
+    _analyticsDebounceTimer?.cancel();
+    setState(() => _analyticsQuery = next);
+    _analyticsDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      unawaited(_loadPanel(PanelKind.analytics, force: true));
+    });
+  }
+
   Future<void> _loadTasksPage({
     required bool reset,
     required bool showPanelLoading,
@@ -1569,6 +1658,7 @@ class _SocialShellState extends State<SocialShell> {
                     child: ListTile(
                       leading: Icon(panel.icon),
                       title: Text(i18n.t(panel.labelKey, panel.fallbackLabel)),
+                      subtitle: Text(i18n.t(panel.captionKey, panel.fallbackCaption)),
                       selected: selected,
                       selectedTileColor: scheme.primary.withOpacity(isDark ? 0.20 : 0.10),
                       onTap: () {
@@ -1597,6 +1687,7 @@ class _SocialShellState extends State<SocialShell> {
 
   Widget _buildRail(I18n i18n) {
     final collapsed = widget.appState.sidebarCollapsed;
+    final scheme = Theme.of(context).colorScheme;
     return NavigationRail(
       selectedIndex: _selectedIndex,
       extended: !collapsed,
@@ -1607,7 +1698,27 @@ class _SocialShellState extends State<SocialShell> {
             (panel) => NavigationRailDestination(
               icon: Icon(panel.icon),
               selectedIcon: Icon(panel.icon),
-              label: Text(i18n.t(panel.labelKey, panel.fallbackLabel)),
+              label: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(i18n.t(panel.labelKey, panel.fallbackLabel)),
+                  if (!collapsed)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        i18n.t(panel.captionKey, panel.fallbackCaption),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           )
           .toList(),
@@ -1676,6 +1787,7 @@ class _SocialShellState extends State<SocialShell> {
     return RefreshIndicator(
       onRefresh: () {
         if (kind == PanelKind.tasks) return _loadTasksPage(reset: true, showPanelLoading: true);
+        if (kind == PanelKind.analytics) return _loadPanel(kind, force: true);
         return _loadPanel(kind, force: true);
       },
       child: CustomScrollView(
@@ -3708,6 +3820,7 @@ class _SocialShellState extends State<SocialShell> {
 
   Widget _buildAnalytics(Map<String, dynamic> data) {
     final i18n = _i18n(context);
+    final scheme = Theme.of(context).colorScheme;
     final totals = data['totals'] is Map<String, dynamic>
         ? data['totals'] as Map<String, dynamic>
         : <String, dynamic>{};
@@ -3717,8 +3830,33 @@ class _SocialShellState extends State<SocialShell> {
 
     final totalExecutions = _readDouble(totals['executions'], fallback: 0);
     final successfulExecutions = _readDouble(totals['successfulExecutions'], fallback: 0);
-    final successRate =
-        totalExecutions > 0 ? successfulExecutions / totalExecutions : 0.0;
+    final successRate = totalExecutions > 0 ? successfulExecutions / totalExecutions : 0.0;
+
+    final top = taskStats.take(8).map((raw) {
+      final item = raw is Map<String, dynamic>
+          ? raw
+          : Map<String, dynamic>.from(raw as Map);
+      final label = (item['taskName']?.toString() ?? '').trim();
+      final v = _readDouble(item['successRate'], fallback: 0);
+      return <String, dynamic>{
+        'label': label.isEmpty ? i18n.t('tasks.task', 'Task') : label,
+        'value': v.clamp(0.0, 100.0),
+      };
+    }).toList();
+
+    final canLoadMore = data['hasMore'] == true || _analyticsHasMore;
+    final nextOffset = _readInt(data['nextOffset'], fallback: _analyticsOffset);
+
+    Future<void> exportCsv() async {
+      try {
+        final csv = await widget.api.exportAnalyticsCsv(widget.accessToken);
+        await Clipboard.setData(ClipboardData(text: csv));
+        _toast(i18n.isArabic ? 'تم نسخ CSV للحافظة.' : 'CSV copied to clipboard.');
+      } catch (error) {
+        final message = error is ApiException ? error.message : 'Failed to export analytics.';
+        _toast(message);
+      }
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3728,7 +3866,12 @@ class _SocialShellState extends State<SocialShell> {
             title: i18n.t('analytics.title', 'Analytics'),
             subtitle: i18n.t(
               'analytics.subtitle',
-              'KPIs and performance snapshots across your workspace.',
+              'Monitor task performance and execution statistics.',
+            ),
+            trailing: OutlinedButton.icon(
+              onPressed: exportCsv,
+              icon: const Icon(Icons.download_rounded),
+              label: Text(i18n.t('analytics.exportCsv', 'Export CSV')),
             ),
           ),
         ),
@@ -3760,28 +3903,27 @@ class _SocialShellState extends State<SocialShell> {
                 label: i18n.t('analytics.kpi.failed', 'Failed'),
                 value: '${totals['failedExecutions'] ?? 0}',
                 icon: Icons.error_rounded,
-                tone: Theme.of(context).colorScheme.error,
+                tone: scheme.error,
+              ),
+            ),
+            SizedBox(
+              width: 280,
+              child: SfKpiTile(
+                label: i18n.t('analytics.kpi.successRate', 'Success rate'),
+                value: '${(successRate * 100).toStringAsFixed(2)}%',
+                icon: Icons.trending_up_rounded,
+                tone: scheme.tertiary,
               ),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        SfPanelCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SfSectionHeader(
-                title: i18n.t('analytics.successRate', 'Success rate'),
-              ),
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(value: successRate.clamp(0.0, 1.0)),
-              ),
-              const SizedBox(height: 8),
-              Text('${(successRate * 100).toStringAsFixed(1)}%'),
-            ],
-          ),
+        SfBarChart(
+          title: i18n.t('analytics.chart.title', 'Success Rate by Task (Top 8)'),
+          subtitle: i18n.t('analytics.chart.subtitle', 'Sorted by your current ordering.'),
+          values: top.map((e) => (e['value'] as double)).toList(),
+          labels: top.map((e) => (e['label'] as String)).toList(),
+          maxValue: 100,
         ),
         const SizedBox(height: 12),
         SfPanelCard(
@@ -3789,27 +3931,153 @@ class _SocialShellState extends State<SocialShell> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SfSectionHeader(
-                title: i18n.t('analytics.topTasks', 'Top task stats'),
+                title: i18n.t('analytics.table.title', 'Performance by Task'),
+                subtitle: i18n.t('analytics.table.subtitle', 'Search, sort, and review task-level execution KPIs.'),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final wide = constraints.maxWidth >= 760;
+                  final w = wide ? (constraints.maxWidth - 12) / 2 : constraints.maxWidth;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      SizedBox(
+                        width: w,
+                        child: TextField(
+                          controller: _analyticsSearchController,
+                          decoration: InputDecoration(
+                            prefixIcon: const Icon(Icons.search_rounded),
+                            hintText: i18n.t('analytics.searchHint', 'Search tasks...'),
+                          ),
+                          onChanged: _onAnalyticsQueryChanged,
+                        ),
+                      ),
+                      SizedBox(
+                        width: w,
+                        child: DropdownButtonFormField<String>(
+                          initialValue: '$_analyticsSortBy:$_analyticsSortDir',
+                          decoration: InputDecoration(
+                            labelText: i18n.t('analytics.sortBy', 'Sort by'),
+                            prefixIcon: const Icon(Icons.sort_rounded),
+                          ),
+                          items: const [
+                            DropdownMenuItem(value: 'successRate:desc', child: Text('Success Rate (High)')),
+                            DropdownMenuItem(value: 'successRate:asc', child: Text('Success Rate (Low)')),
+                            DropdownMenuItem(value: 'totalExecutions:desc', child: Text('Total Runs (High)')),
+                            DropdownMenuItem(value: 'totalExecutions:asc', child: Text('Total Runs (Low)')),
+                            DropdownMenuItem(value: 'failed:desc', child: Text('Failures (High)')),
+                            DropdownMenuItem(value: 'failed:asc', child: Text('Failures (Low)')),
+                            DropdownMenuItem(value: 'taskName:asc', child: Text('Task (A→Z)')),
+                            DropdownMenuItem(value: 'taskName:desc', child: Text('Task (Z→A)')),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            final parts = value.split(':');
+                            if (parts.length != 2) return;
+                            final by = parts[0];
+                            final dir = parts[1];
+                            setState(() {
+                              _analyticsSortBy = by;
+                              _analyticsSortDir = dir;
+                              _analyticsOffset = 0;
+                              _analyticsHasMore = false;
+                            });
+                            unawaited(_loadPanel(PanelKind.analytics, force: true));
+                          },
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
               if (taskStats.isEmpty)
                 Text(i18n.t('analytics.empty', 'No analytics data yet.'))
               else
-                ...taskStats.take(50).map((raw) {
+                ...taskStats.take(80).map((raw) {
                   final item = raw is Map<String, dynamic>
                       ? raw
                       : Map<String, dynamic>.from(raw as Map);
-                  final itemRate = _readDouble(item['successRate'], fallback: 0);
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.bar_chart_rounded),
-                    title: Text(item['taskName']?.toString() ?? i18n.t('tasks.task', 'Task')),
-                    subtitle: Text(
-                      i18n.t('analytics.executions', 'Executions') + ': ${item['totalExecutions'] ?? 0}',
+                  final taskName = item['taskName']?.toString() ?? i18n.t('tasks.task', 'Task');
+                  final total = _readInt(item['totalExecutions'], fallback: 0);
+                  final ok = _readInt(item['successful'], fallback: 0);
+                  final fail = _readInt(item['failed'], fallback: 0);
+                  final rate = _readDouble(item['successRate'], fallback: 0);
+                  final rateColor = rate >= 90
+                      ? Colors.green.shade700
+                      : rate >= 70
+                          ? scheme.secondary
+                          : scheme.error;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: scheme.outline.withOpacity(0.55)),
+                      color: scheme.surface.withOpacity(0.35),
                     ),
-                    trailing: Text('${itemRate.toStringAsFixed(1)}%'),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            color: rateColor.withOpacity(0.12),
+                            border: Border.all(color: rateColor.withOpacity(0.22)),
+                          ),
+                          child: Icon(Icons.analytics_rounded, color: rateColor),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(taskName, style: const TextStyle(fontWeight: FontWeight.w900)),
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  SfBadge('${i18n.t('analytics.executions', 'Executions')}: $total', tone: scheme.onSurface),
+                                  SfBadge('${i18n.t('analytics.kpi.successful', 'Successful')}: $ok', tone: Colors.green.shade700),
+                                  SfBadge('${i18n.t('analytics.kpi.failed', 'Failed')}: $fail', tone: scheme.error),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SfBadge('${rate.toStringAsFixed(2)}%', tone: rateColor, icon: Icons.trending_up_rounded),
+                      ],
+                    ),
                   );
                 }),
+              if (canLoadMore) ...[
+                const SizedBox(height: 8),
+                Center(
+                  child: OutlinedButton(
+                    onPressed: _analyticsLoadingMore ? null : () => unawaited(_loadMoreAnalytics()),
+                    child: Text(
+                      _analyticsLoadingMore
+                          ? (i18n.isArabic ? '...جاري التحميل' : 'Loading...')
+                          : i18n.t('analytics.loadMore', 'Load more'),
+                    ),
+                  ),
+                ),
+                if (nextOffset > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      '${i18n.t('analytics.nextOffset', 'Next offset')}: $nextOffset',
+                      style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+              ],
             ],
           ),
         ),

@@ -418,3 +418,155 @@ class SfKpiTile extends StatelessWidget {
     );
   }
 }
+
+class SfBarChart extends StatelessWidget {
+  const SfBarChart({
+    super.key,
+    required this.values,
+    required this.labels,
+    required this.title,
+    required this.subtitle,
+    this.maxValue = 100,
+  });
+
+  final List<double> values;
+  final List<String> labels;
+  final String title;
+  final String subtitle;
+  final double maxValue;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (values.isEmpty || labels.isEmpty) {
+      return SfPanelCard(
+        child: SfSectionHeader(title: title, subtitle: subtitle),
+      );
+    }
+
+    final safeMax = maxValue <= 0 ? 1.0 : maxValue;
+
+    return SfPanelCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SfSectionHeader(title: title, subtitle: subtitle),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 220,
+            child: CustomPaint(
+              painter: _SfBarChartPainter(
+                values: values,
+                labels: labels,
+                maxValue: safeMax,
+                barColor: scheme.primary,
+                gridColor: scheme.outline.withOpacity(isDark ? 0.34 : 0.45),
+                textColor: scheme.onSurfaceVariant,
+              ),
+              child: const SizedBox.expand(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SfBarChartPainter extends CustomPainter {
+  _SfBarChartPainter({
+    required this.values,
+    required this.labels,
+    required this.maxValue,
+    required this.barColor,
+    required this.gridColor,
+    required this.textColor,
+  });
+
+  final List<double> values;
+  final List<String> labels;
+  final double maxValue;
+  final Color barColor;
+  final Color gridColor;
+  final Color textColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..style = PaintingStyle.fill;
+    final grid = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
+
+    const double leftPad = 10;
+    const double rightPad = 10;
+    const double topPad = 6;
+    const double bottomPad = 34;
+
+    final chartWidth = (size.width - leftPad - rightPad).clamp(1.0, size.width).toDouble();
+    final chartHeight = (size.height - topPad - bottomPad).clamp(1.0, size.height).toDouble();
+
+    // Grid lines (0/25/50/75/100)
+    for (int i = 0; i <= 4; i++) {
+      final y = topPad + chartHeight * (i / 4);
+      canvas.drawLine(Offset(leftPad, y), Offset(size.width - rightPad, y), grid);
+    }
+
+    final n = values.length <= labels.length ? values.length : labels.length;
+    if (n <= 0) return;
+
+    final gap = 10.0;
+    final totalGap = gap * (n - 1);
+    final rawBarWidth = (chartWidth - totalGap) / n;
+    final barWidth = rawBarWidth.clamp(8.0, 54.0).toDouble();
+    final maxBarsWidth = barWidth * n + totalGap;
+    final startX = leftPad + (chartWidth - maxBarsWidth) / 2;
+
+    final textStyle = TextStyle(
+      color: textColor,
+      fontSize: 10,
+      fontWeight: FontWeight.w700,
+    );
+    final textPainter = TextPainter(textDirection: TextDirection.ltr);
+
+    for (int i = 0; i < n; i++) {
+      final v = values[i].isFinite ? values[i] : 0.0;
+      final normalized = (v / maxValue).clamp(0.0, 1.0);
+      final barH = chartHeight * normalized;
+      final x = startX + i * (barWidth + gap);
+      final y = topPad + (chartHeight - barH);
+
+      final rrect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(x, y, barWidth, barH),
+        const Radius.circular(10),
+      );
+      paint.color = barColor.withOpacity(0.85);
+      canvas.drawRRect(rrect, paint);
+
+      // Value label (top)
+      textPainter.text = TextSpan(text: v.toStringAsFixed(0), style: textStyle);
+      textPainter.layout(maxWidth: barWidth);
+      textPainter.paint(canvas, Offset(x + (barWidth - textPainter.width) / 2, y - 14));
+
+      // X label (bottom, truncated)
+      final raw = labels[i];
+      final label = raw.length > 10 ? '${raw.substring(0, 10)}…' : raw;
+      textPainter.text = TextSpan(text: label, style: textStyle);
+      textPainter.layout(maxWidth: barWidth + 6);
+      textPainter.paint(
+        canvas,
+        Offset(x + (barWidth - textPainter.width) / 2, topPad + chartHeight + 10),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SfBarChartPainter oldDelegate) {
+    return oldDelegate.values != values ||
+        oldDelegate.labels != labels ||
+        oldDelegate.maxValue != maxValue ||
+        oldDelegate.barColor != barColor ||
+        oldDelegate.gridColor != gridColor ||
+        oldDelegate.textColor != textColor;
+  }
+}

@@ -91,10 +91,10 @@ This file tracks concrete UI/UX upgrades for the Flutter APK, aligned with Mater
 80. [PLANNED] Executions: add performance metrics (duration) if available.
 
 81. [PLANNED] Analytics: add timeframe selector and compare-to-previous period.
-82. [PLANNED] Analytics: add simple bar chart for task success rates (CustomPaint).
+82. [DONE] Analytics: add simple bar chart for task success rates (CustomPaint).
 83. [PLANNED] Analytics: add failure category breakdown (network/auth/content).
 84. [PLANNED] Analytics: add per-platform analytics view.
-85. [PLANNED] Analytics: add export CSV for analytics.
+85. [DONE] Analytics: add export CSV for analytics.
 86. [PLANNED] Analytics: add explanation tooltips (what each KPI means).
 87. [PLANNED] Analytics: ensure all numbers are formatted locale-aware.
 88. [PLANNED] Analytics: highlight anomalies (sudden drop in success rate).

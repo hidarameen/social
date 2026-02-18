@@ -321,12 +321,26 @@ class ApiClient {
     );
   }
 
-  Future<Map<String, dynamic>> fetchAnalytics(String token, {int limit = 30}) {
+  Future<Map<String, dynamic>> fetchAnalytics(
+    String token, {
+    int limit = 50,
+    int offset = 0,
+    String search = '',
+    String sortBy = 'successRate', // taskName|successRate|totalExecutions|failed
+    String sortDir = 'desc', // asc|desc
+  }) {
+    final query = <String, String>{
+      'limit': '$limit',
+      'offset': '$offset',
+      'sortBy': sortBy,
+      'sortDir': sortDir,
+    };
+    if (search.trim().isNotEmpty) query['search'] = search.trim();
     return _request(
       method: 'GET',
       path: '/api/analytics',
       token: token,
-      query: {'limit': '$limit'},
+      query: query,
     );
   }
 
@@ -446,6 +460,39 @@ class ApiClient {
     if (response.statusCode >= 400) {
       throw ApiException(
         'Failed to export tasks (${response.statusCode}).',
+        statusCode: response.statusCode,
+      );
+    }
+
+    try {
+      return utf8.decode(response.bodyBytes);
+    } catch (_) {
+      return response.body;
+    }
+  }
+
+  Future<String> exportAnalyticsCsv(String token, {int limit = 5000}) async {
+    final uri = _resolve('/api/analytics/export', {'limit': '$limit'});
+    final headers = <String, String>{
+      'accept': 'text/csv',
+    };
+    if (token.trim().isNotEmpty) {
+      headers['authorization'] = 'Bearer ${token.trim()}';
+    }
+
+    late final http.Response response;
+    try {
+      response = await _httpClient
+          .get(uri, headers: headers)
+          .timeout(_requestTimeout);
+    } catch (error) {
+      if (error is ApiException) rethrow;
+      throw ApiException('Export request failed: $error');
+    }
+
+    if (response.statusCode >= 400) {
+      throw ApiException(
+        'Failed to export analytics (${response.statusCode}).',
         statusCode: response.statusCode,
       );
     }
