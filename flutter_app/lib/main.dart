@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +16,7 @@ import 'ui/auth/login_screen.dart';
 import 'ui/auth/register_screen.dart';
 import 'ui/auth/reset_password_screen.dart';
 import 'ui/auth/verify_email_screen.dart';
+import 'ui/sf_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -62,15 +64,6 @@ class _StateLoaderState extends State<_StateLoader> {
       );
     }
 
-    final lightScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF0D1422),
-      brightness: Brightness.light,
-    );
-    final darkScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF0D1422),
-      brightness: Brightness.dark,
-    );
-
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) {
@@ -81,24 +74,8 @@ class _StateLoaderState extends State<_StateLoader> {
           title: 'SocialFlow',
           debugShowCheckedModeBanner: false,
           themeMode: themeMode,
-          theme: ThemeData(
-            useMaterial3: true,
-            colorScheme: lightScheme,
-            fontFamily: 'Tajawal',
-            inputDecorationTheme: InputDecorationTheme(
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-          ),
-          darkTheme: ThemeData(
-            useMaterial3: true,
-            colorScheme: darkScheme,
-            scaffoldBackgroundColor: const Color(0xFF0F162A),
-            canvasColor: const Color(0xFF0F162A),
-            fontFamily: 'Tajawal',
-            inputDecorationTheme: InputDecorationTheme(
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-            ),
-          ),
+          theme: SfTheme.light(),
+          darkTheme: SfTheme.dark(),
           locale: Locale(state.locale),
           builder: (context, child) {
             return Directionality(
@@ -1208,30 +1185,82 @@ class _SocialShellState extends State<SocialShell> {
   }
 
   Widget _buildDrawer(I18n i18n) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Drawer(
       child: SafeArea(
         child: Column(
           children: [
-            ListTile(
-              leading: const Icon(Icons.apps_rounded),
-              title: const Text('SocialFlow'),
-              subtitle: Text(widget.userEmail),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    scheme.primary.withOpacity(isDark ? 0.30 : 0.18),
+                    scheme.secondary.withOpacity(isDark ? 0.18 : 0.10),
+                    scheme.surface.withOpacity(isDark ? 0.65 : 0.92),
+                  ],
+                ),
+              ),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.asset(
+                      'assets/icon-192.png',
+                      width: 42,
+                      height: 42,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.userName.trim().isEmpty ? 'SocialFlow' : widget.userName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.userEmail,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
             const Divider(height: 1),
             Expanded(
               child: ListView.builder(
+                padding: const EdgeInsets.all(10),
                 itemCount: kPanelSpecs.length,
                 itemBuilder: (context, index) {
                   final panel = kPanelSpecs[index];
                   final selected = index == _selectedIndex;
-                  return ListTile(
-                    leading: Icon(panel.icon),
-                    title: Text(i18n.t(panel.labelKey, panel.fallbackLabel)),
-                    selected: selected,
-                    onTap: () {
-                      Navigator.of(context).maybePop();
-                      unawaited(_onPanelSelected(index));
-                    },
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: ListTile(
+                      leading: Icon(panel.icon),
+                      title: Text(i18n.t(panel.labelKey, panel.fallbackLabel)),
+                      selected: selected,
+                      selectedTileColor: scheme.primary.withOpacity(isDark ? 0.20 : 0.10),
+                      onTap: () {
+                        Navigator.of(context).maybePop();
+                        unawaited(_onPanelSelected(index));
+                      },
+                    ),
                   );
                 },
               ),
@@ -3498,14 +3527,25 @@ class _SocialShellState extends State<SocialShell> {
     final currentPanel = kPanelSpecs[_selectedIndex];
     final i18n = _i18n(context);
     final panelLabel = i18n.t(currentPanel.labelKey, currentPanel.fallbackLabel);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final scheme = Theme.of(context).colorScheme;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 1024;
 
         return Scaffold(
+          extendBodyBehindAppBar: true,
           appBar: AppBar(
             title: Text(panelLabel),
+            flexibleSpace: ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                child: Container(
+                  color: scheme.surface.withOpacity(isDark ? 0.30 : 0.72),
+                ),
+              ),
+            ),
             actions: [
               IconButton(
                 icon: const Icon(Icons.refresh_rounded),
@@ -3522,10 +3562,57 @@ class _SocialShellState extends State<SocialShell> {
             ],
           ),
           drawer: wide ? null : _buildDrawer(i18n),
-          body: Row(
+          body: Stack(
             children: [
-              if (wide) _buildRail(i18n),
-              Expanded(child: _buildCurrentPanel()),
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: SfTheme.background(isDark: isDark),
+                ),
+              ),
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: const Alignment(0.85, -0.8),
+                      radius: 1.25,
+                      colors: [
+                        scheme.primary.withOpacity(isDark ? 0.18 : 0.10),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              SafeArea(
+                child: Row(
+                  children: [
+                    if (wide) _buildRail(i18n),
+                    Expanded(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 220),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        transitionBuilder: (child, anim) {
+                          return FadeTransition(
+                            opacity: anim,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0.02, 0),
+                                end: Offset.zero,
+                              ).animate(anim),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: KeyedSubtree(
+                          key: ValueKey<PanelKind>(_currentKind),
+                          child: _buildCurrentPanel(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
           bottomNavigationBar: wide ? null : _buildBottomNavigation(i18n),
