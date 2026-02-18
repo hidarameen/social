@@ -17,14 +17,24 @@ This project is ready to deploy on Northflank using the root `Dockerfile`.
 3. Dockerfile path: `./Dockerfile`
 4. Exposed port: `5000` (or keep default with injected `PORT`)
 
-## Required environment variables
+## Required build arguments (build-time)
+
+These are Docker **build args** (they are not the same as runtime environment variables).
+
+Set these in Northflank under Build settings (Build arguments):
+
+- `APP_URL` (required): your public HTTPS base URL (example: `https://your-app.your-domain.com/`)
+- Optional `ANDROID_ORG` (example: `com.socialflow.app`)
+- Optional `ANDROID_PACKAGE` (defaults to `${ANDROID_ORG}.app`)
+
+## Required environment variables (runtime)
 
 Set these in Northflank:
 
 - `DATABASE_URL`
 - `NEXTAUTH_SECRET`
 - `NEXTAUTH_URL` (example: `https://your-app.your-domain.com`)
-- `APP_URL` (same public app URL)
+- `APP_URL` (recommended): same public app URL, used by some routes as a stable base URL
 
 If using OAuth/providers:
 

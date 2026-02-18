@@ -49,7 +49,11 @@ RUN pkg="${ANDROID_PACKAGE:-${ANDROID_ORG}.app}" \
      done
 
 RUN --mount=type=cache,id=flutter-pub-cache,target=/root/.pub-cache flutter pub get
-RUN test -n "${APP_URL}"
+RUN if [ -z "${APP_URL:-}" ]; then \
+      echo >&2 "ERROR: Missing required build arg APP_URL."; \
+      echo >&2 "Northflank: set APP_URL under Build settings -> Build arguments (not only runtime Environment)."; \
+      exit 1; \
+    fi
 # NOTE: cache IDs are versioned to avoid reusing corrupted Gradle wrapper distributions in CI.
 RUN --mount=type=cache,id=flutter-gradle-cache-v2,target=/tmp/nf-gradle \
   --mount=type=cache,id=flutter-pub-cache,target=/root/.pub-cache \
