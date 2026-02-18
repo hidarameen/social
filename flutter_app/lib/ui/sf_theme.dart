@@ -48,7 +48,7 @@ class SfTheme {
         thickness: 1,
         color: (isDark ? Colors.white : Colors.black).withOpacity(0.08),
       ),
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation: 0,
         color: scheme.surface.withOpacity(isDark ? 0.72 : 0.90),
         surfaceTintColor: Colors.transparent,
@@ -135,4 +135,3 @@ class SfTheme {
     );
   }
 }
-
