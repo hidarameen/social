@@ -268,73 +268,76 @@ class _SfPanelCardState extends State<SfPanelCard> {
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
         scale: _hovering ? 1.008 : 1,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOutCubic,
-          decoration: BoxDecoration(
-            borderRadius: SfTokens.radiusLarge,
-            boxShadow: [
-              BoxShadow(
-                blurRadius: _hovering ? 28 : 20,
-                spreadRadius: 0,
-                offset: elevatedOffset,
-                color: shadow,
-              ),
-            ],
-            border:
-                Border.all(color: scheme.outline.withAlpha(isDark ? 102 : 112)),
-          ),
-          child: ClipRRect(
-            borderRadius: SfTokens.radiusLarge,
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          surfaceBase,
-                          Color.alphaBlend(
-                            scheme.secondary.withAlpha(isDark ? 14 : 8),
-                            surfaceBase,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+        child: SizedBox(
+          width: double.infinity,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            decoration: BoxDecoration(
+              borderRadius: SfTokens.radiusLarge,
+              boxShadow: [
+                BoxShadow(
+                  blurRadius: _hovering ? 28 : 20,
+                  spreadRadius: 0,
+                  offset: elevatedOffset,
+                  color: shadow,
                 ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: 0,
-                  child: IgnorePointer(
-                    child: ClipRect(
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                        child: Container(
-                          height: 2,
-                          color: scheme.primary.withAlpha(isDark ? 70 : 52),
+              ],
+              border: Border.all(
+                  color: scheme.outline.withAlpha(isDark ? 102 : 112)),
+            ),
+            child: ClipRRect(
+              borderRadius: SfTokens.radiusLarge,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            surfaceBase,
+                            Color.alphaBlend(
+                              scheme.secondary.withAlpha(isDark ? 14 : 8),
+                              surfaceBase,
+                            ),
+                          ],
                         ),
                       ),
                     ),
                   ),
-                ),
-                body,
-                if (widget.leading != null)
                   Positioned(
-                    left: 12,
-                    top: 12,
-                    child: widget.leading!,
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    child: IgnorePointer(
+                      child: ClipRect(
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Container(
+                            height: 2,
+                            color: scheme.primary.withAlpha(isDark ? 70 : 52),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                if (widget.trailing != null)
-                  Positioned(
-                    right: 12,
-                    top: 12,
-                    child: widget.trailing!,
-                  ),
-              ],
+                  body,
+                  if (widget.leading != null)
+                    Positioned(
+                      left: 12,
+                      top: 12,
+                      child: widget.leading!,
+                    ),
+                  if (widget.trailing != null)
+                    Positioned(
+                      right: 12,
+                      top: 12,
+                      child: widget.trailing!,
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -484,48 +487,52 @@ class SfKpiTile extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final resolved = tone ?? scheme.primary;
     return SfPanelCard(
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(SfTokens.radiusMd),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  resolved.withOpacity(0.18),
-                  resolved.withOpacity(0.08),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 86),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(SfTokens.radiusMd),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    resolved.withOpacity(0.18),
+                    resolved.withOpacity(0.08),
+                  ],
+                ),
+                border: Border.all(color: resolved.withOpacity(0.22)),
+              ),
+              child: Icon(icon, color: resolved, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    value,
+                    style: const TextStyle(
+                        fontSize: 24, fontWeight: FontWeight.w700, height: 1.0),
+                  ),
                 ],
               ),
-              border: Border.all(color: resolved.withOpacity(0.22)),
             ),
-            child: Icon(icon, color: resolved, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: scheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  value,
-                  style: const TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.w700, height: 1.0),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

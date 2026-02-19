@@ -131,7 +131,8 @@ function SidebarContent() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  'group relative flex items-start gap-3 rounded-2xl border px-4 py-3 transition-all duration-300 animate-fade-up',
+                  'group relative flex w-full items-start gap-3 rounded-2xl border px-4 py-3 transition-all duration-300 animate-fade-up',
+                  !sidebarCollapsed && 'min-h-[72px]',
                   sidebarCollapsed && 'justify-center px-2',
                   isActive
                     ? 'border-sidebar-primary/38 bg-sidebar-primary/92 text-sidebar-primary-foreground shadow-lg shadow-primary/22'

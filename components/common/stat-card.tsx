@@ -29,14 +29,14 @@ export function StatCard({
   };
 
   return (
-    <Card className="animate-fade-up">
+    <Card className="animate-fade-up h-full min-h-[148px]">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-semibold tracking-tight text-muted-foreground">
           {title}
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="flex items-end justify-between">
+      <CardContent className="flex min-h-[86px] items-end">
+        <div className="flex w-full items-end justify-between">
           <div>
             <p className="text-3xl font-semibold tracking-tight sm:text-[2rem]">{value}</p>
             {trend && (
