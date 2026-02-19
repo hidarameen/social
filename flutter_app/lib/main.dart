@@ -4288,6 +4288,67 @@ class _SocialShellState extends State<SocialShell> {
                       if (pid.trim().isNotEmpty) targetPlatforms.add(pid);
                     }
                   }
+                  final compactActionLayout = cardWidth < 520;
+                  final taskActionButtons = <Widget>[
+                    IconButton(
+                      onPressed:
+                          busy ? null : () => unawaited(toggleTaskStatus(task)),
+                      tooltip: normalized == 'active'
+                          ? 'Disable task'
+                          : 'Enable task',
+                      icon: Icon(
+                        normalized == 'active'
+                            ? Icons.pause_circle_filled_rounded
+                            : Icons.play_circle_fill_rounded,
+                        color: normalized == 'active'
+                            ? scheme.secondary
+                            : scheme.primary,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: busy
+                          ? null
+                          : () => unawaited(_openEditTaskSheet(task)),
+                      tooltip: 'Edit task',
+                      icon: const Icon(Icons.edit_rounded),
+                    ),
+                    IconButton(
+                      onPressed:
+                          busy ? null : () => unawaited(duplicateTask(task)),
+                      tooltip: 'Duplicate task',
+                      icon: const Icon(Icons.copy_all_rounded),
+                    ),
+                    IconButton(
+                      onPressed: busy
+                          ? null
+                          : () {
+                              final idx = kPanelSpecs.indexWhere(
+                                  (p) => p.kind == PanelKind.executions);
+                              if (idx < 0) return;
+                              setState(() {
+                                _executionsQuery =
+                                    task['name']?.toString() ?? '';
+                                _executionsSearchController.text =
+                                    _executionsQuery;
+                                _executionsStatusFilter = 'all';
+                                _executionsOffset = 0;
+                                _executionsHasMore = false;
+                                _selectedIndex = idx;
+                              });
+                              unawaited(_loadPanel(PanelKind.executions,
+                                  force: true));
+                            },
+                      tooltip: 'View logs',
+                      icon: const Icon(Icons.receipt_long_rounded),
+                    ),
+                    IconButton(
+                      onPressed:
+                          busy ? null : () => unawaited(deleteTask(task)),
+                      tooltip: 'Delete task',
+                      icon: Icon(Icons.delete_outline_rounded,
+                          color: scheme.error),
+                    ),
+                  ];
 
                   return SizedBox(
                     width: cardWidth,
@@ -4311,113 +4372,80 @@ class _SocialShellState extends State<SocialShell> {
                             ],
                           ),
                           const SizedBox(height: 10),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      task['name']?.toString() ?? 'Task',
-                                      style: const TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w900),
-                                    ),
-                                    if (descText.isNotEmpty) ...[
-                                      const SizedBox(height: 4),
+                          if (!compactActionLayout)
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
                                       Text(
-                                        descText,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: showErrorText
-                                              ? scheme.error
-                                              : scheme.onSurface.withAlpha(
-                                                  (0.75 * 255).round()),
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                                        task['name']?.toString() ?? 'Task',
+                                        style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w900),
                                       ),
+                                      if (descText.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          descText,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: showErrorText
+                                                ? scheme.error
+                                                : scheme.onSurface.withAlpha(
+                                                    (0.75 * 255).round()),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    onPressed: busy
-                                        ? null
-                                        : () =>
-                                            unawaited(toggleTaskStatus(task)),
-                                    tooltip: normalized == 'active'
-                                        ? 'Disable task'
-                                        : 'Enable task',
-                                    icon: Icon(
-                                      normalized == 'active'
-                                          ? Icons.pause_circle_filled_rounded
-                                          : Icons.play_circle_fill_rounded,
-                                      color: normalized == 'active'
-                                          ? scheme.secondary
-                                          : scheme.primary,
+                                const SizedBox(width: 8),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: taskActionButtons,
+                                ),
+                              ],
+                            )
+                          else ...[
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  task['name']?.toString() ?? 'Task',
+                                  style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900),
+                                ),
+                                if (descText.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    descText,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: showErrorText
+                                          ? scheme.error
+                                          : scheme.onSurface
+                                              .withAlpha((0.75 * 255).round()),
+                                      fontWeight: FontWeight.w600,
                                     ),
-                                  ),
-                                  IconButton(
-                                    onPressed: busy
-                                        ? null
-                                        : () =>
-                                            unawaited(_openEditTaskSheet(task)),
-                                    tooltip: 'Edit task',
-                                    icon: const Icon(Icons.edit_rounded),
-                                  ),
-                                  IconButton(
-                                    onPressed: busy
-                                        ? null
-                                        : () => unawaited(duplicateTask(task)),
-                                    tooltip: 'Duplicate task',
-                                    icon: const Icon(Icons.copy_all_rounded),
-                                  ),
-                                  IconButton(
-                                    onPressed: busy
-                                        ? null
-                                        : () {
-                                            final idx = kPanelSpecs.indexWhere(
-                                                (p) =>
-                                                    p.kind ==
-                                                    PanelKind.executions);
-                                            if (idx < 0) return;
-                                            setState(() {
-                                              _executionsQuery =
-                                                  task['name']?.toString() ??
-                                                      '';
-                                              _executionsSearchController.text =
-                                                  _executionsQuery;
-                                              _executionsStatusFilter = 'all';
-                                              _executionsOffset = 0;
-                                              _executionsHasMore = false;
-                                              _selectedIndex = idx;
-                                            });
-                                            unawaited(_loadPanel(
-                                                PanelKind.executions,
-                                                force: true));
-                                          },
-                                    tooltip: 'View logs',
-                                    icon:
-                                        const Icon(Icons.receipt_long_rounded),
-                                  ),
-                                  IconButton(
-                                    onPressed: busy
-                                        ? null
-                                        : () => unawaited(deleteTask(task)),
-                                    tooltip: 'Delete task',
-                                    icon: Icon(Icons.delete_outline_rounded,
-                                        color: scheme.error),
                                   ),
                                 ],
-                              ),
-                            ],
-                          ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 2,
+                              runSpacing: 2,
+                              children: taskActionButtons,
+                            ),
+                          ],
                           const SizedBox(height: 10),
                           frostedStrip(
                             child: Row(
@@ -5540,6 +5568,24 @@ class _SocialShellState extends State<SocialShell> {
           ? ((execution['responseData'] as Map)['stage']?.toString() ?? '')
               .trim()
           : '';
+      final compactActionLayout = MediaQuery.sizeOf(context).width < 760;
+      final executionActionButtons = <Widget>[
+        IconButton(
+          tooltip: i18n.isArabic ? 'إعادة المحاولة' : 'Retry',
+          onPressed: busy ? null : () => unawaited(retryExecution(execution)),
+          icon: const Icon(Icons.replay_rounded),
+        ),
+        IconButton(
+          tooltip: i18n.isArabic ? 'عرض التفاصيل' : 'View details',
+          onPressed: () => unawaited(openExecutionDetails(execution)),
+          icon: const Icon(Icons.info_outline_rounded),
+        ),
+        IconButton(
+          tooltip: i18n.isArabic ? 'نسخ التقرير' : 'Copy report',
+          onPressed: () => unawaited(copyExecutionReport(execution)),
+          icon: const Icon(Icons.copy_all_rounded),
+        ),
+      ];
 
       String stepState(int stepIndex) {
         if (normalized == 'success') return 'done';
@@ -5586,81 +5632,119 @@ class _SocialShellState extends State<SocialShell> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
-                          color: statusColor.withAlpha((0.12 * 255).round()),
-                          border: Border.all(
-                              color:
-                                  statusColor.withAlpha((0.26 * 255).round())),
+                  if (!compactActionLayout)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            color: statusColor.withAlpha((0.12 * 255).round()),
+                            border: Border.all(
+                                color: statusColor
+                                    .withAlpha((0.26 * 255).round())),
+                          ),
+                          child:
+                              Icon(Icons.history_rounded, color: statusColor),
                         ),
-                        child: Icon(Icons.history_rounded, color: statusColor),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(title,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w900)),
-                            const SizedBox(height: 4),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                SfBadge(
-                                  statusLabel(normalized),
-                                  tone: statusColor,
-                                  icon: normalized == 'failed'
-                                      ? Icons.error_outline_rounded
-                                      : (normalized == 'success'
-                                          ? Icons.check_circle_outline_rounded
-                                          : Icons.hourglass_top_rounded),
-                                ),
-                                SfBadge(
-                                  '${i18n.isArabic ? 'المدة' : 'Duration'}: $duration',
-                                  tone: scheme.onSurfaceVariant,
-                                  icon: Icons.timer_outlined,
-                                ),
-                              ],
-                            ),
-                          ],
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(title,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w900)),
+                              const SizedBox(height: 4),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  SfBadge(
+                                    statusLabel(normalized),
+                                    tone: statusColor,
+                                    icon: normalized == 'failed'
+                                        ? Icons.error_outline_rounded
+                                        : (normalized == 'success'
+                                            ? Icons.check_circle_outline_rounded
+                                            : Icons.hourglass_top_rounded),
+                                  ),
+                                  SfBadge(
+                                    '${i18n.isArabic ? 'المدة' : 'Duration'}: $duration',
+                                    tone: scheme.onSurfaceVariant,
+                                    icon: Icons.timer_outlined,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            tooltip: i18n.isArabic ? 'إعادة المحاولة' : 'Retry',
-                            onPressed: busy
-                                ? null
-                                : () => unawaited(retryExecution(execution)),
-                            icon: const Icon(Icons.replay_rounded),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: executionActionButtons,
+                        ),
+                      ],
+                    )
+                  else ...[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            color: statusColor.withAlpha((0.12 * 255).round()),
+                            border: Border.all(
+                                color: statusColor
+                                    .withAlpha((0.26 * 255).round())),
                           ),
-                          IconButton(
-                            tooltip:
-                                i18n.isArabic ? 'عرض التفاصيل' : 'View details',
-                            onPressed: () =>
-                                unawaited(openExecutionDetails(execution)),
-                            icon: const Icon(Icons.info_outline_rounded),
+                          child:
+                              Icon(Icons.history_rounded, color: statusColor),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(title,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w900)),
+                              const SizedBox(height: 4),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  SfBadge(
+                                    statusLabel(normalized),
+                                    tone: statusColor,
+                                    icon: normalized == 'failed'
+                                        ? Icons.error_outline_rounded
+                                        : (normalized == 'success'
+                                            ? Icons.check_circle_outline_rounded
+                                            : Icons.hourglass_top_rounded),
+                                  ),
+                                  SfBadge(
+                                    '${i18n.isArabic ? 'المدة' : 'Duration'}: $duration',
+                                    tone: scheme.onSurfaceVariant,
+                                    icon: Icons.timer_outlined,
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                          IconButton(
-                            tooltip:
-                                i18n.isArabic ? 'نسخ التقرير' : 'Copy report',
-                            onPressed: () =>
-                                unawaited(copyExecutionReport(execution)),
-                            icon: const Icon(Icons.copy_all_rounded),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 2,
+                      runSpacing: 2,
+                      children: executionActionButtons,
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   frostedExecution(
                     child: Column(
