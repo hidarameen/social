@@ -8,7 +8,7 @@ This file tracks concrete UI/UX upgrades for the Flutter APK, aligned with Mater
 4. [DONE] Replace fragile numeric parsing in Dashboard/Analytics with safe parsing helpers to avoid white screens.
 5. [DONE] Upgrade dashboard KPI cards to a consistent KPI tile component.
 6. [DONE] Unify panel headers with consistent spacing, weight hierarchy, and action placement.
-7. [PLANNED] Add skeleton loading states (shimmer-less, lightweight) for each panel instead of only spinners.
+7. [DONE] Add skeleton loading states (shimmer-less, lightweight) for each panel instead of only spinners.
 8. [PLANNED] Add empty-state actions per panel (primary + secondary) with clear next steps.
 9. [PLANNED] Add inline error banners (non-blocking) for partial data failures (e.g., "some items failed to load").
 10. [PLANNED] Add pull-to-refresh affordance text/animation on first use.
@@ -41,7 +41,7 @@ This file tracks concrete UI/UX upgrades for the Flutter APK, aligned with Mater
 34. [PLANNED] Dashboard: highlight OAuth warnings with a dedicated callout card.
 35. [PLANNED] Dashboard: add platform distribution mini-bars (no external chart lib).
 36. [PLANNED] Dashboard: add a “Quick actions” strip (Create task, Connect account, View logs).
-37. [PLANNED] Dashboard: show last refresh time and stale-data indicator.
+37. [DONE] Dashboard: show last refresh time and stale-data indicator.
 38. [PLANNED] Dashboard: add "System health" summary badges (latency/errors) when available.
 39. [PLANNED] Dashboard: add a compact "recent failures" list.
 40. [PLANNED] Dashboard: add a dedicated empty dashboard illustration (vector-free, icon-based).
