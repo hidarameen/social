@@ -5,6 +5,54 @@ import { InstagramClient } from '@/platforms/instagram/client'
 import { TikTokClient } from '@/platforms/tiktok/client'
 import { YouTubeClient } from '@/platforms/youtube/client'
 import { TelegramClient } from '@/platforms/telegram/client'
+import { getPlatformHandler } from './platforms/handlers'
+import { getPlatformApiProvider } from './platforms/provider'
+import type { PlatformId, PostRequest } from './platforms/types'
+
+const MANAGED_PLATFORMS: ReadonlySet<PlatformId> = new Set([
+  'facebook',
+  'instagram',
+  'twitter',
+  'tiktok',
+  'youtube',
+  'telegram',
+  'linkedin',
+])
+
+function asPlatformId(platform: SocialPlatform): PlatformId | null {
+  return MANAGED_PLATFORMS.has(platform as PlatformId) ? (platform as PlatformId) : null
+}
+
+function mapContentToPostRequest(content: ContentItem): PostRequest {
+  const firstMedia = content.media?.[0]
+  const mediaType: 'image' | 'video' | 'link' | undefined =
+    firstMedia?.type === 'video' ? 'video' : firstMedia?.type === 'image' ? 'image' : undefined
+
+  return {
+    content: content.text || '',
+    media: firstMedia
+      ? {
+          type: mediaType || 'image',
+          url: firstMedia.url,
+        }
+      : content.link
+        ? {
+            type: 'link',
+            url: content.link,
+          }
+        : undefined,
+  }
+}
+
+function buildOutstandingToken(account: PlatformAccount): string {
+  return JSON.stringify({
+    accountId: account.accountId,
+    accountUsername: account.username,
+    accountName: account.displayName,
+    accessToken: account.credentials.accessToken,
+    apiKey: account.credentials.apiKey,
+  })
+}
 
 /**
  * Unified Platform Manager - Handles all social media platforms
@@ -24,6 +72,11 @@ export class PlatformManager {
     const { platform, id, credentials } = account
 
     try {
+      const platformId = asPlatformId(platform)
+      if (platformId && getPlatformApiProvider(platformId) === 'outstanding') {
+        return
+      }
+
       switch (platform) {
         case 'facebook':
           if (credentials.accessToken) {
@@ -86,6 +139,21 @@ export class PlatformManager {
     const { platform, id } = account
 
     try {
+      const platformId = asPlatformId(platform)
+      if (platformId && getPlatformApiProvider(platformId) === 'outstanding') {
+        const handler = getPlatformHandler(platformId)
+        const result = await handler.publishPost(
+          mapContentToPostRequest(content),
+          buildOutstandingToken(account)
+        )
+        return {
+          success: result.success,
+          postId: result.postId,
+          url: result.url,
+          error: result.error,
+        }
+      }
+
       switch (platform) {
         case 'facebook': {
           const client = this.facebookClients.get(id)
@@ -234,6 +302,14 @@ export class PlatformManager {
 
     for (const account of accounts) {
       try {
+        const platformId = asPlatformId(account.platform)
+        if (platformId && getPlatformApiProvider(platformId) === 'outstanding') {
+          const handler = getPlatformHandler(platformId)
+          const info = await handler.getAccountInfo(buildOutstandingToken(account))
+          results[account.id] = Boolean(info)
+          continue
+        }
+
         let isValid = false
 
         switch (account.platform) {

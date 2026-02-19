@@ -13,6 +13,9 @@ import { debugLog, debugError } from '@/lib/debug';
 import { getOAuthClientCredentials } from '@/lib/platform-credentials';
 import { executionQueue } from '@/lib/services/execution-queue';
 import { createVideoProgressLogger } from '@/lib/services/video-progress';
+import { getPlatformApiProvider } from '@/lib/platforms/provider';
+import { getPlatformHandler } from '@/lib/platforms/handlers';
+import type { PlatformId, PostRequest } from '@/lib/platforms/types';
 import {
   buildTelegramBotFileUrl,
   buildTelegramBotMethodUrl,
@@ -86,6 +89,32 @@ const TELEGRAM_MEDIA_GROUP_STALE_CLAIM_MS = (() => {
   return Math.max(5000, parsed);
 })();
 const mediaGroupTimers = new Map<string, NodeJS.Timeout>();
+const MANAGED_PLATFORM_IDS = new Set<PlatformId>([
+  'facebook',
+  'instagram',
+  'twitter',
+  'tiktok',
+  'youtube',
+  'telegram',
+  'linkedin',
+]);
+
+function asManagedPlatformId(platformId: string): PlatformId | null {
+  if (MANAGED_PLATFORM_IDS.has(platformId as PlatformId)) {
+    return platformId as PlatformId;
+  }
+  return null;
+}
+
+function buildOutstandingPublishToken(target: TelegramSourceAccount): string {
+  return JSON.stringify({
+    accountId: target.accountId,
+    accountUsername: target.accountUsername,
+    accountName: target.accountName,
+    accessToken: target.accessToken,
+    apiKey: (target.credentials as any)?.apiKey,
+  });
+}
 
 function pickTelegramMedia(message: NonNullable<ReturnType<typeof extractMessage>>): PickedTelegramMedia | null {
   if (message.photo && message.photo.length > 0) {
@@ -572,7 +601,60 @@ async function processTelegramTask({
           stage: 'publishing',
         },
       });
-      if (target.platformId === 'twitter') {
+      const managedTargetPlatformId = asManagedPlatformId(target.platformId);
+      if (
+        managedTargetPlatformId &&
+        getPlatformApiProvider(managedTargetPlatformId) === 'outstanding'
+      ) {
+        debugLog('Telegram -> Outstand start', {
+          taskId: task.id,
+          targetId: target.id,
+          platformId: managedTargetPlatformId,
+        });
+        const handler = getPlatformHandler(managedTargetPlatformId);
+        const postRequest: PostRequest = { content: text };
+
+        const firstMedia = mediaItems[0];
+        if (firstMedia) {
+          try {
+            const downloaded = await fetchTelegramFileToTemp(
+              botToken,
+              firstMedia.fileId,
+              firstMedia.fileSize
+            );
+            try {
+              if (downloaded.fileUrl && /^https?:\/\//i.test(downloaded.fileUrl)) {
+                postRequest.media = {
+                  type: firstMedia.kind === 'video' ? 'video' : 'image',
+                  url: downloaded.fileUrl,
+                };
+              }
+            } finally {
+              await cleanupTempFile(downloaded.tempPath);
+            }
+          } catch (error) {
+            debugLog('Telegram -> Outstand media fallback to text-only', {
+              taskId: task.id,
+              targetId: target.id,
+              reason: getErrorMessage(error),
+            });
+          }
+        }
+
+        transformedContent = text;
+        const outstandResponse = await handler.publishPost(
+          postRequest,
+          buildOutstandingPublishToken(target)
+        );
+        if (!outstandResponse.success) {
+          throw new Error(outstandResponse.error || 'Outstand publish failed');
+        }
+        responseData = {
+          id: outstandResponse.postId,
+          url: outstandResponse.url,
+          provider: 'outstanding',
+        };
+      } else if (target.platformId === 'twitter') {
         debugLog('Telegram -> Twitter start', { taskId: task.id, targetId: target.id });
         const tweetText = text;
         transformedContent = tweetText;

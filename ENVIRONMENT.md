@@ -30,6 +30,27 @@ TikTok:
 - `TIKTOK_CLIENT_KEY`
 - `TIKTOK_CLIENT_SECRET`
 
+API provider mode:
+- `SOCIAL_API_PROVIDER` (`native` or `outstanding`, default `native`)
+- `OUTSTAND_PLATFORMS` (optional, comma separated):
+  if set, only listed platforms use Outstand and all others use native.
+  Supports: `facebook, instagram, twitter (or x), tiktok, youtube, telegram, linkedin`
+- Optional per-platform override, e.g. `SOCIAL_API_PROVIDER_TWITTER=outstanding`
+
+Outstand API (when provider is `outstanding`):
+- `OUTSTAND_API_KEY`
+- `OUTSTAND_API_BASE_URL` (default `https://api.outstand.so/v1`)
+- `OUTSTAND_TENANT_ID` (optional)
+- One API key is used for all networks.
+- Optional per-network account selectors (comma separated):
+  - `OUTSTAND_X_ACCOUNTS`
+  - `OUTSTAND_FACEBOOK_ACCOUNTS`
+  - `OUTSTAND_INSTAGRAM_ACCOUNTS`
+  - `OUTSTAND_TIKTOK_ACCOUNTS`
+  - `OUTSTAND_YOUTUBE_ACCOUNTS`
+  - `OUTSTAND_TELEGRAM_ACCOUNTS`
+  - `OUTSTAND_LINKEDIN_ACCOUNTS`
+
 Email (real verification code delivery):
 - `EMAIL_VERIFICATION_ENABLED` (default `true`; set `false` to auto-verify newly registered emails and skip verification requirement)
 - `EMAIL_PROVIDER` (`resend` or `gmail-smtp`; default `resend`)

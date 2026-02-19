@@ -1,0 +1,79 @@
+import type { PlatformId } from './types';
+
+export type PlatformApiProvider = 'native' | 'outstanding';
+
+const PLATFORM_TOKEN_MAP: Record<string, PlatformId> = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+  twitter: 'twitter',
+  x: 'twitter',
+  tiktok: 'tiktok',
+  youtube: 'youtube',
+  telegram: 'telegram',
+  linkedin: 'linkedin',
+};
+
+function normalizeProvider(value: string | undefined): PlatformApiProvider {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (
+    normalized === 'outstanding' ||
+    normalized === 'outstand' ||
+    normalized === 'outs' ||
+    normalized === 'os'
+  ) {
+    return 'outstanding';
+  }
+  return 'native';
+}
+
+function parsePlatformList(value: string | undefined): Set<PlatformId> {
+  const set = new Set<PlatformId>();
+  const raw = String(value || '').trim();
+  if (!raw) return set;
+
+  for (const token of raw.split(/[\s,;|]+/)) {
+    const normalized = token.trim().toLowerCase();
+    if (!normalized) continue;
+    const mapped = PLATFORM_TOKEN_MAP[normalized];
+    if (mapped) set.add(mapped);
+  }
+
+  return set;
+}
+
+function resolveOutstandPlatformSet(): Set<PlatformId> {
+  return parsePlatformList(
+    process.env.OUTSTAND_PLATFORMS ||
+      process.env.SOCIAL_API_OUTSTAND_PLATFORMS ||
+      process.env.SOCIAL_API_PROVIDER_OUTSTAND_PLATFORMS
+  );
+}
+
+export function getGlobalPlatformApiProvider(): PlatformApiProvider {
+  return normalizeProvider(
+    process.env.SOCIAL_API_PROVIDER ||
+      process.env.SOCIAL_API_MODE ||
+      process.env.PLATFORM_API_PROVIDER ||
+      process.env.PLATFORM_API_MODE
+  );
+}
+
+export function getPlatformApiProvider(platformId: PlatformId): PlatformApiProvider {
+  const key = `SOCIAL_API_PROVIDER_${platformId.toUpperCase()}`;
+  const keyMode = `SOCIAL_API_MODE_${platformId.toUpperCase()}`;
+  const specific = process.env[key] || process.env[keyMode];
+  if (specific) return normalizeProvider(specific);
+
+  // If OUTSTAND_PLATFORMS is explicitly configured, it becomes the source of truth:
+  // listed platforms => outstanding, others => native.
+  const selectedOutstandPlatforms = resolveOutstandPlatformSet();
+  if (selectedOutstandPlatforms.size > 0) {
+    return selectedOutstandPlatforms.has(platformId) ? 'outstanding' : 'native';
+  }
+
+  return getGlobalPlatformApiProvider();
+}
+
+export function isOutstandingProvider(platformId: PlatformId): boolean {
+  return getPlatformApiProvider(platformId) === 'outstanding';
+}

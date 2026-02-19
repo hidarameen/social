@@ -12,6 +12,9 @@ import { executionQueue } from '@/lib/services/execution-queue';
 import { taskProcessor } from '@/lib/services/task-processor';
 import { debugError, debugLog } from '@/lib/debug';
 import { getOAuthClientCredentials } from '@/lib/platform-credentials';
+import { getPlatformApiProvider } from '@/lib/platforms/provider';
+import { getPlatformHandler } from '@/lib/platforms/handlers';
+import type { PlatformId, PostRequest } from '@/lib/platforms/types';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 10;
 const MIN_POLL_INTERVAL_SECONDS = 5;
@@ -20,6 +23,32 @@ const DEFAULT_FETCH_LIMIT = 100;
 const MIN_FETCH_LIMIT = 10;
 const MAX_FETCH_LIMIT = 200;
 const DEFAULT_ALBUM_QUIET_SECONDS = 3;
+const MANAGED_PLATFORM_IDS = new Set<PlatformId>([
+  'facebook',
+  'instagram',
+  'twitter',
+  'tiktok',
+  'youtube',
+  'telegram',
+  'linkedin',
+]);
+
+function asManagedPlatformId(platformId: string): PlatformId | null {
+  if (MANAGED_PLATFORM_IDS.has(platformId as PlatformId)) {
+    return platformId as PlatformId;
+  }
+  return null;
+}
+
+function buildOutstandingPublishToken(target: PlatformAccount): string {
+  return JSON.stringify({
+    accountId: target.accountId,
+    accountUsername: target.accountUsername,
+    accountName: target.accountName,
+    accessToken: target.accessToken,
+    apiKey: (target.credentials as any)?.apiKey,
+  });
+}
 
 function clampSeconds(value: number) {
   if (value < MIN_POLL_INTERVAL_SECONDS) return MIN_POLL_INTERVAL_SECONDS;
@@ -554,7 +583,34 @@ async function processTelegramTaskMessage({
             stage: 'publishing',
           },
         });
-        if (target.platformId === 'twitter') {
+        const managedTargetPlatformId = asManagedPlatformId(target.platformId);
+        if (
+          managedTargetPlatformId &&
+          getPlatformApiProvider(managedTargetPlatformId) === 'outstanding'
+        ) {
+          if (mediaItems.length > 0) {
+            debugLog('Telegram poller -> Outstand media fallback to text-only', {
+              taskId: task.id,
+              sourceId: source.id,
+              targetId: target.id,
+              mediaCount: mediaItems.length,
+            });
+          }
+          const handler = getPlatformHandler(managedTargetPlatformId);
+          const postRequest: PostRequest = { content: text };
+          const outstandResponse = await handler.publishPost(
+            postRequest,
+            buildOutstandingPublishToken(target)
+          );
+          if (!outstandResponse.success) {
+            throw new Error(outstandResponse.error || 'Outstand publish failed');
+          }
+          responseData = {
+            id: outstandResponse.postId,
+            url: outstandResponse.url,
+            provider: 'outstanding',
+          };
+        } else if (target.platformId === 'twitter') {
           responseData = await withTwitterClientRetry(target, async (twitterClient) => {
             const mediaPlan = selectTwitterMediaForTweet(mediaItems);
             const uploadedMedia: Array<{ mediaKey: string; type: 'video' | 'photo' }> = [];

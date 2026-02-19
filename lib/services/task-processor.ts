@@ -1,9 +1,10 @@
 import { db, type Task, type PlatformAccount, type TaskExecution } from '@/lib/db';
 import { getPlatformHandler } from '@/lib/platforms/handlers';
+import { getPlatformApiProvider } from '@/lib/platforms/provider';
 import type { PlatformId } from '@/lib/platforms/types';
 import { randomUUID } from 'crypto';
 
-const GENERIC_TASK_SUPPORTED_TARGETS = new Set<PlatformId>(['facebook']);
+const GENERIC_TASK_SUPPORTED_TARGETS_NATIVE = new Set<PlatformId>(['facebook']);
 
 export class TaskProcessor {
   /**
@@ -91,7 +92,8 @@ export class TaskProcessor {
     const sourcePlatformId = sourceAccount.platformId as PlatformId;
     const targetPlatformId = targetAccount.platformId as PlatformId;
 
-    if (!GENERIC_TASK_SUPPORTED_TARGETS.has(targetPlatformId)) {
+    const provider = getPlatformApiProvider(targetPlatformId);
+    if (provider === 'native' && !GENERIC_TASK_SUPPORTED_TARGETS_NATIVE.has(targetPlatformId)) {
       throw new Error(
         `Generic task execution for target platform "${targetAccount.platformId}" is not implemented. Use platform-specific webhook automation for this route.`
       );
@@ -160,15 +162,25 @@ export class TaskProcessor {
       });
 
       let postResponse;
+      const publishToken =
+        provider === 'outstanding'
+          ? JSON.stringify({
+              accountId: targetAccount.accountId,
+              accountUsername: targetAccount.accountUsername,
+              accountName: targetAccount.accountName,
+              accessToken: targetAccount.accessToken,
+            })
+          : targetAccount.accessToken;
+
       if (task.executionType === 'scheduled' && task.scheduleTime) {
         postResponse = await targetHandler.schedulePost(
           postRequest,
-          targetAccount.accessToken
+          publishToken
         );
       } else {
         postResponse = await targetHandler.publishPost(
           postRequest,
-          targetAccount.accessToken
+          publishToken
         );
       }
 

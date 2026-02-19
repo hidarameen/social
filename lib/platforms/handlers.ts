@@ -10,6 +10,8 @@ import type {
   PostResponse,
 } from './types';
 import { facebookHandler, facebookConfig } from './facebook';
+import { getPlatformApiProvider } from './provider';
+import { outstandingPlatformHandlers } from './outstanding';
 
 // Instagram Handler
 class InstagramHandler implements BasePlatformHandler {
@@ -378,7 +380,7 @@ class LinkedInHandler implements BasePlatformHandler {
 }
 
 // Platform Registry
-export const platformHandlers: Record<PlatformId, BasePlatformHandler> = {
+export const nativePlatformHandlers: Record<PlatformId, BasePlatformHandler> = {
   facebook: facebookHandler,
   instagram: new InstagramHandler(),
   twitter: new TwitterHandler(),
@@ -387,6 +389,8 @@ export const platformHandlers: Record<PlatformId, BasePlatformHandler> = {
   telegram: new TelegramHandler(),
   linkedin: new LinkedInHandler(),
 };
+
+export const platformHandlers: Record<PlatformId, BasePlatformHandler> = nativePlatformHandlers;
 
 export const platformConfigs: Record<PlatformId, PlatformConfig> = {
   facebook: facebookConfig,
@@ -399,7 +403,11 @@ export const platformConfigs: Record<PlatformId, PlatformConfig> = {
 };
 
 export function getPlatformHandler(platformId: PlatformId): BasePlatformHandler {
-  return platformHandlers[platformId];
+  const provider = getPlatformApiProvider(platformId);
+  if (provider === 'outstanding') {
+    return outstandingPlatformHandlers[platformId];
+  }
+  return nativePlatformHandlers[platformId];
 }
 
 export function getPlatformConfig(platformId: PlatformId): PlatformConfig {
