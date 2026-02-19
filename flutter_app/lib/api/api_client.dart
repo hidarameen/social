@@ -312,12 +312,37 @@ class ApiClient {
     );
   }
 
-  Future<Map<String, dynamic>> fetchExecutions(String token, {int limit = 30}) {
+  Future<Map<String, dynamic>> fetchExecutions(
+    String token, {
+    int limit = 30,
+    int offset = 0,
+    String? search,
+    String? status,
+    String sortBy = 'executedAt',
+    String sortDir = 'desc',
+  }) {
+    final query = <String, String>{
+      'limit': '$limit',
+      'offset': '$offset',
+      'sortBy': sortBy,
+      'sortDir': sortDir,
+    };
+
+    final normalizedSearch = (search ?? '').trim();
+    if (normalizedSearch.isNotEmpty) {
+      query['search'] = normalizedSearch;
+    }
+
+    final normalizedStatus = (status ?? '').trim();
+    if (normalizedStatus.isNotEmpty) {
+      query['status'] = normalizedStatus;
+    }
+
     return _request(
       method: 'GET',
       path: '/api/executions',
       token: token,
-      query: {'limit': '$limit'},
+      query: query,
     );
   }
 
@@ -326,7 +351,8 @@ class ApiClient {
     int limit = 50,
     int offset = 0,
     String search = '',
-    String sortBy = 'successRate', // taskName|successRate|totalExecutions|failed
+    String sortBy =
+        'successRate', // taskName|successRate|totalExecutions|failed
     String sortDir = 'desc', // asc|desc
   }) {
     final query = <String, String>{
@@ -369,7 +395,8 @@ class ApiClient {
     );
   }
 
-  Future<Map<String, dynamic>> fetchPlatformCredentials(String token, {String? platformId}) {
+  Future<Map<String, dynamic>> fetchPlatformCredentials(String token,
+      {String? platformId}) {
     final query = <String, String>{};
     final normalized = (platformId ?? '').trim();
     if (normalized.isNotEmpty) query['platformId'] = normalized;
@@ -449,9 +476,8 @@ class ApiClient {
 
     late final http.Response response;
     try {
-      response = await _httpClient
-          .get(uri, headers: headers)
-          .timeout(_requestTimeout);
+      response =
+          await _httpClient.get(uri, headers: headers).timeout(_requestTimeout);
     } catch (error) {
       if (error is ApiException) rethrow;
       throw ApiException('Export request failed: $error');
@@ -482,9 +508,8 @@ class ApiClient {
 
     late final http.Response response;
     try {
-      response = await _httpClient
-          .get(uri, headers: headers)
-          .timeout(_requestTimeout);
+      response =
+          await _httpClient.get(uri, headers: headers).timeout(_requestTimeout);
     } catch (error) {
       if (error is ApiException) rethrow;
       throw ApiException('Export request failed: $error');

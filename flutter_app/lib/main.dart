@@ -5,6 +5,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'app_config.dart';
 import 'app_state.dart';
@@ -69,8 +70,9 @@ class _StateLoaderState extends State<_StateLoader> {
     return AnimatedBuilder(
       animation: state,
       builder: (context, _) {
-        final themeMode =
-            state.themeMode == AppThemeMode.dark ? ThemeMode.dark : ThemeMode.light;
+        final themeMode = state.themeMode == AppThemeMode.dark
+            ? ThemeMode.dark
+            : ThemeMode.light;
 
         return MaterialApp(
           title: 'SocialFlow',
@@ -125,7 +127,8 @@ class _AppBootstrapState extends State<AppBootstrap> {
 
   Future<void> _restoreSession() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedToken = (prefs.getString(StorageKeys.mobileAccessToken) ?? '').trim();
+    final savedToken =
+        (prefs.getString(StorageKeys.mobileAccessToken) ?? '').trim();
     final savedName = prefs.getString(StorageKeys.mobileUserName) ?? '';
     final savedEmail = prefs.getString(StorageKeys.mobileUserEmail) ?? '';
 
@@ -195,7 +198,8 @@ class _AppBootstrapState extends State<AppBootstrap> {
     }
 
     if (_token == null || _token!.isEmpty) {
-      return AuthFlow(state: widget.state, api: _api, onSignedIn: _handleSignedIn);
+      return AuthFlow(
+          state: widget.state, api: _api, onSignedIn: _handleSignedIn);
     }
 
     return SocialShell(
@@ -782,7 +786,8 @@ class _AuthFlowState extends State<AuthFlow> {
           prefillEmail: _email.isEmpty ? null : _email,
           onSignedIn: widget.onSignedIn,
           onGoToRegister: () => _go(_AuthView.register, email: _email),
-          onGoToForgotPassword: () => _go(_AuthView.forgotPassword, email: _email),
+          onGoToForgotPassword: () =>
+              _go(_AuthView.forgotPassword, email: _email),
         );
       case _AuthView.register:
         return RegisterScreen(
@@ -812,7 +817,8 @@ class _AuthFlowState extends State<AuthFlow> {
           state: widget.state,
           api: widget.api,
           onBackToLogin: () => _go(_AuthView.login, email: _email),
-          onGoToResetPassword: (email) => _go(_AuthView.resetPassword, email: email),
+          onGoToResetPassword: (email) =>
+              _go(_AuthView.resetPassword, email: email),
         );
       case _AuthView.resetPassword:
         return ResetPasswordScreen(
@@ -936,13 +942,16 @@ class _SocialShellState extends State<SocialShell> {
   bool _tasksLoadingMore = false;
   Timer? _tasksDebounceTimer;
   final TextEditingController _tasksSearchController = TextEditingController();
-  final TextEditingController _accountsSearchController = TextEditingController();
+  final TextEditingController _accountsSearchController =
+      TextEditingController();
   String _accountsQuery = '';
   String _accountsStatusFilter = 'all';
-  final TextEditingController _executionsSearchController = TextEditingController();
+  final TextEditingController _executionsSearchController =
+      TextEditingController();
   String _executionsQuery = '';
   String _executionsStatusFilter = 'all';
-  int _executionsVisibleCount = 24;
+  int _executionsOffset = 0;
+  bool _executionsHasMore = false;
   bool _executionsLoadingMore = false;
   String _analyticsQuery = '';
   String _analyticsSortBy = 'successRate';
@@ -952,7 +961,8 @@ class _SocialShellState extends State<SocialShell> {
   bool _analyticsLoadingMore = false;
   Timer? _executionsDebounceTimer;
   Timer? _analyticsDebounceTimer;
-  final TextEditingController _analyticsSearchController = TextEditingController();
+  final TextEditingController _analyticsSearchController =
+      TextEditingController();
   final Map<String, String> _taskActionState = <String, String>{};
   final Map<String, String> _executionActionState = <String, String>{};
   final Map<PanelKind, DateTime> _panelUpdatedAt = <PanelKind, DateTime>{};
@@ -964,19 +974,25 @@ class _SocialShellState extends State<SocialShell> {
   bool _settingsUpdatingPassword = false;
   String _settingsProfileError = '';
   final TextEditingController _settingsNameController = TextEditingController();
-  final TextEditingController _settingsImageUrlController = TextEditingController();
-  final TextEditingController _settingsCurrentPasswordController = TextEditingController();
-  final TextEditingController _settingsNewPasswordController = TextEditingController();
-  final TextEditingController _settingsConfirmPasswordController = TextEditingController();
+  final TextEditingController _settingsImageUrlController =
+      TextEditingController();
+  final TextEditingController _settingsCurrentPasswordController =
+      TextEditingController();
+  final TextEditingController _settingsNewPasswordController =
+      TextEditingController();
+  final TextEditingController _settingsConfirmPasswordController =
+      TextEditingController();
 
   String _settingsSelectedPlatform = 'twitter';
   bool _settingsCredentialsLoading = false;
   bool _settingsCredentialsSaving = false;
   String _settingsCredentialsError = '';
   bool _settingsCredentialsDirty = false;
-  Map<String, Map<String, String>> _settingsCredentialMap = <String, Map<String, String>>{};
+  Map<String, Map<String, String>> _settingsCredentialMap =
+      <String, Map<String, String>>{};
   Map<String, String> _settingsCredentialDraft = <String, String>{};
-  final Map<String, TextEditingController> _settingsCredentialControllers = <String, TextEditingController>{};
+  final Map<String, TextEditingController> _settingsCredentialControllers =
+      <String, TextEditingController>{};
   final Map<String, bool> _settingsRevealSecret = <String, bool>{};
 
   final Map<PanelKind, _PanelState> _panelStates = {
@@ -1035,6 +1051,11 @@ class _SocialShellState extends State<SocialShell> {
       return;
     }
 
+    if (kind == PanelKind.executions) {
+      await _loadExecutionsPage(reset: true, showPanelLoading: true);
+      return;
+    }
+
     setState(() {
       state.loading = true;
       state.error = null;
@@ -1064,11 +1085,7 @@ class _SocialShellState extends State<SocialShell> {
           );
           break;
         case PanelKind.executions:
-          payload = await widget.api.fetchExecutions(
-            widget.accessToken,
-            limit: 60,
-          );
-          break;
+          throw StateError('Executions are loaded via _loadExecutionsPage.');
         case PanelKind.analytics:
           payload = await widget.api.fetchAnalytics(
             widget.accessToken,
@@ -1096,44 +1113,12 @@ class _SocialShellState extends State<SocialShell> {
           _analyticsHasMore = payload['hasMore'] == true;
         }
       });
-
-      if (kind == PanelKind.executions) {
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(StorageKeys.cachedExecutionsPayload, jsonEncode(payload));
-        } catch (_) {
-          // Ignore cache persistence failures.
-        }
-      }
     } catch (error) {
-      Map<String, dynamic>? fallbackExecutions;
-      if (kind == PanelKind.executions) {
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          final raw = (prefs.getString(StorageKeys.cachedExecutionsPayload) ?? '').trim();
-          if (raw.isNotEmpty) {
-            final decoded = jsonDecode(raw);
-            if (decoded is Map) {
-              fallbackExecutions = decoded.map((k, v) => MapEntry(k.toString(), v));
-            }
-          }
-        } catch (_) {
-          fallbackExecutions = null;
-        }
-      }
-
       if (!mounted) return;
-      final i18n = _i18n(context);
       setState(() {
         state.loading = false;
-        final message = error is ApiException ? error.message : 'Failed to load panel.';
-        if (kind == PanelKind.executions && fallbackExecutions != null) {
-          state.data = fallbackExecutions;
-          state.error = i18n.isArabic
-              ? '$message. عرض آخر نسخة محفوظة.'
-              : '$message. Showing cached last view.';
-          return;
-        }
+        final message =
+            error is ApiException ? error.message : 'Failed to load panel.';
         state.error = message;
       });
     }
@@ -1164,7 +1149,8 @@ class _SocialShellState extends State<SocialShell> {
 
   Future<void> _toggleSidebar({required bool wide}) async {
     if (wide) {
-      await widget.appState.setSidebarCollapsed(!widget.appState.sidebarCollapsed);
+      await widget.appState
+          .setSidebarCollapsed(!widget.appState.sidebarCollapsed);
       return;
     }
 
@@ -1178,7 +1164,8 @@ class _SocialShellState extends State<SocialShell> {
   }
 
   void _openProfilePanel({required bool closeDrawer}) {
-    final settingsIndex = kPanelSpecs.indexWhere((p) => p.kind == PanelKind.settings);
+    final settingsIndex =
+        kPanelSpecs.indexWhere((p) => p.kind == PanelKind.settings);
     if (settingsIndex < 0) return;
     if (closeDrawer) {
       Navigator.of(context).maybePop();
@@ -1199,6 +1186,7 @@ class _SocialShellState extends State<SocialShell> {
   }
 
   static const int _kTasksPageSize = 50;
+  static const int _kExecutionsPageSize = 50;
 
   int _readInt(dynamic value, {int fallback = 0}) {
     if (value is num) return value.toInt();
@@ -1217,7 +1205,8 @@ class _SocialShellState extends State<SocialShell> {
     _settingsProfileSyncedUserId = id;
     _settingsProfileError = '';
     _settingsNameController.text = user['name']?.toString() ?? '';
-    _settingsImageUrlController.text = user['profileImageUrl']?.toString() ?? '';
+    _settingsImageUrlController.text =
+        user['profileImageUrl']?.toString() ?? '';
   }
 
   static const List<String> _kManagedPlatformIds = <String>[
@@ -1241,34 +1230,124 @@ class _SocialShellState extends State<SocialShell> {
   static const Map<String, List<Map<String, dynamic>>> _kPlatformFields =
       <String, List<Map<String, dynamic>>>{
     'twitter': [
-      {'key': 'clientId', 'label': 'OAuth Client ID', 'hint': 'Twitter app client id', 'secret': false},
-      {'key': 'clientSecret', 'label': 'OAuth Client Secret', 'hint': 'Twitter app client secret', 'secret': true},
-      {'key': 'apiKey', 'label': 'API Key (OAuth1)', 'hint': 'Twitter API key', 'secret': false},
-      {'key': 'apiSecret', 'label': 'API Secret (OAuth1)', 'hint': 'Twitter API secret', 'secret': true},
-      {'key': 'accessToken', 'label': 'Access Token (OAuth1)', 'hint': 'Twitter access token', 'secret': true},
-      {'key': 'accessTokenSecret', 'label': 'Access Token Secret (OAuth1)', 'hint': 'Twitter access token secret', 'secret': true},
-      {'key': 'bearerToken', 'label': 'Bearer Token (Streaming)', 'hint': 'Twitter bearer token', 'secret': true},
-      {'key': 'webhookSecret', 'label': 'Webhook Secret', 'hint': 'Twitter webhook/API secret', 'secret': true},
+      {
+        'key': 'clientId',
+        'label': 'OAuth Client ID',
+        'hint': 'Twitter app client id',
+        'secret': false
+      },
+      {
+        'key': 'clientSecret',
+        'label': 'OAuth Client Secret',
+        'hint': 'Twitter app client secret',
+        'secret': true
+      },
+      {
+        'key': 'apiKey',
+        'label': 'API Key (OAuth1)',
+        'hint': 'Twitter API key',
+        'secret': false
+      },
+      {
+        'key': 'apiSecret',
+        'label': 'API Secret (OAuth1)',
+        'hint': 'Twitter API secret',
+        'secret': true
+      },
+      {
+        'key': 'accessToken',
+        'label': 'Access Token (OAuth1)',
+        'hint': 'Twitter access token',
+        'secret': true
+      },
+      {
+        'key': 'accessTokenSecret',
+        'label': 'Access Token Secret (OAuth1)',
+        'hint': 'Twitter access token secret',
+        'secret': true
+      },
+      {
+        'key': 'bearerToken',
+        'label': 'Bearer Token (Streaming)',
+        'hint': 'Twitter bearer token',
+        'secret': true
+      },
+      {
+        'key': 'webhookSecret',
+        'label': 'Webhook Secret',
+        'hint': 'Twitter webhook/API secret',
+        'secret': true
+      },
     ],
     'facebook': [
-      {'key': 'clientId', 'label': 'App ID / Client ID', 'hint': 'Facebook app id', 'secret': false},
-      {'key': 'clientSecret', 'label': 'App Secret / Client Secret', 'hint': 'Facebook app secret', 'secret': true},
+      {
+        'key': 'clientId',
+        'label': 'App ID / Client ID',
+        'hint': 'Facebook app id',
+        'secret': false
+      },
+      {
+        'key': 'clientSecret',
+        'label': 'App Secret / Client Secret',
+        'hint': 'Facebook app secret',
+        'secret': true
+      },
     ],
     'instagram': [
-      {'key': 'clientId', 'label': 'Client ID', 'hint': 'Instagram client id', 'secret': false},
-      {'key': 'clientSecret', 'label': 'Client Secret', 'hint': 'Instagram client secret', 'secret': true},
+      {
+        'key': 'clientId',
+        'label': 'Client ID',
+        'hint': 'Instagram client id',
+        'secret': false
+      },
+      {
+        'key': 'clientSecret',
+        'label': 'Client Secret',
+        'hint': 'Instagram client secret',
+        'secret': true
+      },
     ],
     'youtube': [
-      {'key': 'clientId', 'label': 'Google Client ID', 'hint': 'Google OAuth client id', 'secret': false},
-      {'key': 'clientSecret', 'label': 'Google Client Secret', 'hint': 'Google OAuth client secret', 'secret': true},
+      {
+        'key': 'clientId',
+        'label': 'Google Client ID',
+        'hint': 'Google OAuth client id',
+        'secret': false
+      },
+      {
+        'key': 'clientSecret',
+        'label': 'Google Client Secret',
+        'hint': 'Google OAuth client secret',
+        'secret': true
+      },
     ],
     'tiktok': [
-      {'key': 'clientId', 'label': 'Client Key', 'hint': 'TikTok client key', 'secret': false},
-      {'key': 'clientSecret', 'label': 'Client Secret', 'hint': 'TikTok client secret', 'secret': true},
+      {
+        'key': 'clientId',
+        'label': 'Client Key',
+        'hint': 'TikTok client key',
+        'secret': false
+      },
+      {
+        'key': 'clientSecret',
+        'label': 'Client Secret',
+        'hint': 'TikTok client secret',
+        'secret': true
+      },
     ],
     'linkedin': [
-      {'key': 'clientId', 'label': 'Client ID', 'hint': 'LinkedIn client id', 'secret': false},
-      {'key': 'clientSecret', 'label': 'Client Secret', 'hint': 'LinkedIn client secret', 'secret': true},
+      {
+        'key': 'clientId',
+        'label': 'Client ID',
+        'hint': 'LinkedIn client id',
+        'secret': false
+      },
+      {
+        'key': 'clientSecret',
+        'label': 'Client Secret',
+        'hint': 'LinkedIn client secret',
+        'secret': true
+      },
     ],
   };
 
@@ -1280,7 +1359,8 @@ class _SocialShellState extends State<SocialShell> {
       _settingsCredentialsError = '';
     });
     try {
-      final payload = await widget.api.fetchPlatformCredentials(widget.accessToken);
+      final payload =
+          await widget.api.fetchPlatformCredentials(widget.accessToken);
       final raw = payload['credentials'];
       final map = <String, Map<String, String>>{};
       if (raw is Map) {
@@ -1289,7 +1369,8 @@ class _SocialShellState extends State<SocialShell> {
           if (platformId.trim().isEmpty) continue;
           final value = entry.value;
           if (value is Map) {
-            map[platformId] = value.map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
+            map[platformId] = value
+                .map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
           }
         }
       }
@@ -1300,34 +1381,42 @@ class _SocialShellState extends State<SocialShell> {
         _settingsCredentialsLoading = false;
       });
 
-      _setSettingsSelectedPlatform(_settingsSelectedPlatform, allowSetState: false);
+      _setSettingsSelectedPlatform(_settingsSelectedPlatform,
+          allowSetState: false);
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _settingsCredentialsLoading = false;
-        _settingsCredentialsError =
-            error is ApiException ? error.message : 'Failed to load platform credentials.';
+        _settingsCredentialsError = error is ApiException
+            ? error.message
+            : 'Failed to load platform credentials.';
       });
     }
   }
 
-  void _setSettingsSelectedPlatform(String platformId, {bool allowSetState = true}) {
+  void _setSettingsSelectedPlatform(String platformId,
+      {bool allowSetState = true}) {
     final normalized = platformId.trim().toLowerCase();
-    final next = _kManagedPlatformIds.contains(normalized) ? normalized : 'twitter';
-    if (_settingsSelectedPlatform == next && _settingsCredentialControllers.isNotEmpty) return;
+    final next =
+        _kManagedPlatformIds.contains(normalized) ? normalized : 'twitter';
+    if (_settingsSelectedPlatform == next &&
+        _settingsCredentialControllers.isNotEmpty) return;
 
     void apply() {
       _settingsSelectedPlatform = next;
       _settingsCredentialsDirty = false;
-      _settingsCredentialDraft = Map<String, String>.from(_settingsCredentialMap[next] ?? const <String, String>{});
+      _settingsCredentialDraft = Map<String, String>.from(
+          _settingsCredentialMap[next] ?? const <String, String>{});
       for (final c in _settingsCredentialControllers.values) {
         c.dispose();
       }
       _settingsCredentialControllers.clear();
-      for (final field in (_kPlatformFields[next] ?? const <Map<String, dynamic>>[])) {
+      for (final field
+          in (_kPlatformFields[next] ?? const <Map<String, dynamic>>[])) {
         final key = field['key']?.toString() ?? '';
         if (key.isEmpty) continue;
-        _settingsCredentialControllers[key] = TextEditingController(text: _settingsCredentialDraft[key] ?? '');
+        _settingsCredentialControllers[key] =
+            TextEditingController(text: _settingsCredentialDraft[key] ?? '');
       }
     }
 
@@ -1340,7 +1429,8 @@ class _SocialShellState extends State<SocialShell> {
 
   Future<void> _saveSettingsPlatformCredentials() async {
     if (_settingsCredentialsSaving) return;
-    final fields = _kPlatformFields[_settingsSelectedPlatform] ?? const <Map<String, dynamic>>[];
+    final fields = _kPlatformFields[_settingsSelectedPlatform] ??
+        const <Map<String, dynamic>>[];
     final payload = <String, dynamic>{};
     for (final field in fields) {
       final key = field['key']?.toString() ?? '';
@@ -1373,13 +1463,15 @@ class _SocialShellState extends State<SocialShell> {
         _settingsCredentialsDirty = false;
         _settingsCredentialsSaving = false;
       });
-      _toast('${_kPlatformLabels[_settingsSelectedPlatform] ?? _settingsSelectedPlatform} credentials saved');
+      _toast(
+          '${_kPlatformLabels[_settingsSelectedPlatform] ?? _settingsSelectedPlatform} credentials saved');
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _settingsCredentialsSaving = false;
-        _settingsCredentialsError =
-            error is ApiException ? error.message : 'Failed to save credentials.';
+        _settingsCredentialsError = error is ApiException
+            ? error.message
+            : 'Failed to save credentials.';
       });
     }
   }
@@ -1427,11 +1519,13 @@ class _SocialShellState extends State<SocialShell> {
     final confirm = _settingsConfirmPasswordController.text;
 
     if (next.trim().length < 8) {
-      setState(() => _settingsProfileError = 'New password must be at least 8 characters.');
+      setState(() => _settingsProfileError =
+          'New password must be at least 8 characters.');
       return;
     }
     if (next != confirm) {
-      setState(() => _settingsProfileError = 'Confirm password does not match.');
+      setState(
+          () => _settingsProfileError = 'Confirm password does not match.');
       return;
     }
 
@@ -1457,8 +1551,9 @@ class _SocialShellState extends State<SocialShell> {
       if (!mounted) return;
       setState(() {
         _settingsUpdatingPassword = false;
-        _settingsProfileError =
-            error is ApiException ? error.message : 'Failed to update password.';
+        _settingsProfileError = error is ApiException
+            ? error.message
+            : 'Failed to update password.';
       });
     }
   }
@@ -1474,6 +1569,9 @@ class _SocialShellState extends State<SocialShell> {
       _settingsCredentialDraft = <String, String>{};
       _settingsCredentialsError = '';
       _settingsCredentialsDirty = false;
+      _executionsOffset = 0;
+      _executionsHasMore = false;
+      _executionsLoadingMore = false;
     });
     unawaited(_loadCurrentPanel(force: true));
   }
@@ -1489,6 +1587,132 @@ class _SocialShellState extends State<SocialShell> {
       await _loadTasksPage(reset: false, showPanelLoading: false);
     } finally {
       if (mounted) setState(() => _tasksLoadingMore = false);
+    }
+  }
+
+  Future<Map<String, dynamic>?> _readCachedExecutionsPayload() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw =
+          (prefs.getString(StorageKeys.cachedExecutionsPayload) ?? '').trim();
+      if (raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return decoded.map((k, v) => MapEntry(k.toString(), v));
+      }
+    } catch (_) {
+      // Ignore cache read failures.
+    }
+    return null;
+  }
+
+  Future<void> _cacheExecutionsPayload(Map<String, dynamic> payload) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          StorageKeys.cachedExecutionsPayload, jsonEncode(payload));
+    } catch (_) {
+      // Ignore cache write failures.
+    }
+  }
+
+  Future<void> _loadExecutionsPage({
+    required bool reset,
+    required bool showPanelLoading,
+  }) async {
+    final state = _panelStates[PanelKind.executions]!;
+    final currentData = state.data;
+    final currentExecutions = currentData?['executions'] is List
+        ? (currentData!['executions'] as List)
+        : const <dynamic>[];
+    final currentOffset =
+        _readInt(currentData?['nextOffset'], fallback: _executionsOffset);
+    final offset = reset ? 0 : currentOffset;
+
+    if (showPanelLoading) {
+      setState(() {
+        state.loading = true;
+        state.error = null;
+      });
+    }
+
+    try {
+      final payload = await widget.api.fetchExecutions(
+        widget.accessToken,
+        limit: _kExecutionsPageSize,
+        offset: offset,
+        search: _executionsQuery,
+        status:
+            _executionsStatusFilter == 'all' ? null : _executionsStatusFilter,
+      );
+
+      Map<String, dynamic> payloadForCache = payload;
+      if (!mounted) return;
+      setState(() {
+        state.loading = false;
+        state.error = null;
+        _panelUpdatedAt[PanelKind.executions] = DateTime.now();
+
+        final nextExecutionsRaw = payload['executions'] is List
+            ? (payload['executions'] as List)
+            : const <dynamic>[];
+        final mergedExecutions = <dynamic>[
+          if (!reset) ...currentExecutions,
+          ...nextExecutionsRaw,
+        ];
+
+        final merged = Map<String, dynamic>.from(payload);
+        merged['executions'] = mergedExecutions;
+        state.data = merged;
+        payloadForCache = merged;
+        _executionsOffset =
+            _readInt(payload['nextOffset'], fallback: mergedExecutions.length);
+        _executionsHasMore = payload['hasMore'] == true;
+      });
+
+      await _cacheExecutionsPayload(payloadForCache);
+    } catch (error) {
+      final message =
+          error is ApiException ? error.message : 'Failed to load executions.';
+      if (!mounted) return;
+
+      if (reset) {
+        final fallbackExecutions = await _readCachedExecutionsPayload();
+        if (!mounted) return;
+        final i18n = _i18n(context);
+        setState(() {
+          state.loading = false;
+          if (fallbackExecutions != null) {
+            state.data = fallbackExecutions;
+            state.error = i18n.isArabic
+                ? '$message. عرض آخر نسخة محفوظة.'
+                : '$message. Showing cached last view.';
+            _executionsOffset =
+                _readInt(fallbackExecutions['nextOffset'], fallback: 0);
+            _executionsHasMore = fallbackExecutions['hasMore'] == true;
+            return;
+          }
+          state.error = message;
+        });
+        return;
+      }
+
+      setState(() => state.loading = false);
+      _toast(message);
+    }
+  }
+
+  Future<void> _loadMoreExecutions() async {
+    if (_executionsLoadingMore) return;
+    if (!_executionsHasMore) return;
+
+    setState(() => _executionsLoadingMore = true);
+    try {
+      await _loadExecutionsPage(reset: false, showPanelLoading: false);
+    } finally {
+      if (mounted) {
+        setState(() => _executionsLoadingMore = false);
+      }
     }
   }
 
@@ -1512,7 +1736,9 @@ class _SocialShellState extends State<SocialShell> {
 
       final prevList = current['taskStats'];
       final prev = prevList is List ? prevList : const <dynamic>[];
-      final nextList = payload['taskStats'] is List ? (payload['taskStats'] as List) : const <dynamic>[];
+      final nextList = payload['taskStats'] is List
+          ? (payload['taskStats'] as List)
+          : const <dynamic>[];
 
       final merged = <dynamic>[...prev, ...nextList];
       final mergedPayload = <String, dynamic>{
@@ -1523,7 +1749,8 @@ class _SocialShellState extends State<SocialShell> {
       if (!mounted) return;
       setState(() {
         state.data = mergedPayload;
-        _analyticsOffset = _readInt(payload['nextOffset'], fallback: merged.length);
+        _analyticsOffset =
+            _readInt(payload['nextOffset'], fallback: merged.length);
         _analyticsHasMore = payload['hasMore'] == true;
         _analyticsLoadingMore = false;
         _panelUpdatedAt[PanelKind.analytics] = DateTime.now();
@@ -1531,7 +1758,8 @@ class _SocialShellState extends State<SocialShell> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _analyticsLoadingMore = false);
-      final message = error is ApiException ? error.message : 'Failed to load analytics.';
+      final message =
+          error is ApiException ? error.message : 'Failed to load analytics.';
       _toast(message);
     }
   }
@@ -1587,8 +1815,9 @@ class _SocialShellState extends State<SocialShell> {
           return;
         }
 
-        final nextTasksRaw =
-            payload['tasks'] is List ? (payload['tasks'] as List) : const <dynamic>[];
+        final nextTasksRaw = payload['tasks'] is List
+            ? (payload['tasks'] as List)
+            : const <dynamic>[];
         final mergedTasks = <dynamic>[
           ...currentTasks,
           ...nextTasksRaw,
@@ -1623,37 +1852,27 @@ class _SocialShellState extends State<SocialShell> {
 
   void _onExecutionsQueryChanged(String value) {
     final next = value.trim();
+    if (_executionsQuery == next) return;
+    setState(() => _executionsQuery = next);
     _executionsDebounceTimer?.cancel();
     _executionsDebounceTimer = Timer(const Duration(milliseconds: 220), () {
       if (!mounted) return;
-      if (_executionsQuery == next) return;
-      setState(() {
-        _executionsQuery = next;
-        _executionsVisibleCount = 24;
-      });
-    });
-  }
-
-  Future<void> _loadMoreExecutionsVisible(int totalFilteredCount) async {
-    if (_executionsLoadingMore) return;
-    if (_executionsVisibleCount >= totalFilteredCount) return;
-    setState(() => _executionsLoadingMore = true);
-    await Future<void>.delayed(const Duration(milliseconds: 180));
-    if (!mounted) return;
-    setState(() {
-      _executionsLoadingMore = false;
-      _executionsVisibleCount = (_executionsVisibleCount + 24).clamp(24, totalFilteredCount);
+      unawaited(_loadExecutionsPage(reset: true, showPanelLoading: true));
     });
   }
 
   Future<void> _exportTasksCsv() async {
     final i18n = _i18n(context);
     try {
-      final csv = await widget.api.exportTasksCsv(widget.accessToken, limit: 5000);
+      final csv =
+          await widget.api.exportTasksCsv(widget.accessToken, limit: 5000);
       await Clipboard.setData(ClipboardData(text: csv));
-      _toast(i18n.isArabic ? 'تم نسخ CSV إلى الحافظة.' : 'CSV copied to clipboard.');
+      _toast(i18n.isArabic
+          ? 'تم نسخ CSV إلى الحافظة.'
+          : 'CSV copied to clipboard.');
     } catch (error) {
-      final message = error is ApiException ? error.message : 'Failed to export tasks.';
+      final message =
+          error is ApiException ? error.message : 'Failed to export tasks.';
       _toast(message);
     }
   }
@@ -1740,17 +1959,22 @@ class _SocialShellState extends State<SocialShell> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          widget.userName.trim().isEmpty ? 'SocialFlow' : widget.userName,
+                          widget.userName.trim().isEmpty
+                              ? 'SocialFlow'
+                              : widget.userName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w900, fontSize: 16),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           widget.userEmail,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w700),
                         ),
                       ],
                     ),
@@ -1772,7 +1996,8 @@ class _SocialShellState extends State<SocialShell> {
                       leading: Icon(panel.icon),
                       title: Text(i18n.t(panel.labelKey, panel.fallbackLabel)),
                       selected: selected,
-                      selectedTileColor: scheme.primary.withOpacity(isDark ? 0.20 : 0.10),
+                      selectedTileColor:
+                          scheme.primary.withOpacity(isDark ? 0.20 : 0.10),
                       onTap: () {
                         Navigator.of(context).maybePop();
                         unawaited(_onPanelSelected(index));
@@ -1807,7 +2032,9 @@ class _SocialShellState extends State<SocialShell> {
     return NavigationRail(
       selectedIndex: _selectedIndex,
       extended: !collapsed,
-      labelType: collapsed ? NavigationRailLabelType.selected : NavigationRailLabelType.none,
+      labelType: collapsed
+          ? NavigationRailLabelType.selected
+          : NavigationRailLabelType.none,
       leading: Padding(
         padding: const EdgeInsets.only(top: 8),
         child: IconButton(
@@ -1921,7 +2148,8 @@ class _SocialShellState extends State<SocialShell> {
     }
 
     return CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+      physics:
+          const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
       slivers: [
         SliverPadding(
           padding: const EdgeInsets.all(SfTokens.pagePadding),
@@ -1944,11 +2172,13 @@ class _SocialShellState extends State<SocialShell> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _skeletonBlock(context: context, height: 16, width: 170),
+                              _skeletonBlock(
+                                  context: context, height: 16, width: 170),
                               const SizedBox(height: 10),
                               _skeletonBlock(context: context, height: 14),
                               const SizedBox(height: 8),
-                              _skeletonBlock(context: context, height: 14, width: 240),
+                              _skeletonBlock(
+                                  context: context, height: 14, width: 240),
                             ],
                           ),
                         ),
@@ -2010,12 +2240,17 @@ class _SocialShellState extends State<SocialShell> {
 
     return RefreshIndicator(
       onRefresh: () {
-        if (kind == PanelKind.tasks) return _loadTasksPage(reset: true, showPanelLoading: true);
+        if (kind == PanelKind.tasks)
+          return _loadTasksPage(reset: true, showPanelLoading: true);
+        if (kind == PanelKind.executions) {
+          return _loadExecutionsPage(reset: true, showPanelLoading: true);
+        }
         if (kind == PanelKind.analytics) return _loadPanel(kind, force: true);
         return _loadPanel(kind, force: true);
       },
       child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics()),
         slivers: [
           SliverPadding(
             padding: const EdgeInsets.all(SfTokens.pagePadding),
@@ -2088,7 +2323,9 @@ class _SocialShellState extends State<SocialShell> {
       for (final entry in byPlatform.entries) {
         final key = entry.key?.toString() ?? '';
         final rawCount = entry.value;
-        final count = rawCount is num ? rawCount.toInt() : int.tryParse(rawCount?.toString() ?? '0') ?? 0;
+        final count = rawCount is num
+            ? rawCount.toInt()
+            : int.tryParse(rawCount?.toString() ?? '0') ?? 0;
         if (key.trim().isEmpty) continue;
         entries.add(MapEntry<String, int>(key, count));
       }
@@ -2098,7 +2335,8 @@ class _SocialShellState extends State<SocialShell> {
 
     Widget pill(String text, {Color? bg, Color? fg, IconData? icon}) {
       final colorScheme = Theme.of(context).colorScheme;
-      final resolvedBg = bg ?? colorScheme.primary.withAlpha((0.10 * 255).round());
+      final resolvedBg =
+          bg ?? colorScheme.primary.withAlpha((0.10 * 255).round());
       final resolvedFg = fg ?? colorScheme.primary;
 
       return Container(
@@ -2169,7 +2407,8 @@ class _SocialShellState extends State<SocialShell> {
           SizedBox(
             width: 280,
             child: SfKpiTile(
-              label: i18n.t('dashboard.kpi.connectedAccounts', 'Connected accounts'),
+              label: i18n.t(
+                  'dashboard.kpi.connectedAccounts', 'Connected accounts'),
               value: '$totalAccounts',
               icon: Icons.groups_rounded,
               tone: Theme.of(context).colorScheme.secondary,
@@ -2178,7 +2417,8 @@ class _SocialShellState extends State<SocialShell> {
           SizedBox(
             width: 280,
             child: SfKpiTile(
-              label: i18n.t('dashboard.kpi.executionSuccess', 'Execution success'),
+              label:
+                  i18n.t('dashboard.kpi.executionSuccess', 'Execution success'),
               value: '$successRate%',
               icon: Icons.query_stats_rounded,
               tone: Colors.green.shade700,
@@ -2217,7 +2457,8 @@ class _SocialShellState extends State<SocialShell> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                pill('$activeTasks ${i18n.t('dashboard.kpi.active', 'active')}'),
+                pill(
+                    '$activeTasks ${i18n.t('dashboard.kpi.active', 'active')}'),
                 pill(
                   '$pausedTasks ${i18n.t('dashboard.kpi.paused', 'paused')}',
                   bg: colorScheme.secondary.withAlpha((0.16 * 255).round()),
@@ -2228,10 +2469,12 @@ class _SocialShellState extends State<SocialShell> {
                   bg: colorScheme.error.withAlpha((0.12 * 255).round()),
                   fg: colorScheme.error,
                 ),
-                pill('$successRate% ${i18n.t('dashboard.kpi.successRate', 'success rate')}'),
+                pill(
+                    '$successRate% ${i18n.t('dashboard.kpi.successRate', 'success rate')}'),
                 if (hasAuthWarnings)
                   pill(
-                    i18n.t('dashboard.kpi.oauthAttention', 'OAuth attention needed'),
+                    i18n.t('dashboard.kpi.oauthAttention',
+                        'OAuth attention needed'),
                     bg: Colors.orange.shade700.withAlpha((0.18 * 255).round()),
                     fg: Colors.orange.shade700,
                     icon: Icons.shield_rounded,
@@ -2244,19 +2487,23 @@ class _SocialShellState extends State<SocialShell> {
               runSpacing: 10,
               children: [
                 OutlinedButton.icon(
-                  onPressed: () => unawaited(_loadPanel(PanelKind.dashboard, force: true)),
+                  onPressed: () =>
+                      unawaited(_loadPanel(PanelKind.dashboard, force: true)),
                   icon: const Icon(Icons.refresh_rounded),
                   label: Text(i18n.t('common.refresh', 'Refresh')),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () => unawaited(_onPanelSelected(kPanelSpecs.indexWhere((p) => p.kind == PanelKind.accounts))),
+                  onPressed: () => unawaited(_onPanelSelected(kPanelSpecs
+                      .indexWhere((p) => p.kind == PanelKind.accounts))),
                   icon: const Icon(Icons.groups_rounded),
-                  label: Text(i18n.t('dashboard.actions.connectAccount', 'Connect Account')),
+                  label: Text(i18n.t(
+                      'dashboard.actions.connectAccount', 'Connect Account')),
                 ),
                 FilledButton.icon(
                   onPressed: () async => _openCreateTaskSheet(),
                   icon: const Icon(Icons.add_rounded),
-                  label: Text(i18n.t('dashboard.actions.createTask', 'Create New Task')),
+                  label: Text(i18n.t(
+                      'dashboard.actions.createTask', 'Create New Task')),
                 ),
               ],
             ),
@@ -2267,17 +2514,22 @@ class _SocialShellState extends State<SocialShell> {
 
     String normalizeTaskStatus(String raw) {
       final value = raw.trim().toLowerCase();
-      if (value == 'active' || value == 'enabled' || value == 'running') return 'active';
-      if (value == 'paused' || value == 'inactive' || value == 'disabled') return 'paused';
-      if (value == 'completed' || value == 'done' || value == 'success') return 'completed';
-      if (value == 'error' || value == 'failed' || value == 'failure') return 'error';
+      if (value == 'active' || value == 'enabled' || value == 'running')
+        return 'active';
+      if (value == 'paused' || value == 'inactive' || value == 'disabled')
+        return 'paused';
+      if (value == 'completed' || value == 'done' || value == 'success')
+        return 'completed';
+      if (value == 'error' || value == 'failed' || value == 'failure')
+        return 'error';
       return 'paused';
     }
 
     String statusLabel(String normalized) {
       if (normalized == 'active') return i18n.t('status.active', 'Active');
       if (normalized == 'paused') return i18n.t('status.paused', 'Paused');
-      if (normalized == 'completed') return i18n.t('status.completed', 'Completed');
+      if (normalized == 'completed')
+        return i18n.t('status.completed', 'Completed');
       return i18n.t('status.error', 'Error');
     }
 
@@ -2335,7 +2587,8 @@ class _SocialShellState extends State<SocialShell> {
       final normalized = platformId.trim().toLowerCase();
       final icon = (() {
         if (normalized.contains('telegram')) return Icons.send_rounded;
-        if (normalized.contains('twitter')) return Icons.alternate_email_rounded;
+        if (normalized.contains('twitter'))
+          return Icons.alternate_email_rounded;
         if (normalized.contains('youtube')) return Icons.ondemand_video_rounded;
         if (normalized.contains('tiktok')) return Icons.music_note_rounded;
         if (normalized.contains('instagram')) return Icons.camera_alt_rounded;
@@ -2347,7 +2600,10 @@ class _SocialShellState extends State<SocialShell> {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           border: Border.all(
-            color: Theme.of(context).colorScheme.onSurface.withAlpha((0.12 * 255).round()),
+            color: Theme.of(context)
+                .colorScheme
+                .onSurface
+                .withAlpha((0.12 * 255).round()),
           ),
           borderRadius: BorderRadius.circular(999),
         ),
@@ -2426,7 +2682,10 @@ class _SocialShellState extends State<SocialShell> {
           }
           dash.data = cloned;
         });
-        final message = error is ApiException ? error.message : i18n.t('dashboard.toast.taskUpdateFailed', 'Failed to update task');
+        final message = error is ApiException
+            ? error.message
+            : i18n.t(
+                'dashboard.toast.taskUpdateFailed', 'Failed to update task');
         _toast(message);
       } finally {
         if (!mounted) return;
@@ -2449,7 +2708,9 @@ class _SocialShellState extends State<SocialShell> {
         _toast(i18n.t('dashboard.toast.taskQueued', 'Task run queued'));
         await _loadPanel(PanelKind.dashboard, force: true);
       } catch (error) {
-        final message = error is ApiException ? error.message : i18n.t('dashboard.toast.taskRunFailed', 'Failed to run task');
+        final message = error is ApiException
+            ? error.message
+            : i18n.t('dashboard.toast.taskRunFailed', 'Failed to run task');
         _toast(message);
       } finally {
         if (!mounted) return;
@@ -2467,8 +2728,10 @@ class _SocialShellState extends State<SocialShell> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               sectionTitle(
-                i18n.t('dashboard.section.recentAutomations', 'Recent Automations'),
-                onViewAll: () => unawaited(_onPanelSelected(kPanelSpecs.indexWhere((p) => p.kind == PanelKind.tasks))),
+                i18n.t('dashboard.section.recentAutomations',
+                    'Recent Automations'),
+                onViewAll: () => unawaited(_onPanelSelected(
+                    kPanelSpecs.indexWhere((p) => p.kind == PanelKind.tasks))),
               ),
               const SizedBox(height: 8),
               if (recentTasks.isEmpty)
@@ -2479,7 +2742,8 @@ class _SocialShellState extends State<SocialShell> {
                       ? Map<String, dynamic>.from(raw)
                       : Map<String, dynamic>.from(raw as Map);
                   final id = task['id']?.toString() ?? '';
-                  final normalized = normalizeTaskStatus(task['status']?.toString() ?? '');
+                  final normalized =
+                      normalizeTaskStatus(task['status']?.toString() ?? '');
                   final busy = _taskActionState.containsKey(id);
 
                   final sources = task['sourceAccounts'] is List
@@ -2501,7 +2765,9 @@ class _SocialShellState extends State<SocialShell> {
                     decoration: BoxDecoration(
                       color: scheme.surface.withAlpha((0.45 * 255).round()),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
+                      border: Border.all(
+                          color:
+                              scheme.onSurface.withAlpha((0.12 * 255).round())),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2516,22 +2782,33 @@ class _SocialShellState extends State<SocialShell> {
                                   Wrap(
                                     spacing: 8,
                                     runSpacing: 8,
-                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
                                     children: [
                                       Text(
-                                        task['name']?.toString() ?? 'Unnamed task',
-                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                                        task['name']?.toString() ??
+                                            'Unnamed task',
+                                        style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w800),
                                       ),
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 4),
                                         decoration: BoxDecoration(
-                                          color: pillColor.withAlpha((0.14 * 255).round()),
-                                          border: Border.all(color: pillColor.withAlpha((0.32 * 255).round())),
-                                          borderRadius: BorderRadius.circular(999),
+                                          color: pillColor
+                                              .withAlpha((0.14 * 255).round()),
+                                          border: Border.all(
+                                              color: pillColor.withAlpha(
+                                                  (0.32 * 255).round())),
+                                          borderRadius:
+                                              BorderRadius.circular(999),
                                         ),
                                         child: Text(
                                           statusLabel(normalized),
-                                          style: TextStyle(color: pillColor, fontWeight: FontWeight.w800),
+                                          style: TextStyle(
+                                              color: pillColor,
+                                              fontWeight: FontWeight.w800),
                                         ),
                                       ),
                                     ],
@@ -2539,7 +2816,8 @@ class _SocialShellState extends State<SocialShell> {
                                   const SizedBox(height: 6),
                                   Text(
                                     '${i18n.t('dashboard.lastRun', 'Last run')}: ${relativeTime(task['lastExecuted'])}',
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    style:
+                                        Theme.of(context).textTheme.bodySmall,
                                   ),
                                 ],
                               ),
@@ -2549,10 +2827,14 @@ class _SocialShellState extends State<SocialShell> {
                               spacing: 6,
                               children: [
                                 IconButton(
-                                  onPressed: busy ? null : () => unawaited(toggleTask(task)),
+                                  onPressed: busy
+                                      ? null
+                                      : () => unawaited(toggleTask(task)),
                                   tooltip: normalized == 'active'
-                                      ? i18n.t('dashboard.task.pause', 'Pause task')
-                                      : i18n.t('dashboard.task.enable', 'Enable task'),
+                                      ? i18n.t(
+                                          'dashboard.task.pause', 'Pause task')
+                                      : i18n.t('dashboard.task.enable',
+                                          'Enable task'),
                                   icon: Icon(
                                     normalized == 'active'
                                         ? Icons.pause_circle_filled_rounded
@@ -2560,15 +2842,19 @@ class _SocialShellState extends State<SocialShell> {
                                   ),
                                 ),
                                 IconButton(
-                                  onPressed: busy ? null : () => unawaited(runTask(task)),
-                                  tooltip: i18n.t('dashboard.task.runNow', 'Run task now'),
+                                  onPressed: busy
+                                      ? null
+                                      : () => unawaited(runTask(task)),
+                                  tooltip: i18n.t(
+                                      'dashboard.task.runNow', 'Run task now'),
                                   icon: const Icon(Icons.bolt_rounded),
                                 ),
                                 IconButton(
                                   onPressed: () {
                                     unawaited(_openEditTaskSheet(task));
                                   },
-                                  tooltip: i18n.t('dashboard.task.edit', 'Edit task'),
+                                  tooltip: i18n.t(
+                                      'dashboard.task.edit', 'Edit task'),
                                   icon: const Icon(Icons.open_in_new_rounded),
                                 ),
                               ],
@@ -2577,11 +2863,15 @@ class _SocialShellState extends State<SocialShell> {
                         ),
                         const SizedBox(height: 10),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
                           decoration: BoxDecoration(
-                            color: scheme.surface.withAlpha((0.55 * 255).round()),
+                            color:
+                                scheme.surface.withAlpha((0.55 * 255).round()),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
+                            border: Border.all(
+                                color: scheme.onSurface
+                                    .withAlpha((0.12 * 255).round())),
                           ),
                           child: Wrap(
                             spacing: 8,
@@ -2590,22 +2880,26 @@ class _SocialShellState extends State<SocialShell> {
                             children: [
                               if (sourcePlatforms.isEmpty)
                                 Text(
-                                  i18n.t('dashboard.task.noSource', 'No source'),
+                                  i18n.t(
+                                      'dashboard.task.noSource', 'No source'),
                                   style: Theme.of(context).textTheme.bodySmall,
                                 )
                               else
-                                ...sourcePlatforms.map((p) => platformChip(p, null)),
+                                ...sourcePlatforms
+                                    .map((p) => platformChip(p, null)),
                               Text(
                                 '→',
                                 style: Theme.of(context).textTheme.bodySmall,
                               ),
                               if (targetPlatforms.isEmpty)
                                 Text(
-                                  i18n.t('dashboard.task.noTarget', 'No target'),
+                                  i18n.t(
+                                      'dashboard.task.noTarget', 'No target'),
                                   style: Theme.of(context).textTheme.bodySmall,
                                 )
                               else
-                                ...targetPlatforms.map((p) => platformChip(p, null)),
+                                ...targetPlatforms
+                                    .map((p) => platformChip(p, null)),
                             ],
                           ),
                         ),
@@ -2634,14 +2928,16 @@ class _SocialShellState extends State<SocialShell> {
             children: [
               Text(
                 i18n.t('dashboard.section.systemHealth', 'System Health'),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
+                  border: Border.all(
+                      color: scheme.onSurface.withAlpha((0.12 * 255).round())),
                   color: scheme.surface.withAlpha((0.40 * 255).round()),
                 ),
                 child: Column(
@@ -2657,9 +2953,17 @@ class _SocialShellState extends State<SocialShell> {
                       runSpacing: 8,
                       children: [
                         pill('Active ${td('active')}', fg: scheme.primary),
-                        pill('Paused ${td('paused')}', fg: scheme.secondary, bg: scheme.secondary.withAlpha((0.16 * 255).round())),
-                        pill('Errors ${td('error')}', fg: scheme.error, bg: scheme.error.withAlpha((0.12 * 255).round())),
-                        pill('Done ${td('completed')}', fg: Colors.green.shade700, bg: Colors.green.shade700.withAlpha((0.14 * 255).round())),
+                        pill('Paused ${td('paused')}',
+                            fg: scheme.secondary,
+                            bg: scheme.secondary
+                                .withAlpha((0.16 * 255).round())),
+                        pill('Errors ${td('error')}',
+                            fg: scheme.error,
+                            bg: scheme.error.withAlpha((0.12 * 255).round())),
+                        pill('Done ${td('completed')}',
+                            fg: Colors.green.shade700,
+                            bg: Colors.green.shade700
+                                .withAlpha((0.14 * 255).round())),
                       ],
                     ),
                   ],
@@ -2670,7 +2974,8 @@ class _SocialShellState extends State<SocialShell> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
+                  border: Border.all(
+                      color: scheme.onSurface.withAlpha((0.12 * 255).round())),
                   color: scheme.surface.withAlpha((0.40 * 255).round()),
                 ),
                 child: Column(
@@ -2680,13 +2985,18 @@ class _SocialShellState extends State<SocialShell> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          i18n.t('dashboard.health.accountReliability', 'Account reliability'),
+                          i18n.t('dashboard.health.accountReliability',
+                              'Account reliability'),
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                         Icon(
-                          hasAuthWarnings ? Icons.shield_rounded : Icons.check_circle_rounded,
+                          hasAuthWarnings
+                              ? Icons.shield_rounded
+                              : Icons.check_circle_rounded,
                           size: 16,
-                          color: hasAuthWarnings ? scheme.secondary : scheme.primary,
+                          color: hasAuthWarnings
+                              ? scheme.secondary
+                              : scheme.primary,
                         ),
                       ],
                     ),
@@ -2699,7 +3009,8 @@ class _SocialShellState extends State<SocialShell> {
                     Text(
                       inactiveAccounts > 0
                           ? '$inactiveAccounts ${i18n.t('dashboard.health.authIssues', 'account(s) need re-authentication.')}'
-                          : i18n.t('dashboard.health.noAuthIssues', 'No authentication issues detected.'),
+                          : i18n.t('dashboard.health.noAuthIssues',
+                              'No authentication issues detected.'),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
@@ -2710,25 +3021,29 @@ class _SocialShellState extends State<SocialShell> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
+                  border: Border.all(
+                      color: scheme.onSurface.withAlpha((0.12 * 255).round())),
                   color: scheme.surface.withAlpha((0.40 * 255).round()),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      i18n.t('dashboard.health.platformsInUse', 'Platforms in use'),
+                      i18n.t('dashboard.health.platformsInUse',
+                          'Platforms in use'),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                     const SizedBox(height: 10),
                     if (platformBreakdown.isEmpty)
-                      Text(i18n.t('dashboard.health.noPlatforms', 'No connected platforms.'))
+                      Text(i18n.t('dashboard.health.noPlatforms',
+                          'No connected platforms.'))
                     else
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         children: platformBreakdown
-                            .map((entry) => platformChip(entry.key, entry.value))
+                            .map(
+                                (entry) => platformChip(entry.key, entry.value))
                             .toList(),
                       ),
                   ],
@@ -2749,8 +3064,10 @@ class _SocialShellState extends State<SocialShell> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               sectionTitle(
-                i18n.t('dashboard.section.recentExecutions', 'Recent Executions'),
-                onViewAll: () => unawaited(_onPanelSelected(kPanelSpecs.indexWhere((p) => p.kind == PanelKind.executions))),
+                i18n.t(
+                    'dashboard.section.recentExecutions', 'Recent Executions'),
+                onViewAll: () => unawaited(_onPanelSelected(kPanelSpecs
+                    .indexWhere((p) => p.kind == PanelKind.executions))),
               ),
               const SizedBox(height: 8),
               if (recentExecutions.isEmpty)
@@ -2767,38 +3084,47 @@ class _SocialShellState extends State<SocialShell> {
                       : normalized == 'failed'
                           ? scheme.error
                           : scheme.secondary;
-                  final content = (execution['originalContent']?.toString() ?? '').trim();
+                  final content =
+                      (execution['originalContent']?.toString() ?? '').trim();
                   final preview = content.isEmpty ? 'No text content' : content;
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
-                        color: scheme.surface.withAlpha((0.40 * 255).round()),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                          color:
+                              scheme.onSurface.withAlpha((0.12 * 255).round())),
+                      color: scheme.surface.withAlpha((0.40 * 255).round()),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Row(
                           children: [
                             Expanded(
                               child: Text(
-                                execution['taskName']?.toString() ?? 'Task execution',
-                                style: const TextStyle(fontWeight: FontWeight.w800),
+                                execution['taskName']?.toString() ??
+                                    'Task execution',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800),
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
                                 color: color.withAlpha((0.14 * 255).round()),
-                                border: Border.all(color: color.withAlpha((0.32 * 255).round())),
+                                border: Border.all(
+                                    color:
+                                        color.withAlpha((0.32 * 255).round())),
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: Text(
                                 status,
-                                style: TextStyle(color: color, fontWeight: FontWeight.w800),
+                                style: TextStyle(
+                                    color: color, fontWeight: FontWeight.w800),
                               ),
                             ),
                           ],
@@ -2845,11 +3171,13 @@ class _SocialShellState extends State<SocialShell> {
             children: [
               Text(
                 i18n.t('dashboard.section.topTasks', 'Top Performing Tasks'),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 8),
               if (topTaskStats.isEmpty)
-                Text(i18n.t('dashboard.noPerformance', 'Performance data will appear after executions run.'))
+                Text(i18n.t('dashboard.noPerformance',
+                    'Performance data will appear after executions run.'))
               else
                 ...topTaskStats.take(6).map((raw) {
                   final item = raw is Map<String, dynamic>
@@ -2862,35 +3190,42 @@ class _SocialShellState extends State<SocialShell> {
                           ? scheme.secondary
                           : scheme.error;
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
-                        color: scheme.surface.withAlpha((0.40 * 255).round()),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                          color:
+                              scheme.onSurface.withAlpha((0.12 * 255).round())),
+                      color: scheme.surface.withAlpha((0.40 * 255).round()),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                         Row(
                           children: [
                             Expanded(
                               child: Text(
                                 item['taskName']?.toString() ?? 'Task',
-                                style: const TextStyle(fontWeight: FontWeight.w800),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800),
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
                                 color: color.withAlpha((0.14 * 255).round()),
-                                border: Border.all(color: color.withAlpha((0.32 * 255).round())),
+                                border: Border.all(
+                                    color:
+                                        color.withAlpha((0.32 * 255).round())),
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: Text(
                                 '${rate.toStringAsFixed(0)}%',
-                                style: TextStyle(color: color, fontWeight: FontWeight.w800),
+                                style: TextStyle(
+                                    color: color, fontWeight: FontWeight.w800),
                               ),
                             ),
                           ],
@@ -2936,12 +3271,16 @@ class _SocialShellState extends State<SocialShell> {
               alignment: WrapAlignment.center,
               children: [
                 OutlinedButton(
-                  onPressed: () => unawaited(_onPanelSelected(kPanelSpecs.indexWhere((p) => p.kind == PanelKind.accounts))),
-                  child: Text(i18n.t('dashboard.empty.connect', 'Connect Account')),
+                  onPressed: () => unawaited(_onPanelSelected(kPanelSpecs
+                      .indexWhere((p) => p.kind == PanelKind.accounts))),
+                  child: Text(
+                      i18n.t('dashboard.empty.connect', 'Connect Account')),
                 ),
                 FilledButton(
-                  onPressed: () => unawaited(_onPanelSelected(kPanelSpecs.indexWhere((p) => p.kind == PanelKind.tasks))),
-                  child: Text(i18n.t('dashboard.empty.create', 'Create First Task')),
+                  onPressed: () => unawaited(_onPanelSelected(kPanelSpecs
+                      .indexWhere((p) => p.kind == PanelKind.tasks))),
+                  child: Text(
+                      i18n.t('dashboard.empty.create', 'Create First Task')),
                 ),
               ],
             ),
@@ -2957,7 +3296,9 @@ class _SocialShellState extends State<SocialShell> {
         const SizedBox(height: 12),
         statGrid(),
         const SizedBox(height: 12),
-        if (isEmptyWorkspace) emptyWorkspaceCard() else ...[
+        if (isEmptyWorkspace)
+          emptyWorkspaceCard()
+        else ...[
           LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth >= 1100;
@@ -3020,17 +3361,22 @@ class _SocialShellState extends State<SocialShell> {
 
     String normalizeTaskStatus(String raw) {
       final value = raw.trim().toLowerCase();
-      if (value == 'active' || value == 'enabled' || value == 'running') return 'active';
-      if (value == 'paused' || value == 'inactive' || value == 'disabled') return 'paused';
-      if (value == 'completed' || value == 'done' || value == 'success') return 'completed';
-      if (value == 'error' || value == 'failed' || value == 'failure') return 'error';
+      if (value == 'active' || value == 'enabled' || value == 'running')
+        return 'active';
+      if (value == 'paused' || value == 'inactive' || value == 'disabled')
+        return 'paused';
+      if (value == 'completed' || value == 'done' || value == 'success')
+        return 'completed';
+      if (value == 'error' || value == 'failed' || value == 'failure')
+        return 'error';
       return 'paused';
     }
 
     String statusLabel(String normalized) {
       if (normalized == 'active') return i18n.t('status.active', 'Active');
       if (normalized == 'paused') return i18n.t('status.paused', 'Paused');
-      if (normalized == 'completed') return i18n.t('status.completed', 'Completed');
+      if (normalized == 'completed')
+        return i18n.t('status.completed', 'Completed');
       return i18n.t('status.error', 'Error');
     }
 
@@ -3050,7 +3396,8 @@ class _SocialShellState extends State<SocialShell> {
     }
 
     DateTime? parseLastRun(Map<String, dynamic> task) {
-      final value = task['lastExecuted'] ?? task['lastExecutedAt'] ?? task['lastRunAt'];
+      final value =
+          task['lastExecuted'] ?? task['lastExecutedAt'] ?? task['lastRunAt'];
       if (value == null) return null;
       if (value is DateTime) return value;
       return DateTime.tryParse(value.toString());
@@ -3070,8 +3417,12 @@ class _SocialShellState extends State<SocialShell> {
 
     bool taskHasAuthWarning(Map<String, dynamic> task) {
       final ids = <dynamic>[
-        ...(task['sourceAccounts'] is List ? (task['sourceAccounts'] as List) : const <dynamic>[]),
-        ...(task['targetAccounts'] is List ? (task['targetAccounts'] as List) : const <dynamic>[]),
+        ...(task['sourceAccounts'] is List
+            ? (task['sourceAccounts'] as List)
+            : const <dynamic>[]),
+        ...(task['targetAccounts'] is List
+            ? (task['targetAccounts'] as List)
+            : const <dynamic>[]),
       ];
       for (final rawId in ids) {
         final id = rawId?.toString() ?? '';
@@ -3087,8 +3438,12 @@ class _SocialShellState extends State<SocialShell> {
     List<String> uniquePlatformsForTask(Map<String, dynamic> task) {
       final seen = <String>{};
       final ids = <dynamic>[
-        ...(task['sourceAccounts'] is List ? (task['sourceAccounts'] as List) : const <dynamic>[]),
-        ...(task['targetAccounts'] is List ? (task['targetAccounts'] as List) : const <dynamic>[]),
+        ...(task['sourceAccounts'] is List
+            ? (task['sourceAccounts'] as List)
+            : const <dynamic>[]),
+        ...(task['targetAccounts'] is List
+            ? (task['targetAccounts'] as List)
+            : const <dynamic>[]),
       ];
       for (final rawId in ids) {
         final id = rawId?.toString() ?? '';
@@ -3136,7 +3491,8 @@ class _SocialShellState extends State<SocialShell> {
             if (icon != null) const SizedBox(width: 6),
             Text(
               text,
-              style: TextStyle(color: tone, fontWeight: FontWeight.w900, letterSpacing: 0.3),
+              style: TextStyle(
+                  color: tone, fontWeight: FontWeight.w900, letterSpacing: 0.3),
             ),
           ],
         ),
@@ -3201,7 +3557,8 @@ class _SocialShellState extends State<SocialShell> {
         await _loadPanel(PanelKind.dashboard, force: true);
       } catch (error) {
         setState(() => applyStatus(previous));
-        final message = error is ApiException ? error.message : 'Failed to update task.';
+        final message =
+            error is ApiException ? error.message : 'Failed to update task.';
         _toast(message);
       } finally {
         if (!mounted) return;
@@ -3221,9 +3578,12 @@ class _SocialShellState extends State<SocialShell> {
         builder: (context) {
           return AlertDialog(
             title: const Text('Delete task?'),
-            content: const Text('This action is permanent and cannot be undone.'),
+            content:
+                const Text('This action is permanent and cannot be undone.'),
             actions: [
-              TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+              TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel')),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop(true),
                 style: FilledButton.styleFrom(backgroundColor: scheme.error),
@@ -3244,7 +3604,8 @@ class _SocialShellState extends State<SocialShell> {
         final list = cloned['tasks'];
         if (list is List) {
           cloned['tasks'] = list.where((raw) {
-            final item = raw is Map ? raw : Map<String, dynamic>.from(raw as Map);
+            final item =
+                raw is Map ? raw : Map<String, dynamic>.from(raw as Map);
             return item['id']?.toString() != id;
           }).toList();
         }
@@ -3257,7 +3618,8 @@ class _SocialShellState extends State<SocialShell> {
         await _loadPanel(PanelKind.tasks, force: true);
         await _loadPanel(PanelKind.dashboard, force: true);
       } catch (error) {
-        final message = error is ApiException ? error.message : 'Failed to delete task.';
+        final message =
+            error is ApiException ? error.message : 'Failed to delete task.';
         _toast(message);
         await _loadPanel(PanelKind.tasks, force: true);
       } finally {
@@ -3307,7 +3669,8 @@ class _SocialShellState extends State<SocialShell> {
         await _loadTasksPage(reset: true, showPanelLoading: true);
         await _loadPanel(PanelKind.dashboard, force: true);
       } catch (error) {
-        final message = error is ApiException ? error.message : 'Failed to duplicate task.';
+        final message =
+            error is ApiException ? error.message : 'Failed to duplicate task.';
         _toast(message);
       } finally {
         if (!mounted) return;
@@ -3318,7 +3681,9 @@ class _SocialShellState extends State<SocialShell> {
     }
 
     final tasks = rawTasks
-        .map((raw) => raw is Map<String, dynamic> ? raw : Map<String, dynamic>.from(raw as Map))
+        .map((raw) => raw is Map<String, dynamic>
+            ? raw
+            : Map<String, dynamic>.from(raw as Map))
         .toList();
 
     final availablePlatforms = <String>{
@@ -3328,7 +3693,8 @@ class _SocialShellState extends State<SocialShell> {
 
     bool matchesPlatform(Map<String, dynamic> task) {
       if (_tasksPlatformFilter == 'all') return true;
-      final platforms = uniquePlatformsForTask(task).map((p) => p.toLowerCase()).toList();
+      final platforms =
+          uniquePlatformsForTask(task).map((p) => p.toLowerCase()).toList();
       return platforms.contains(_tasksPlatformFilter.toLowerCase());
     }
 
@@ -3353,12 +3719,23 @@ class _SocialShellState extends State<SocialShell> {
     }
 
     final filtered = tasks.where((task) {
-      return matchesPlatform(task) && matchesLastRun(task) && matchesIssue(task);
+      return matchesPlatform(task) &&
+          matchesLastRun(task) &&
+          matchesIssue(task);
     }).toList();
 
-    final activeCount = filtered.where((t) => normalizeTaskStatus(t['status']?.toString() ?? '') == 'active').length;
-    final pausedCount = filtered.where((t) => normalizeTaskStatus(t['status']?.toString() ?? '') == 'paused').length;
-    final errorCount = filtered.where((t) => normalizeTaskStatus(t['status']?.toString() ?? '') == 'error').length;
+    final activeCount = filtered
+        .where((t) =>
+            normalizeTaskStatus(t['status']?.toString() ?? '') == 'active')
+        .length;
+    final pausedCount = filtered
+        .where((t) =>
+            normalizeTaskStatus(t['status']?.toString() ?? '') == 'paused')
+        .length;
+    final errorCount = filtered
+        .where((t) =>
+            normalizeTaskStatus(t['status']?.toString() ?? '') == 'error')
+        .length;
 
     final hasMore = data['hasMore'] == true;
     final hasActiveTaskFilters = _tasksQuery.isNotEmpty ||
@@ -3449,11 +3826,14 @@ class _SocialShellState extends State<SocialShell> {
                 const SizedBox(height: 10),
                 Text(
                   i18n.isArabic ? 'مهامي' : 'My Tasks',
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                  style: const TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  i18n.isArabic ? 'إدارة ومراقبة مهام الأتمتة الخاصة بك.' : 'Manage and monitor your automation tasks.',
+                  i18n.isArabic
+                      ? 'إدارة ومراقبة مهام الأتمتة الخاصة بك.'
+                      : 'Manage and monitor your automation tasks.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
                 const SizedBox(height: 12),
@@ -3480,7 +3860,8 @@ class _SocialShellState extends State<SocialShell> {
                     FilledButton.icon(
                       onPressed: () => unawaited(_openCreateTaskSheet()),
                       icon: const Icon(Icons.add_rounded),
-                      label: Text(i18n.isArabic ? 'إنشاء مهمة' : 'Create New Task'),
+                      label: Text(
+                          i18n.isArabic ? 'إنشاء مهمة' : 'Create New Task'),
                     ),
                   ],
                 ),
@@ -3497,14 +3878,17 @@ class _SocialShellState extends State<SocialShell> {
               children: [
                 Text(
                   i18n.isArabic ? 'بحث وفلاتر' : 'Task Search & Filters',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: _tasksSearchController,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.search_rounded),
-                    hintText: i18n.isArabic ? 'ابحث بالاسم أو الوصف...' : 'Search by name or description...',
+                    hintText: i18n.isArabic
+                        ? 'ابحث بالاسم أو الوصف...'
+                        : 'Search by name or description...',
                     border: const OutlineInputBorder(),
                   ),
                   onChanged: _onTasksQueryChanged,
@@ -3521,17 +3905,23 @@ class _SocialShellState extends State<SocialShell> {
                           prefixIcon: const Icon(Icons.filter_alt_rounded),
                         ),
                         items: const [
-                          DropdownMenuItem(value: 'all', child: Text('All statuses')),
-                          DropdownMenuItem(value: 'active', child: Text('Active')),
-                          DropdownMenuItem(value: 'paused', child: Text('Paused')),
-                          DropdownMenuItem(value: 'completed', child: Text('Completed')),
-                          DropdownMenuItem(value: 'error', child: Text('Error')),
+                          DropdownMenuItem(
+                              value: 'all', child: Text('All statuses')),
+                          DropdownMenuItem(
+                              value: 'active', child: Text('Active')),
+                          DropdownMenuItem(
+                              value: 'paused', child: Text('Paused')),
+                          DropdownMenuItem(
+                              value: 'completed', child: Text('Completed')),
+                          DropdownMenuItem(
+                              value: 'error', child: Text('Error')),
                         ],
                         onChanged: (value) {
                           if (value == null) return;
                           if (_tasksStatusFilter == value) return;
                           setState(() => _tasksStatusFilter = value);
-                          unawaited(_loadTasksPage(reset: true, showPanelLoading: true));
+                          unawaited(_loadTasksPage(
+                              reset: true, showPanelLoading: true));
                         },
                       ),
                       DropdownButtonFormField<String>(
@@ -3541,9 +3931,11 @@ class _SocialShellState extends State<SocialShell> {
                           prefixIcon: const Icon(Icons.public_rounded),
                         ),
                         items: [
-                          const DropdownMenuItem(value: 'all', child: Text('All platforms')),
+                          const DropdownMenuItem(
+                              value: 'all', child: Text('All platforms')),
                           ...availablePlatforms.map(
-                            (p) => DropdownMenuItem(value: p, child: Text(platformLabel(p))),
+                            (p) => DropdownMenuItem(
+                                value: p, child: Text(platformLabel(p))),
                           ),
                         ],
                         onChanged: (value) {
@@ -3558,10 +3950,13 @@ class _SocialShellState extends State<SocialShell> {
                           prefixIcon: const Icon(Icons.schedule_rounded),
                         ),
                         items: const [
-                          DropdownMenuItem(value: 'all', child: Text('Any run')),
-                          DropdownMenuItem(value: '24h', child: Text('Last 24h')),
+                          DropdownMenuItem(
+                              value: 'all', child: Text('Any run')),
+                          DropdownMenuItem(
+                              value: '24h', child: Text('Last 24h')),
                           DropdownMenuItem(value: '7d', child: Text('Last 7d')),
-                          DropdownMenuItem(value: 'never', child: Text('Never ran')),
+                          DropdownMenuItem(
+                              value: 'never', child: Text('Never ran')),
                         ],
                         onChanged: (value) {
                           if (value == null) return;
@@ -3575,9 +3970,12 @@ class _SocialShellState extends State<SocialShell> {
                           prefixIcon: const Icon(Icons.report_problem_rounded),
                         ),
                         items: const [
-                          DropdownMenuItem(value: 'all', child: Text('All tasks')),
-                          DropdownMenuItem(value: 'errors', child: Text('Errors only')),
-                          DropdownMenuItem(value: 'warnings', child: Text('Auth warnings')),
+                          DropdownMenuItem(
+                              value: 'all', child: Text('All tasks')),
+                          DropdownMenuItem(
+                              value: 'errors', child: Text('Errors only')),
+                          DropdownMenuItem(
+                              value: 'warnings', child: Text('Auth warnings')),
                         ],
                         onChanged: (value) {
                           if (value == null) return;
@@ -3591,15 +3989,18 @@ class _SocialShellState extends State<SocialShell> {
                           prefixIcon: const Icon(Icons.sort_rounded),
                         ),
                         items: const [
-                          DropdownMenuItem(value: 'createdAt', child: Text('Created')),
-                          DropdownMenuItem(value: 'status', child: Text('Status')),
+                          DropdownMenuItem(
+                              value: 'createdAt', child: Text('Created')),
+                          DropdownMenuItem(
+                              value: 'status', child: Text('Status')),
                           DropdownMenuItem(value: 'name', child: Text('Name')),
                         ],
                         onChanged: (value) {
                           if (value == null) return;
                           if (_tasksSortBy == value) return;
                           setState(() => _tasksSortBy = value);
-                          unawaited(_loadTasksPage(reset: true, showPanelLoading: true));
+                          unawaited(_loadTasksPage(
+                              reset: true, showPanelLoading: true));
                         },
                       ),
                       DropdownButtonFormField<String>(
@@ -3616,7 +4017,8 @@ class _SocialShellState extends State<SocialShell> {
                           if (value == null) return;
                           if (_tasksSortDir == value) return;
                           setState(() => _tasksSortDir = value);
-                          unawaited(_loadTasksPage(reset: true, showPanelLoading: true));
+                          unawaited(_loadTasksPage(
+                              reset: true, showPanelLoading: true));
                         },
                       ),
                     ];
@@ -3654,38 +4056,45 @@ class _SocialShellState extends State<SocialShell> {
                         ),
                       if (_tasksStatusFilter != 'all')
                         InputChip(
-                          label: Text('Status: ${statusLabel(_tasksStatusFilter)}'),
+                          label: Text(
+                              'Status: ${statusLabel(_tasksStatusFilter)}'),
                           onDeleted: () => clearTaskFilter('status'),
                         ),
                       if (_tasksPlatformFilter != 'all')
                         InputChip(
-                          label: Text('Platform: ${platformLabel(_tasksPlatformFilter)}'),
+                          label: Text(
+                              'Platform: ${platformLabel(_tasksPlatformFilter)}'),
                           onDeleted: () => clearTaskFilter('platform'),
                         ),
                       if (_tasksLastRunFilter != 'all')
                         InputChip(
-                          label: Text('Last run: ${_tasksLastRunFilter.toUpperCase()}'),
+                          label: Text(
+                              'Last run: ${_tasksLastRunFilter.toUpperCase()}'),
                           onDeleted: () => clearTaskFilter('lastRun'),
                         ),
                       if (_tasksIssueFilter != 'all')
                         InputChip(
-                          label: Text('Issue: ${_tasksIssueFilter == 'errors' ? 'Errors' : 'Warnings'}'),
+                          label: Text(
+                              'Issue: ${_tasksIssueFilter == 'errors' ? 'Errors' : 'Warnings'}'),
                           onDeleted: () => clearTaskFilter('issue'),
                         ),
                       if (_tasksSortBy != 'createdAt')
                         InputChip(
-                          label: Text('Sort: ${_tasksSortBy == 'name' ? 'Name' : (_tasksSortBy == 'status' ? 'Status' : 'Created')}'),
+                          label: Text(
+                              'Sort: ${_tasksSortBy == 'name' ? 'Name' : (_tasksSortBy == 'status' ? 'Status' : 'Created')}'),
                           onDeleted: () => clearTaskFilter('sortBy'),
                         ),
                       if (_tasksSortDir != 'desc')
                         InputChip(
-                          label: Text('Direction: ${_tasksSortDir.toUpperCase()}'),
+                          label:
+                              Text('Direction: ${_tasksSortDir.toUpperCase()}'),
                           onDeleted: () => clearTaskFilter('sortDir'),
                         ),
                       OutlinedButton.icon(
                         onPressed: clearAllTaskFilters,
                         icon: const Icon(Icons.filter_alt_off_rounded),
-                        label: Text(i18n.isArabic ? 'مسح الفلاتر' : 'Clear Filters'),
+                        label: Text(
+                            i18n.isArabic ? 'مسح الفلاتر' : 'Clear Filters'),
                       ),
                     ],
                   ),
@@ -3700,7 +4109,9 @@ class _SocialShellState extends State<SocialShell> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 26),
               child: Column(
                 children: [
-                  Icon(Icons.inbox_rounded, size: 40, color: scheme.onSurface.withAlpha((0.55 * 255).round())),
+                  Icon(Icons.inbox_rounded,
+                      size: 40,
+                      color: scheme.onSurface.withAlpha((0.55 * 255).round())),
                   const SizedBox(height: 10),
                   Text(
                     i18n.isArabic ? 'لا توجد مهام مطابقة.' : 'No tasks found.',
@@ -3728,29 +4139,42 @@ class _SocialShellState extends State<SocialShell> {
           LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth >= 1100;
-              final cardWidth = wide ? (constraints.maxWidth - 12) / 2 : constraints.maxWidth;
+              final cardWidth =
+                  wide ? (constraints.maxWidth - 12) / 2 : constraints.maxWidth;
               return Wrap(
                 spacing: 12,
                 runSpacing: 12,
                 children: filtered.map((task) {
                   final id = task['id']?.toString() ?? '';
                   final busy = _taskActionState.containsKey(id);
-                  final normalized = normalizeTaskStatus(task['status']?.toString() ?? '');
+                  final normalized =
+                      normalizeTaskStatus(task['status']?.toString() ?? '');
                   final tone = statusTone(normalized);
-                  final rate = successRate(task['executionCount'], task['failureCount']);
+                  final rate =
+                      successRate(task['executionCount'], task['failureCount']);
                   final lastRun = relativeLastRun(task);
                   final authWarning = taskHasAuthWarning(task);
 
-                  final sourceIds = task['sourceAccounts'] is List ? (task['sourceAccounts'] as List) : const <dynamic>[];
-                  final targetIds = task['targetAccounts'] is List ? (task['targetAccounts'] as List) : const <dynamic>[];
-                  final routeCount = (sourceIds.isEmpty ? 1 : sourceIds.length) * (targetIds.isEmpty ? 1 : targetIds.length);
+                  final sourceIds = task['sourceAccounts'] is List
+                      ? (task['sourceAccounts'] as List)
+                      : const <dynamic>[];
+                  final targetIds = task['targetAccounts'] is List
+                      ? (task['targetAccounts'] as List)
+                      : const <dynamic>[];
+                  final routeCount =
+                      (sourceIds.isEmpty ? 1 : sourceIds.length) *
+                          (targetIds.isEmpty ? 1 : targetIds.length);
 
                   final platforms = uniquePlatformsForTask(task);
-                  final description = (task['description']?.toString() ?? '').trim();
-                  final lastError = (task['lastError']?.toString() ?? '').trim();
+                  final description =
+                      (task['description']?.toString() ?? '').trim();
+                  final lastError =
+                      (task['lastError']?.toString() ?? '').trim();
                   final showErrorText = normalized == 'error';
                   final descText = showErrorText
-                      ? (lastError.isEmpty ? 'Error: Failed to fetch data' : 'Error: $lastError')
+                      ? (lastError.isEmpty
+                          ? 'Error: Failed to fetch data'
+                          : 'Error: $lastError')
                       : description;
 
                   final sourcePlatforms = <String>{};
@@ -3783,9 +4207,13 @@ class _SocialShellState extends State<SocialShell> {
                               runSpacing: 8,
                               crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
-                                badge(statusLabel(normalized).toUpperCase(), tone: tone),
+                                badge(statusLabel(normalized).toUpperCase(),
+                                    tone: tone),
                                 badge('Success $rate%', tone: scheme.onSurface),
-                                if (authWarning) badge('OAuth Warning', tone: scheme.secondary, icon: Icons.shield_rounded),
+                                if (authWarning)
+                                  badge('OAuth Warning',
+                                      tone: scheme.secondary,
+                                      icon: Icons.shield_rounded),
                               ],
                             ),
                             const SizedBox(height: 10),
@@ -3794,11 +4222,14 @@ class _SocialShellState extends State<SocialShell> {
                               children: [
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         task['name']?.toString() ?? 'Task',
-                                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                                        style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w900),
                                       ),
                                       if (descText.isNotEmpty) ...[
                                         const SizedBox(height: 4),
@@ -3807,7 +4238,10 @@ class _SocialShellState extends State<SocialShell> {
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                            color: showErrorText ? scheme.error : scheme.onSurface.withAlpha((0.75 * 255).round()),
+                                            color: showErrorText
+                                                ? scheme.error
+                                                : scheme.onSurface.withAlpha(
+                                                    (0.75 * 255).round()),
                                             fontWeight: FontWeight.w600,
                                           ),
                                         ),
@@ -3820,24 +4254,35 @@ class _SocialShellState extends State<SocialShell> {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     IconButton(
-                                      onPressed: busy ? null : () => unawaited(toggleTaskStatus(task)),
-                                      tooltip: normalized == 'active' ? 'Disable task' : 'Enable task',
+                                      onPressed: busy
+                                          ? null
+                                          : () =>
+                                              unawaited(toggleTaskStatus(task)),
+                                      tooltip: normalized == 'active'
+                                          ? 'Disable task'
+                                          : 'Enable task',
                                       icon: Icon(
-                                        normalized == 'active' ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
-                                        color: normalized == 'active' ? scheme.secondary : scheme.primary,
+                                        normalized == 'active'
+                                            ? Icons.pause_circle_filled_rounded
+                                            : Icons.play_circle_fill_rounded,
+                                        color: normalized == 'active'
+                                            ? scheme.secondary
+                                            : scheme.primary,
                                       ),
                                     ),
                                     IconButton(
                                       onPressed: busy
                                           ? null
-                                          : () => unawaited(_openEditTaskSheet(task)),
+                                          : () => unawaited(
+                                              _openEditTaskSheet(task)),
                                       tooltip: 'Edit task',
                                       icon: const Icon(Icons.edit_rounded),
                                     ),
                                     IconButton(
                                       onPressed: busy
                                           ? null
-                                          : () => unawaited(duplicateTask(task)),
+                                          : () =>
+                                              unawaited(duplicateTask(task)),
                                       tooltip: 'Duplicate task',
                                       icon: const Icon(Icons.copy_all_rounded),
                                     ),
@@ -3845,24 +4290,37 @@ class _SocialShellState extends State<SocialShell> {
                                       onPressed: busy
                                           ? null
                                           : () {
-                                              final idx = kPanelSpecs.indexWhere((p) => p.kind == PanelKind.executions);
+                                              final idx =
+                                                  kPanelSpecs.indexWhere((p) =>
+                                                      p.kind ==
+                                                      PanelKind.executions);
                                               if (idx < 0) return;
                                               setState(() {
-                                                _executionsQuery = task['name']?.toString() ?? '';
-                                                _executionsSearchController.text = _executionsQuery;
-                                                _executionsVisibleCount = 24;
+                                                _executionsQuery =
+                                                    task['name']?.toString() ??
+                                                        '';
+                                                _executionsSearchController
+                                                    .text = _executionsQuery;
                                                 _executionsStatusFilter = 'all';
+                                                _executionsOffset = 0;
+                                                _executionsHasMore = false;
                                                 _selectedIndex = idx;
                                               });
-                                              unawaited(_loadPanel(PanelKind.executions, force: true));
+                                              unawaited(_loadPanel(
+                                                  PanelKind.executions,
+                                                  force: true));
                                             },
                                       tooltip: 'View logs',
-                                      icon: const Icon(Icons.receipt_long_rounded),
+                                      icon: const Icon(
+                                          Icons.receipt_long_rounded),
                                     ),
                                     IconButton(
-                                      onPressed: busy ? null : () => unawaited(deleteTask(task)),
+                                      onPressed: busy
+                                          ? null
+                                          : () => unawaited(deleteTask(task)),
                                       tooltip: 'Delete task',
-                                      icon: Icon(Icons.delete_outline_rounded, color: scheme.error),
+                                      icon: Icon(Icons.delete_outline_rounded,
+                                          color: scheme.error),
                                     ),
                                   ],
                                 ),
@@ -3872,8 +4330,11 @@ class _SocialShellState extends State<SocialShell> {
                             Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: scheme.surface.withAlpha((0.50 * 255).round()),
-                                border: Border.all(color: scheme.onSurface.withAlpha((0.12 * 255).round())),
+                                color: scheme.surface
+                                    .withAlpha((0.50 * 255).round()),
+                                border: Border.all(
+                                    color: scheme.onSurface
+                                        .withAlpha((0.12 * 255).round())),
                                 borderRadius: BorderRadius.circular(14),
                               ),
                               child: Row(
@@ -3883,21 +4344,36 @@ class _SocialShellState extends State<SocialShell> {
                                       spacing: 6,
                                       runSpacing: 6,
                                       children: sourcePlatforms.isEmpty
-                                          ? [Text(i18n.isArabic ? 'بدون مصدر' : 'No source')]
-                                          : sourcePlatforms.map((p) => platformBadge(p)).toList(),
+                                          ? [
+                                              Text(i18n.isArabic
+                                                  ? 'بدون مصدر'
+                                                  : 'No source')
+                                            ]
+                                          : sourcePlatforms
+                                              .map((p) => platformBadge(p))
+                                              .toList(),
                                     ),
                                   ),
                                   Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                                    child: Icon(Icons.arrow_forward_rounded, color: scheme.onSurface.withAlpha((0.55 * 255).round())),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8),
+                                    child: Icon(Icons.arrow_forward_rounded,
+                                        color: scheme.onSurface
+                                            .withAlpha((0.55 * 255).round())),
                                   ),
                                   Expanded(
                                     child: Wrap(
                                       spacing: 6,
                                       runSpacing: 6,
                                       children: targetPlatforms.isEmpty
-                                          ? [Text(i18n.isArabic ? 'بدون هدف' : 'No target')]
-                                          : targetPlatforms.map((p) => platformBadge(p)).toList(),
+                                          ? [
+                                              Text(i18n.isArabic
+                                                  ? 'بدون هدف'
+                                                  : 'No target')
+                                            ]
+                                          : targetPlatforms
+                                              .map((p) => platformBadge(p))
+                                              .toList(),
                                     ),
                                   ),
                                 ],
@@ -3908,10 +4384,17 @@ class _SocialShellState extends State<SocialShell> {
                               spacing: 8,
                               runSpacing: 8,
                               children: [
-                                badge('Accounts: ${sourceIds.length + targetIds.length}', tone: scheme.onSurface),
-                                badge('Transfers: ${_readInt(task['executionCount'], fallback: 0)}', tone: scheme.onSurface),
-                                badge('Routes: $routeCount', tone: scheme.onSurface),
-                                badge('Last run: $lastRun', tone: scheme.onSurface, icon: Icons.schedule_rounded),
+                                badge(
+                                    'Accounts: ${sourceIds.length + targetIds.length}',
+                                    tone: scheme.onSurface),
+                                badge(
+                                    'Transfers: ${_readInt(task['executionCount'], fallback: 0)}',
+                                    tone: scheme.onSurface),
+                                badge('Routes: $routeCount',
+                                    tone: scheme.onSurface),
+                                badge('Last run: $lastRun',
+                                    tone: scheme.onSurface,
+                                    icon: Icons.schedule_rounded),
                                 if (platforms.isNotEmpty)
                                   badge(
                                     platforms.map(platformLabel).join(', '),
@@ -3933,8 +4416,11 @@ class _SocialShellState extends State<SocialShell> {
           const SizedBox(height: 12),
           Center(
             child: OutlinedButton(
-              onPressed: _tasksLoadingMore ? null : () => unawaited(_loadMoreTasks()),
-              child: Text(_tasksLoadingMore ? (i18n.isArabic ? '...جاري التحميل' : 'Loading...') : (i18n.isArabic ? 'تحميل المزيد' : 'Load More')),
+              onPressed:
+                  _tasksLoadingMore ? null : () => unawaited(_loadMoreTasks()),
+              child: Text(_tasksLoadingMore
+                  ? (i18n.isArabic ? '...جاري التحميل' : 'Loading...')
+                  : (i18n.isArabic ? 'تحميل المزيد' : 'Load More')),
             ),
           ),
         ],
@@ -3949,7 +4435,9 @@ class _SocialShellState extends State<SocialShell> {
         ? (data['accounts'] as List)
         : const <dynamic>[];
     final accounts = accountsRaw
-        .map((raw) => raw is Map<String, dynamic> ? raw : Map<String, dynamic>.from(raw as Map))
+        .map((raw) => raw is Map<String, dynamic>
+            ? raw
+            : Map<String, dynamic>.from(raw as Map))
         .toList();
 
     bool matchesSearch(Map<String, dynamic> item) {
@@ -3958,7 +4446,9 @@ class _SocialShellState extends State<SocialShell> {
       final name = item['accountName']?.toString().toLowerCase() ?? '';
       final username = item['accountUsername']?.toString().toLowerCase() ?? '';
       final platform = item['platformId']?.toString().toLowerCase() ?? '';
-      return name.contains(query) || username.contains(query) || platform.contains(query);
+      return name.contains(query) ||
+          username.contains(query) ||
+          platform.contains(query);
     }
 
     bool matchesStatus(Map<String, dynamic> item) {
@@ -3974,15 +4464,20 @@ class _SocialShellState extends State<SocialShell> {
     }).toList();
 
     final total = accounts.length;
-    final activeCount = accounts.where((item) => item['isActive'] == true).length;
+    final activeCount =
+        accounts.where((item) => item['isActive'] == true).length;
     final inactiveCount = (total - activeCount).clamp(0, total);
-    final hasAccountFilters = _accountsQuery.isNotEmpty || _accountsStatusFilter != 'all';
+    final hasAccountFilters =
+        _accountsQuery.isNotEmpty || _accountsStatusFilter != 'all';
 
     final groupedByPlatform = <String, List<Map<String, dynamic>>>{};
     for (final account in filtered) {
-      final platformId = account['platformId']?.toString().trim().toLowerCase() ?? '';
+      final platformId =
+          account['platformId']?.toString().trim().toLowerCase() ?? '';
       final key = platformId.isEmpty ? 'unknown' : platformId;
-      groupedByPlatform.putIfAbsent(key, () => <Map<String, dynamic>>[]).add(account);
+      groupedByPlatform
+          .putIfAbsent(key, () => <Map<String, dynamic>>[])
+          .add(account);
     }
     final groupedEntries = groupedByPlatform.entries.toList()
       ..sort((a, b) => _platformLabel(a.key).compareTo(_platformLabel(b.key)));
@@ -4008,7 +4503,8 @@ class _SocialShellState extends State<SocialShell> {
               ),
               trailing: IconButton(
                 tooltip: i18n.t('common.refresh', 'Refresh'),
-                onPressed: () => unawaited(_loadPanel(PanelKind.accounts, force: true)),
+                onPressed: () =>
+                    unawaited(_loadPanel(PanelKind.accounts, force: true)),
                 icon: const Icon(Icons.refresh_rounded),
               ),
             ),
@@ -4028,7 +4524,8 @@ class _SocialShellState extends State<SocialShell> {
                   icon: Icons.check_circle_rounded,
                 ),
                 SfBadge(
-                  i18n.t('accounts.kpi.inactive', 'Inactive') + ': $inactiveCount',
+                  i18n.t('accounts.kpi.inactive', 'Inactive') +
+                      ': $inactiveCount',
                   tone: scheme.error,
                   icon: Icons.cancel_rounded,
                 ),
@@ -4044,7 +4541,8 @@ class _SocialShellState extends State<SocialShell> {
                   'Search by platform, name, or username',
                 ),
               ),
-              onChanged: (value) => setState(() => _accountsQuery = value.trim()),
+              onChanged: (value) =>
+                  setState(() => _accountsQuery = value.trim()),
             ),
             const SizedBox(height: 10),
             Wrap(
@@ -4054,23 +4552,29 @@ class _SocialShellState extends State<SocialShell> {
                 ChoiceChip(
                   label: Text(i18n.isArabic ? 'الكل' : 'All'),
                   selected: _accountsStatusFilter == 'all',
-                  onSelected: (_) => setState(() => _accountsStatusFilter = 'all'),
+                  onSelected: (_) =>
+                      setState(() => _accountsStatusFilter = 'all'),
                 ),
                 ChoiceChip(
-                  label: Text('${i18n.t('accounts.active', 'Active')} ($activeCount)'),
+                  label: Text(
+                      '${i18n.t('accounts.active', 'Active')} ($activeCount)'),
                   selected: _accountsStatusFilter == 'active',
-                  onSelected: (_) => setState(() => _accountsStatusFilter = 'active'),
+                  onSelected: (_) =>
+                      setState(() => _accountsStatusFilter = 'active'),
                 ),
                 ChoiceChip(
-                  label: Text('${i18n.t('accounts.inactive', 'Inactive')} ($inactiveCount)'),
+                  label: Text(
+                      '${i18n.t('accounts.inactive', 'Inactive')} ($inactiveCount)'),
                   selected: _accountsStatusFilter == 'inactive',
-                  onSelected: (_) => setState(() => _accountsStatusFilter = 'inactive'),
+                  onSelected: (_) =>
+                      setState(() => _accountsStatusFilter = 'inactive'),
                 ),
                 if (hasAccountFilters)
                   OutlinedButton.icon(
                     onPressed: clearAccountFilters,
                     icon: const Icon(Icons.filter_alt_off_rounded),
-                    label: Text(i18n.isArabic ? 'مسح الفلاتر' : 'Clear Filters'),
+                    label:
+                        Text(i18n.isArabic ? 'مسح الفلاتر' : 'Clear Filters'),
                   ),
               ],
             ),
@@ -4083,9 +4587,13 @@ class _SocialShellState extends State<SocialShell> {
       final name = account['accountName']?.toString().trim();
       final username = account['accountUsername']?.toString().trim();
       final platformId = account['platformId']?.toString().trim() ?? '';
+      final profileUrl = _resolveAccountProfileUrl(account);
       final active = account['isActive'] == true;
-      final title = (name == null || name.isEmpty) ? i18n.t('accounts.account', 'Account') : name;
-      final handle = (username == null || username.isEmpty) ? '-' : '@$username';
+      final title = (name == null || name.isEmpty)
+          ? i18n.t('accounts.account', 'Account')
+          : name;
+      final handle =
+          (username == null || username.isEmpty) ? '-' : '@$username';
       final platformLabel = _platformLabel(platformId);
       final tone = active ? Colors.green.shade700 : scheme.error;
       final created = DateTime.tryParse(account['createdAt']?.toString() ?? '');
@@ -4104,9 +4612,11 @@ class _SocialShellState extends State<SocialShell> {
               color: scheme.surface.withOpacity(0.55),
               border: Border.all(color: scheme.onSurface.withOpacity(0.10)),
             ),
-            child: Icon(_platformIcon(platformId), color: scheme.onSurfaceVariant),
+            child:
+                Icon(_platformIcon(platformId), color: scheme.onSurfaceVariant),
           ),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+          title:
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -4115,24 +4625,35 @@ class _SocialShellState extends State<SocialShell> {
               if (createdLabel.isNotEmpty)
                 Text(
                   i18n.isArabic ? 'أضيف $createdLabel' : 'Added $createdLabel',
-                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                  style:
+                      TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
                 ),
             ],
           ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (profileUrl != null)
+                IconButton(
+                  tooltip: i18n.isArabic ? 'فتح الملف الشخصي' : 'Open profile',
+                  onPressed: () => unawaited(_openAccountProfile(account)),
+                  icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                ),
               if (username != null && username.isNotEmpty)
                 IconButton(
                   tooltip: i18n.isArabic ? 'نسخ اسم المستخدم' : 'Copy username',
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: '@$username'));
-                    _toast(i18n.isArabic ? 'تم نسخ اسم المستخدم.' : 'Username copied');
+                    _toast(i18n.isArabic
+                        ? 'تم نسخ اسم المستخدم.'
+                        : 'Username copied');
                   },
                   icon: const Icon(Icons.content_copy_rounded, size: 18),
                 ),
               SfBadge(
-                active ? i18n.t('accounts.active', 'Active') : i18n.t('accounts.inactive', 'Inactive'),
+                active
+                    ? i18n.t('accounts.active', 'Active')
+                    : i18n.t('accounts.inactive', 'Inactive'),
                 tone: tone,
                 icon: active ? Icons.check_rounded : Icons.close_rounded,
               ),
@@ -4158,7 +4679,8 @@ class _SocialShellState extends State<SocialShell> {
             primary: hasAccountFilters
                 ? OutlinedButton(
                     onPressed: clearAccountFilters,
-                    child: Text(i18n.isArabic ? 'مسح الفلاتر' : 'Clear Filters'),
+                    child:
+                        Text(i18n.isArabic ? 'مسح الفلاتر' : 'Clear Filters'),
                   )
                 : null,
           )
@@ -4175,11 +4697,13 @@ class _SocialShellState extends State<SocialShell> {
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
                       children: [
-                        Icon(_platformIcon(platformId), size: 18, color: scheme.onSurfaceVariant),
+                        Icon(_platformIcon(platformId),
+                            size: 18, color: scheme.onSurfaceVariant),
                         const SizedBox(width: 8),
                         Text(
                           _platformLabel(platformId),
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.w900),
                         ),
                         const SizedBox(width: 8),
                         SfBadge(
@@ -4202,21 +4726,28 @@ class _SocialShellState extends State<SocialShell> {
     final i18n = _i18n(context);
     final scheme = Theme.of(context).colorScheme;
     final panelState = _panelStates[PanelKind.executions]!;
-    final showingCachedView = panelState.error != null && panelState.data != null;
+    final showingCachedView =
+        panelState.error != null && panelState.data != null;
     final executionsRaw = data['executions'] is List
         ? (data['executions'] as List)
         : const <dynamic>[];
     final executions = executionsRaw
-        .map((raw) => raw is Map<String, dynamic> ? raw : Map<String, dynamic>.from(raw as Map))
+        .map((raw) => raw is Map<String, dynamic>
+            ? raw
+            : Map<String, dynamic>.from(raw as Map))
         .toList();
 
     String normalizeStatus(String status) {
       final v = status.trim().toLowerCase();
-      if (v.contains('success') || v.contains('completed') || v.contains('done')) {
+      if (v.contains('success') ||
+          v.contains('completed') ||
+          v.contains('done')) {
         return 'success';
       }
       if (v.contains('fail') || v.contains('error')) return 'failed';
-      if (v.contains('running') || v.contains('processing') || v.contains('progress')) {
+      if (v.contains('running') ||
+          v.contains('processing') ||
+          v.contains('progress')) {
         return 'running';
       }
       if (v.contains('pending') || v.contains('queued') || v.contains('wait')) {
@@ -4225,47 +4756,36 @@ class _SocialShellState extends State<SocialShell> {
       return 'other';
     }
 
-    bool matchesStatus(Map<String, dynamic> item) {
-      if (_executionsStatusFilter == 'all') return true;
-      final normalized = normalizeStatus(item['status']?.toString() ?? '');
-      return normalized == _executionsStatusFilter;
-    }
-
-    bool matchesQuery(Map<String, dynamic> item) {
-      if (_executionsQuery.isEmpty) return true;
-      final query = _executionsQuery.toLowerCase();
-      final taskName = item['taskName']?.toString().toLowerCase() ?? '';
-      final status = item['status']?.toString().toLowerCase() ?? '';
-      final source = item['sourceAccountName']?.toString().toLowerCase() ?? '';
-      final target = item['targetAccountName']?.toString().toLowerCase() ?? '';
-      return taskName.contains(query) ||
-          status.contains(query) ||
-          source.contains(query) ||
-          target.contains(query);
-    }
-
-    final filtered = executions.where((item) {
-      return matchesQuery(item) && matchesStatus(item);
-    }).toList();
-
-    final total = executions.length;
-    final successCount =
-        executions.where((e) => normalizeStatus(e['status']?.toString() ?? '') == 'success').length;
-    final failedCount =
-        executions.where((e) => normalizeStatus(e['status']?.toString() ?? '') == 'failed').length;
-    final runningCount =
-        executions.where((e) => normalizeStatus(e['status']?.toString() ?? '') == 'running').length;
-    final pendingCount =
-        executions.where((e) => normalizeStatus(e['status']?.toString() ?? '') == 'pending').length;
-    final hasExecutionFilters = _executionsQuery.isNotEmpty || _executionsStatusFilter != 'all';
-    final visibleCount = filtered.length < _executionsVisibleCount ? filtered.length : _executionsVisibleCount;
-    final visibleExecutions = filtered.take(visibleCount).toList();
-    final canLoadMoreVisible = visibleCount < filtered.length;
+    final filtered = executions;
+    final total = _readInt(data['total'], fallback: executions.length);
+    final successCount = executions
+        .where(
+            (e) => normalizeStatus(e['status']?.toString() ?? '') == 'success')
+        .length;
+    final failedCount = executions
+        .where(
+            (e) => normalizeStatus(e['status']?.toString() ?? '') == 'failed')
+        .length;
+    final runningCount = executions
+        .where(
+            (e) => normalizeStatus(e['status']?.toString() ?? '') == 'running')
+        .length;
+    final pendingCount = executions
+        .where(
+            (e) => normalizeStatus(e['status']?.toString() ?? '') == 'pending')
+        .length;
+    final hasExecutionFilters =
+        _executionsQuery.isNotEmpty || _executionsStatusFilter != 'all';
+    final canLoadMore =
+        !showingCachedView && (data['hasMore'] == true || _executionsHasMore);
+    final nextOffset =
+        _readInt(data['nextOffset'], fallback: _executionsOffset);
 
     String statusLabel(String normalized) {
       if (normalized == 'success') return i18n.isArabic ? 'نجاح' : 'Success';
       if (normalized == 'failed') return i18n.isArabic ? 'فشل' : 'Failed';
-      if (normalized == 'running') return i18n.isArabic ? 'قيد التشغيل' : 'Running';
+      if (normalized == 'running')
+        return i18n.isArabic ? 'قيد التشغيل' : 'Running';
       if (normalized == 'pending') return i18n.isArabic ? 'معلّق' : 'Pending';
       return i18n.isArabic ? 'أخرى' : 'Other';
     }
@@ -4284,7 +4804,8 @@ class _SocialShellState extends State<SocialShell> {
       final date = DateTime.tryParse(raw);
       if (date == null) return raw;
       final local = date.toLocal();
-      final day = '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+      final day =
+          '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
       final time = MaterialLocalizations.of(context).formatTimeOfDay(
         TimeOfDay.fromDateTime(local),
         alwaysUse24HourFormat: true,
@@ -4326,21 +4847,28 @@ class _SocialShellState extends State<SocialShell> {
       final executionId = execution['id']?.toString() ?? '';
       final taskId = execution['taskId']?.toString() ?? '';
       if (taskId.trim().isEmpty) {
-        _toast(i18n.isArabic ? 'لا يمكن إعادة المحاولة لهذا التنفيذ.' : 'Retry is not available for this execution.');
+        _toast(i18n.isArabic
+            ? 'لا يمكن إعادة المحاولة لهذا التنفيذ.'
+            : 'Retry is not available for this execution.');
         return;
       }
-      if (executionId.isNotEmpty && _executionActionState.containsKey(executionId)) return;
+      if (executionId.isNotEmpty &&
+          _executionActionState.containsKey(executionId)) return;
 
       if (executionId.isNotEmpty) {
         setState(() => _executionActionState[executionId] = 'retry');
       }
       try {
         await widget.api.runTask(widget.accessToken, taskId);
-        _toast(i18n.isArabic ? 'تمت جدولة إعادة التشغيل.' : 'Execution retry queued');
+        _toast(i18n.isArabic
+            ? 'تمت جدولة إعادة التشغيل.'
+            : 'Execution retry queued');
         await _loadPanel(PanelKind.executions, force: true);
         await _loadPanel(PanelKind.dashboard, force: true);
       } catch (error) {
-        final message = error is ApiException ? error.message : 'Failed to retry execution.';
+        final message = error is ApiException
+            ? error.message
+            : 'Failed to retry execution.';
         _toast(message);
       } finally {
         if (!mounted || executionId.isEmpty) return;
@@ -4353,11 +4881,15 @@ class _SocialShellState extends State<SocialShell> {
       final normalized = normalizeStatus(statusText);
       final tone = statusTone(normalized);
       final taskName = (execution['taskName']?.toString() ?? '').trim();
-      final sourceName = (execution['sourceAccountName']?.toString() ?? '').trim();
-      final targetName = (execution['targetAccountName']?.toString() ?? '').trim();
+      final sourceName =
+          (execution['sourceAccountName']?.toString() ?? '').trim();
+      final targetName =
+          (execution['targetAccountName']?.toString() ?? '').trim();
       final sourcePlatformId = execution['sourcePlatformId']?.toString() ?? '';
       final targetPlatformId = execution['targetPlatformId']?.toString() ?? '';
-      final when = formatWhen(execution['executedAt'] ?? execution['createdAt'] ?? execution['updatedAt']);
+      final when = formatWhen(execution['executedAt'] ??
+          execution['createdAt'] ??
+          execution['updatedAt']);
       final duration = formatDuration(execution);
 
       final responseData = execution['responseData'];
@@ -4366,24 +4898,29 @@ class _SocialShellState extends State<SocialShell> {
           : const <String, dynamic>{};
       final payloadText = prettyJson(responseData).trim();
       final logsText = prettyJson(
-        execution['logs'] ?? responseMap['logs'] ?? responseMap['events'] ?? responseMap['timeline'],
+        execution['logs'] ??
+            responseMap['logs'] ??
+            responseMap['events'] ??
+            responseMap['timeline'],
       ).trim();
-      final stackText = (
-        execution['errorStack'] ??
-            execution['stack'] ??
-            execution['trace'] ??
-            responseMap['stack'] ??
-            responseMap['trace'] ??
-            responseMap['errorStack']
-      ).toString().trim();
+      final stackText = (execution['errorStack'] ??
+              execution['stack'] ??
+              execution['trace'] ??
+              responseMap['stack'] ??
+              responseMap['trace'] ??
+              responseMap['errorStack'])
+          .toString()
+          .trim();
       final errorText = (execution['error']?.toString() ??
               execution['errorMessage']?.toString() ??
               execution['lastError']?.toString() ??
               responseMap['error']?.toString() ??
               '')
           .trim();
-      final originalContent = (execution['originalContent']?.toString() ?? '').trim();
-      final transformedContent = (execution['transformedContent']?.toString() ?? '').trim();
+      final originalContent =
+          (execution['originalContent']?.toString() ?? '').trim();
+      final transformedContent =
+          (execution['transformedContent']?.toString() ?? '').trim();
 
       await showModalBottomSheet<void>(
         context: context,
@@ -4403,18 +4940,25 @@ class _SocialShellState extends State<SocialShell> {
                         Expanded(
                           child: Text(
                             taskName.isEmpty
-                                ? (i18n.isArabic ? 'تفاصيل التنفيذ' : 'Execution details')
+                                ? (i18n.isArabic
+                                    ? 'تفاصيل التنفيذ'
+                                    : 'Execution details')
                                 : taskName,
-                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                            style: const TextStyle(
+                                fontSize: 20, fontWeight: FontWeight.w900),
                           ),
                         ),
                         IconButton(
-                          tooltip: i18n.isArabic ? 'نسخ الحمولة' : 'Copy payload',
+                          tooltip:
+                              i18n.isArabic ? 'نسخ الحمولة' : 'Copy payload',
                           onPressed: payloadText.isEmpty
                               ? null
                               : () async {
-                                  await Clipboard.setData(ClipboardData(text: payloadText));
-                                  _toast(i18n.isArabic ? 'تم نسخ الحمولة.' : 'Payload copied');
+                                  await Clipboard.setData(
+                                      ClipboardData(text: payloadText));
+                                  _toast(i18n.isArabic
+                                      ? 'تم نسخ الحمولة.'
+                                      : 'Payload copied');
                                 },
                           icon: const Icon(Icons.copy_all_rounded),
                         ),
@@ -4448,15 +4992,20 @@ class _SocialShellState extends State<SocialShell> {
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: scheme.outline.withAlpha((0.24 * 255).round())),
+                                border: Border.all(
+                                    color: scheme.outline
+                                        .withAlpha((0.24 * 255).round())),
                               ),
                               child: Row(
                                 children: [
-                                  Icon(_platformIcon(sourcePlatformId), size: 16),
+                                  Icon(_platformIcon(sourcePlatformId),
+                                      size: 16),
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
-                                      sourceName.isEmpty ? 'Unknown source' : sourceName,
+                                      sourceName.isEmpty
+                                          ? 'Unknown source'
+                                          : sourceName,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -4474,15 +5023,20 @@ class _SocialShellState extends State<SocialShell> {
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: scheme.outline.withAlpha((0.24 * 255).round())),
+                                border: Border.all(
+                                    color: scheme.outline
+                                        .withAlpha((0.24 * 255).round())),
                               ),
                               child: Row(
                                 children: [
-                                  Icon(_platformIcon(targetPlatformId), size: 16),
+                                  Icon(_platformIcon(targetPlatformId),
+                                      size: 16),
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
-                                      targetName.isEmpty ? 'Unknown target' : targetName,
+                                      targetName.isEmpty
+                                          ? 'Unknown target'
+                                          : targetName,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -4503,20 +5057,29 @@ class _SocialShellState extends State<SocialShell> {
                           children: [
                             Row(
                               children: [
-                                Icon(Icons.error_outline_rounded, color: scheme.error, size: 18),
+                                Icon(Icons.error_outline_rounded,
+                                    color: scheme.error, size: 18),
                                 const SizedBox(width: 8),
                                 Text(
                                   i18n.isArabic ? 'الخطأ' : 'Error',
-                                  style: TextStyle(color: scheme.error, fontWeight: FontWeight.w900),
+                                  style: TextStyle(
+                                      color: scheme.error,
+                                      fontWeight: FontWeight.w900),
                                 ),
                                 const Spacer(),
                                 IconButton(
-                                  tooltip: i18n.isArabic ? 'نسخ الخطأ' : 'Copy error',
+                                  tooltip: i18n.isArabic
+                                      ? 'نسخ الخطأ'
+                                      : 'Copy error',
                                   onPressed: () async {
-                                    await Clipboard.setData(ClipboardData(text: errorText));
-                                    _toast(i18n.isArabic ? 'تم نسخ الخطأ.' : 'Error copied');
+                                    await Clipboard.setData(
+                                        ClipboardData(text: errorText));
+                                    _toast(i18n.isArabic
+                                        ? 'تم نسخ الخطأ.'
+                                        : 'Error copied');
                                   },
-                                  icon: const Icon(Icons.content_copy_rounded, size: 18),
+                                  icon: const Icon(Icons.content_copy_rounded,
+                                      size: 18),
                                 ),
                               ],
                             ),
@@ -4534,19 +5097,24 @@ class _SocialShellState extends State<SocialShell> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              i18n.isArabic ? 'التتبّع (Stack Trace)' : 'Stack trace',
-                              style: const TextStyle(fontWeight: FontWeight.w900),
+                              i18n.isArabic
+                                  ? 'التتبّع (Stack Trace)'
+                                  : 'Stack trace',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w900),
                             ),
                             const SizedBox(height: 8),
                             SelectableText(
                               stackText,
-                              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                              style: const TextStyle(
+                                  fontFamily: 'monospace', fontSize: 12),
                             ),
                           ],
                         ),
                       ),
                     ],
-                    if (originalContent.isNotEmpty || transformedContent.isNotEmpty) ...[
+                    if (originalContent.isNotEmpty ||
+                        transformedContent.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       SfPanelCard(
                         padding: const EdgeInsets.all(14),
@@ -4555,17 +5123,25 @@ class _SocialShellState extends State<SocialShell> {
                           children: [
                             Text(
                               i18n.isArabic ? 'المحتوى' : 'Content',
-                              style: const TextStyle(fontWeight: FontWeight.w900),
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w900),
                             ),
                             if (originalContent.isNotEmpty) ...[
                               const SizedBox(height: 8),
-                              Text(i18n.isArabic ? 'الأصلي' : 'Original', style: TextStyle(color: scheme.onSurfaceVariant)),
+                              Text(i18n.isArabic ? 'الأصلي' : 'Original',
+                                  style: TextStyle(
+                                      color: scheme.onSurfaceVariant)),
                               const SizedBox(height: 4),
                               SelectableText(originalContent),
                             ],
                             if (transformedContent.isNotEmpty) ...[
                               const SizedBox(height: 10),
-                              Text(i18n.isArabic ? 'بعد المعالجة' : 'Transformed', style: TextStyle(color: scheme.onSurfaceVariant)),
+                              Text(
+                                  i18n.isArabic
+                                      ? 'بعد المعالجة'
+                                      : 'Transformed',
+                                  style: TextStyle(
+                                      color: scheme.onSurfaceVariant)),
                               const SizedBox(height: 4),
                               SelectableText(transformedContent),
                             ],
@@ -4580,11 +5156,14 @@ class _SocialShellState extends State<SocialShell> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(i18n.isArabic ? 'السجلات' : 'Logs', style: const TextStyle(fontWeight: FontWeight.w900)),
+                            Text(i18n.isArabic ? 'السجلات' : 'Logs',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w900)),
                             const SizedBox(height: 8),
                             SelectableText(
                               logsText,
-                              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                              style: const TextStyle(
+                                  fontFamily: 'monospace', fontSize: 12),
                             ),
                           ],
                         ),
@@ -4597,11 +5176,15 @@ class _SocialShellState extends State<SocialShell> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(i18n.isArabic ? 'الحمولة (Payload)' : 'Payload', style: const TextStyle(fontWeight: FontWeight.w900)),
+                            Text(
+                                i18n.isArabic ? 'الحمولة (Payload)' : 'Payload',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w900)),
                             const SizedBox(height: 8),
                             SelectableText(
                               payloadText,
-                              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                              style: const TextStyle(
+                                  fontFamily: 'monospace', fontSize: 12),
                             ),
                           ],
                         ),
@@ -4619,9 +5202,13 @@ class _SocialShellState extends State<SocialShell> {
     Future<void> copyExecutionReport(Map<String, dynamic> execution) async {
       final taskName = execution['taskName']?.toString().trim();
       final statusText = execution['status']?.toString() ?? 'unknown';
-      final sourceName = execution['sourceAccountName']?.toString() ?? 'Unknown source';
-      final targetName = execution['targetAccountName']?.toString() ?? 'Unknown target';
-      final when = formatWhen(execution['executedAt'] ?? execution['createdAt'] ?? execution['updatedAt']);
+      final sourceName =
+          execution['sourceAccountName']?.toString() ?? 'Unknown source';
+      final targetName =
+          execution['targetAccountName']?.toString() ?? 'Unknown target';
+      final when = formatWhen(execution['executedAt'] ??
+          execution['createdAt'] ??
+          execution['updatedAt']);
       final errorText = (execution['error']?.toString() ??
               execution['errorMessage']?.toString() ??
               execution['lastError']?.toString() ??
@@ -4638,7 +5225,28 @@ class _SocialShellState extends State<SocialShell> {
         lines.add('Error: $errorText');
       }
       await Clipboard.setData(ClipboardData(text: lines.join('\n')));
-      _toast(i18n.isArabic ? 'تم نسخ تقرير التنفيذ.' : 'Execution report copied');
+      _toast(
+          i18n.isArabic ? 'تم نسخ تقرير التنفيذ.' : 'Execution report copied');
+    }
+
+    void applyStatusFilter(String status) {
+      if (_executionsStatusFilter == status) return;
+      setState(() {
+        _executionsStatusFilter = status;
+      });
+      unawaited(_loadExecutionsPage(reset: true, showPanelLoading: true));
+    }
+
+    void clearExecutionFilters() {
+      final hadFilters = hasExecutionFilters;
+      setState(() {
+        _executionsQuery = '';
+        _executionsSearchController.text = '';
+        _executionsStatusFilter = 'all';
+      });
+      if (hadFilters) {
+        unawaited(_loadExecutionsPage(reset: true, showPanelLoading: true));
+      }
     }
 
     Widget searchCard() {
@@ -4654,7 +5262,8 @@ class _SocialShellState extends State<SocialShell> {
               ),
               trailing: IconButton(
                 tooltip: i18n.t('common.refresh', 'Refresh'),
-                onPressed: () => unawaited(_loadPanel(PanelKind.executions, force: true)),
+                onPressed: () =>
+                    unawaited(_loadPanel(PanelKind.executions, force: true)),
                 icon: const Icon(Icons.refresh_rounded),
               ),
             ),
@@ -4666,11 +5275,13 @@ class _SocialShellState extends State<SocialShell> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
                   color: Colors.orange.withAlpha((0.12 * 255).round()),
-                  border: Border.all(color: Colors.orange.withAlpha((0.32 * 255).round())),
+                  border: Border.all(
+                      color: Colors.orange.withAlpha((0.32 * 255).round())),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.wifi_off_rounded, size: 18, color: Colors.orange),
+                    const Icon(Icons.wifi_off_rounded,
+                        size: 18, color: Colors.orange),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -4690,7 +5301,8 @@ class _SocialShellState extends State<SocialShell> {
               controller: _executionsSearchController,
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search_rounded),
-                hintText: i18n.t('executions.searchHint', 'Search by task name or status'),
+                hintText: i18n.t(
+                    'executions.searchHint', 'Search by task name or status'),
               ),
               onChanged: _onExecutionsQueryChanged,
             ),
@@ -4699,59 +5311,39 @@ class _SocialShellState extends State<SocialShell> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                SfBadge('${i18n.t('executions.total', 'Total')}: $total', tone: scheme.onSurface),
+                SfBadge('${i18n.t('executions.total', 'Total')}: $total',
+                    tone: scheme.onSurface),
                 ChoiceChip(
                   label: Text(i18n.isArabic ? 'الكل' : 'All'),
                   selected: _executionsStatusFilter == 'all',
-                  onSelected: (_) => setState(() {
-                    _executionsStatusFilter = 'all';
-                    _executionsVisibleCount = 24;
-                  }),
+                  onSelected: (_) => applyStatusFilter('all'),
                 ),
                 ChoiceChip(
                   label: Text('${statusLabel('success')} ($successCount)'),
                   selected: _executionsStatusFilter == 'success',
-                  onSelected: (_) => setState(() {
-                    _executionsStatusFilter = 'success';
-                    _executionsVisibleCount = 24;
-                  }),
+                  onSelected: (_) => applyStatusFilter('success'),
                 ),
                 ChoiceChip(
                   label: Text('${statusLabel('failed')} ($failedCount)'),
                   selected: _executionsStatusFilter == 'failed',
-                  onSelected: (_) => setState(() {
-                    _executionsStatusFilter = 'failed';
-                    _executionsVisibleCount = 24;
-                  }),
+                  onSelected: (_) => applyStatusFilter('failed'),
                 ),
                 ChoiceChip(
                   label: Text('${statusLabel('running')} ($runningCount)'),
                   selected: _executionsStatusFilter == 'running',
-                  onSelected: (_) => setState(() {
-                    _executionsStatusFilter = 'running';
-                    _executionsVisibleCount = 24;
-                  }),
+                  onSelected: (_) => applyStatusFilter('running'),
                 ),
                 ChoiceChip(
                   label: Text('${statusLabel('pending')} ($pendingCount)'),
                   selected: _executionsStatusFilter == 'pending',
-                  onSelected: (_) => setState(() {
-                    _executionsStatusFilter = 'pending';
-                    _executionsVisibleCount = 24;
-                  }),
+                  onSelected: (_) => applyStatusFilter('pending'),
                 ),
                 if (hasExecutionFilters)
                   OutlinedButton.icon(
-                    onPressed: () {
-                      setState(() {
-                        _executionsQuery = '';
-                        _executionsSearchController.text = '';
-                        _executionsStatusFilter = 'all';
-                        _executionsVisibleCount = 24;
-                      });
-                    },
+                    onPressed: clearExecutionFilters,
                     icon: const Icon(Icons.filter_alt_off_rounded),
-                    label: Text(i18n.isArabic ? 'مسح الفلاتر' : 'Clear Filters'),
+                    label:
+                        Text(i18n.isArabic ? 'مسح الفلاتر' : 'Clear Filters'),
                   ),
               ],
             ),
@@ -4770,19 +5362,23 @@ class _SocialShellState extends State<SocialShell> {
       final targetName = execution['targetAccountName']?.toString().trim();
       final sourcePlatformId = execution['sourcePlatformId']?.toString() ?? '';
       final targetPlatformId = execution['targetPlatformId']?.toString() ?? '';
-      final when = formatWhen(execution['executedAt'] ?? execution['createdAt'] ?? execution['updatedAt']);
+      final when = formatWhen(execution['executedAt'] ??
+          execution['createdAt'] ??
+          execution['updatedAt']);
       final duration = formatDuration(execution);
       final errorText = (execution['error']?.toString() ??
               execution['errorMessage']?.toString() ??
               execution['lastError']?.toString() ??
               '')
           .trim();
-      final busy = executionId.isNotEmpty && _executionActionState.containsKey(executionId);
+      final busy = executionId.isNotEmpty &&
+          _executionActionState.containsKey(executionId);
       final title = (taskName == null || taskName.isEmpty)
           ? i18n.t('executions.item', 'Task execution')
           : taskName;
       final stageText = execution['responseData'] is Map
-          ? ((execution['responseData'] as Map)['stage']?.toString() ?? '').trim()
+          ? ((execution['responseData'] as Map)['stage']?.toString() ?? '')
+              .trim()
           : '';
 
       String stepState(int stepIndex) {
@@ -4814,8 +5410,10 @@ class _SocialShellState extends State<SocialShell> {
       Color connectorTone(int fromStepIndex) {
         final fromState = stepState(fromStepIndex);
         final toState = stepState(fromStepIndex + 1);
-        if (fromState == 'failed' || toState == 'failed') return scheme.error.withAlpha((0.45 * 255).round());
-        if (toState == 'active' || toState == 'done') return scheme.primary.withAlpha((0.45 * 255).round());
+        if (fromState == 'failed' || toState == 'failed')
+          return scheme.error.withAlpha((0.45 * 255).round());
+        if (toState == 'active' || toState == 'done')
+          return scheme.primary.withAlpha((0.45 * 255).round());
         return scheme.outline.withAlpha((0.32 * 255).round());
       }
 
@@ -4844,7 +5442,9 @@ class _SocialShellState extends State<SocialShell> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                        Text(title,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w900)),
                         const SizedBox(height: 4),
                         Wrap(
                           spacing: 8,
@@ -4874,17 +5474,22 @@ class _SocialShellState extends State<SocialShell> {
                     children: [
                       IconButton(
                         tooltip: i18n.isArabic ? 'إعادة المحاولة' : 'Retry',
-                        onPressed: busy ? null : () => unawaited(retryExecution(execution)),
+                        onPressed: busy
+                            ? null
+                            : () => unawaited(retryExecution(execution)),
                         icon: const Icon(Icons.replay_rounded),
                       ),
                       IconButton(
-                        tooltip: i18n.isArabic ? 'عرض التفاصيل' : 'View details',
-                        onPressed: () => unawaited(openExecutionDetails(execution)),
+                        tooltip:
+                            i18n.isArabic ? 'عرض التفاصيل' : 'View details',
+                        onPressed: () =>
+                            unawaited(openExecutionDetails(execution)),
                         icon: const Icon(Icons.info_outline_rounded),
                       ),
                       IconButton(
                         tooltip: i18n.isArabic ? 'نسخ التقرير' : 'Copy report',
-                        onPressed: () => unawaited(copyExecutionReport(execution)),
+                        onPressed: () =>
+                            unawaited(copyExecutionReport(execution)),
                         icon: const Icon(Icons.copy_all_rounded),
                       ),
                     ],
@@ -4894,7 +5499,8 @@ class _SocialShellState extends State<SocialShell> {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Icon(Icons.compare_arrows_rounded, size: 16, color: scheme.onSurfaceVariant),
+                  Icon(Icons.compare_arrows_rounded,
+                      size: 16, color: scheme.onSurfaceVariant),
                   const SizedBox(width: 6),
                   Flexible(
                     child: Wrap(
@@ -4903,10 +5509,13 @@ class _SocialShellState extends State<SocialShell> {
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 5),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: scheme.outline.withAlpha((0.20 * 255).round())),
+                            border: Border.all(
+                                color: scheme.outline
+                                    .withAlpha((0.20 * 255).round())),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -4916,21 +5525,29 @@ class _SocialShellState extends State<SocialShell> {
                               SizedBox(
                                 width: 130,
                                 child: Text(
-                                  sourceName == null || sourceName.isEmpty ? 'Unknown source' : sourceName,
+                                  sourceName == null || sourceName.isEmpty
+                                      ? 'Unknown source'
+                                      : sourceName,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                                  style: TextStyle(
+                                      color: scheme.onSurfaceVariant,
+                                      fontWeight: FontWeight.w700),
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        Icon(Icons.arrow_forward_rounded, size: 14, color: scheme.onSurfaceVariant),
+                        Icon(Icons.arrow_forward_rounded,
+                            size: 14, color: scheme.onSurfaceVariant),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 5),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: scheme.outline.withAlpha((0.20 * 255).round())),
+                            border: Border.all(
+                                color: scheme.outline
+                                    .withAlpha((0.20 * 255).round())),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -4940,10 +5557,14 @@ class _SocialShellState extends State<SocialShell> {
                               SizedBox(
                                 width: 130,
                                 child: Text(
-                                  targetName == null || targetName.isEmpty ? 'Unknown target' : targetName,
+                                  targetName == null || targetName.isEmpty
+                                      ? 'Unknown target'
+                                      : targetName,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                                  style: TextStyle(
+                                      color: scheme.onSurfaceVariant,
+                                      fontWeight: FontWeight.w700),
                                 ),
                               ),
                             ],
@@ -4957,7 +5578,8 @@ class _SocialShellState extends State<SocialShell> {
               const SizedBox(height: 6),
               Row(
                 children: [
-                  Icon(Icons.schedule_rounded, size: 16, color: scheme.onSurfaceVariant),
+                  Icon(Icons.schedule_rounded,
+                      size: 16, color: scheme.onSurfaceVariant),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -5059,7 +5681,8 @@ class _SocialShellState extends State<SocialShell> {
                       '${i18n.isArabic ? 'المرحلة' : 'Stage'}: $stageText',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+                      style: TextStyle(
+                          color: scheme.onSurfaceVariant, fontSize: 12),
                     ),
                   ],
                 ],
@@ -5072,26 +5695,31 @@ class _SocialShellState extends State<SocialShell> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
                     color: scheme.error.withAlpha((0.10 * 255).round()),
-                    border: Border.all(color: scheme.error.withAlpha((0.22 * 255).round())),
+                    border: Border.all(
+                        color: scheme.error.withAlpha((0.22 * 255).round())),
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.error_outline_rounded, color: scheme.error, size: 18),
+                      Icon(Icons.error_outline_rounded,
+                          color: scheme.error, size: 18),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           errorText,
                           maxLines: 3,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: scheme.error, fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                              color: scheme.error, fontWeight: FontWeight.w700),
                         ),
                       ),
                       IconButton(
                         tooltip: i18n.isArabic ? 'نسخ الخطأ' : 'Copy error',
                         onPressed: () async {
-                          await Clipboard.setData(ClipboardData(text: errorText));
-                          _toast(i18n.isArabic ? 'تم نسخ الخطأ.' : 'Error copied');
+                          await Clipboard.setData(
+                              ClipboardData(text: errorText));
+                          _toast(
+                              i18n.isArabic ? 'تم نسخ الخطأ.' : 'Error copied');
                         },
                         icon: const Icon(Icons.content_copy_rounded, size: 18),
                       ),
@@ -5120,28 +5748,22 @@ class _SocialShellState extends State<SocialShell> {
             ),
             primary: hasExecutionFilters
                 ? OutlinedButton(
-                    onPressed: () {
-                      setState(() {
-                        _executionsQuery = '';
-                        _executionsSearchController.text = '';
-                        _executionsStatusFilter = 'all';
-                        _executionsVisibleCount = 24;
-                      });
-                    },
-                    child: Text(i18n.isArabic ? 'مسح الفلاتر' : 'Clear Filters'),
+                    onPressed: clearExecutionFilters,
+                    child:
+                        Text(i18n.isArabic ? 'مسح الفلاتر' : 'Clear Filters'),
                   )
                 : null,
           )
         else
-          ...visibleExecutions.map(executionTile),
-        if (canLoadMoreVisible) ...[
+          ...filtered.map(executionTile),
+        if (canLoadMore) ...[
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.center,
             child: OutlinedButton.icon(
               onPressed: _executionsLoadingMore
                   ? null
-                  : () => unawaited(_loadMoreExecutionsVisible(filtered.length)),
+                  : () => unawaited(_loadMoreExecutions()),
               icon: _executionsLoadingMore
                   ? const SizedBox(
                       width: 16,
@@ -5153,11 +5775,21 @@ class _SocialShellState extends State<SocialShell> {
                 _executionsLoadingMore
                     ? (i18n.isArabic ? 'جارٍ التحميل...' : 'Loading...')
                     : (i18n.isArabic
-                        ? 'تحميل المزيد ($visibleCount/${filtered.length})'
-                        : 'Load more ($visibleCount/${filtered.length})'),
+                        ? 'تحميل المزيد (${filtered.length}/$total)'
+                        : 'Load more (${filtered.length}/$total)'),
               ),
             ),
           ),
+          if (nextOffset > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                '${i18n.isArabic ? 'الإزاحة التالية' : 'Next offset'}: $nextOffset',
+                style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700),
+              ),
+            ),
         ],
       ],
     );
@@ -5174,8 +5806,10 @@ class _SocialShellState extends State<SocialShell> {
         : const <dynamic>[];
 
     final totalExecutions = _readDouble(totals['executions'], fallback: 0);
-    final successfulExecutions = _readDouble(totals['successfulExecutions'], fallback: 0);
-    final successRate = totalExecutions > 0 ? successfulExecutions / totalExecutions : 0.0;
+    final successfulExecutions =
+        _readDouble(totals['successfulExecutions'], fallback: 0);
+    final successRate =
+        totalExecutions > 0 ? successfulExecutions / totalExecutions : 0.0;
 
     final top = taskStats.take(8).map((raw) {
       final item = raw is Map<String, dynamic>
@@ -5196,9 +5830,12 @@ class _SocialShellState extends State<SocialShell> {
       try {
         final csv = await widget.api.exportAnalyticsCsv(widget.accessToken);
         await Clipboard.setData(ClipboardData(text: csv));
-        _toast(i18n.isArabic ? 'تم نسخ CSV للحافظة.' : 'CSV copied to clipboard.');
+        _toast(
+            i18n.isArabic ? 'تم نسخ CSV للحافظة.' : 'CSV copied to clipboard.');
       } catch (error) {
-        final message = error is ApiException ? error.message : 'Failed to export analytics.';
+        final message = error is ApiException
+            ? error.message
+            : 'Failed to export analytics.';
         _toast(message);
       }
     }
@@ -5228,7 +5865,8 @@ class _SocialShellState extends State<SocialShell> {
             SizedBox(
               width: 280,
               child: SfKpiTile(
-                label: i18n.t('analytics.kpi.totalExecutions', 'Total executions'),
+                label:
+                    i18n.t('analytics.kpi.totalExecutions', 'Total executions'),
                 value: '${totals['executions'] ?? 0}',
                 icon: Icons.sync_rounded,
               ),
@@ -5264,8 +5902,10 @@ class _SocialShellState extends State<SocialShell> {
         ),
         const SizedBox(height: 12),
         SfBarChart(
-          title: i18n.t('analytics.chart.title', 'Success Rate by Task (Top 8)'),
-          subtitle: i18n.t('analytics.chart.subtitle', 'Sorted by your current ordering.'),
+          title:
+              i18n.t('analytics.chart.title', 'Success Rate by Task (Top 8)'),
+          subtitle: i18n.t(
+              'analytics.chart.subtitle', 'Sorted by your current ordering.'),
           values: top.map((e) => (e['value'] as double)).toList(),
           labels: top.map((e) => (e['label'] as String)).toList(),
           maxValue: 100,
@@ -5277,13 +5917,16 @@ class _SocialShellState extends State<SocialShell> {
             children: [
               SfSectionHeader(
                 title: i18n.t('analytics.table.title', 'Performance by Task'),
-                subtitle: i18n.t('analytics.table.subtitle', 'Search, sort, and review task-level execution KPIs.'),
+                subtitle: i18n.t('analytics.table.subtitle',
+                    'Search, sort, and review task-level execution KPIs.'),
               ),
               const SizedBox(height: 12),
               LayoutBuilder(
                 builder: (context, constraints) {
                   final wide = constraints.maxWidth >= 760;
-                  final w = wide ? (constraints.maxWidth - 12) / 2 : constraints.maxWidth;
+                  final w = wide
+                      ? (constraints.maxWidth - 12) / 2
+                      : constraints.maxWidth;
                   return Wrap(
                     spacing: 12,
                     runSpacing: 12,
@@ -5294,7 +5937,8 @@ class _SocialShellState extends State<SocialShell> {
                           controller: _analyticsSearchController,
                           decoration: InputDecoration(
                             prefixIcon: const Icon(Icons.search_rounded),
-                            hintText: i18n.t('analytics.searchHint', 'Search tasks...'),
+                            hintText: i18n.t(
+                                'analytics.searchHint', 'Search tasks...'),
                           ),
                           onChanged: _onAnalyticsQueryChanged,
                         ),
@@ -5308,14 +5952,30 @@ class _SocialShellState extends State<SocialShell> {
                             prefixIcon: const Icon(Icons.sort_rounded),
                           ),
                           items: const [
-                            DropdownMenuItem(value: 'successRate:desc', child: Text('Success Rate (High)')),
-                            DropdownMenuItem(value: 'successRate:asc', child: Text('Success Rate (Low)')),
-                            DropdownMenuItem(value: 'totalExecutions:desc', child: Text('Total Runs (High)')),
-                            DropdownMenuItem(value: 'totalExecutions:asc', child: Text('Total Runs (Low)')),
-                            DropdownMenuItem(value: 'failed:desc', child: Text('Failures (High)')),
-                            DropdownMenuItem(value: 'failed:asc', child: Text('Failures (Low)')),
-                            DropdownMenuItem(value: 'taskName:asc', child: Text('Task (A→Z)')),
-                            DropdownMenuItem(value: 'taskName:desc', child: Text('Task (Z→A)')),
+                            DropdownMenuItem(
+                                value: 'successRate:desc',
+                                child: Text('Success Rate (High)')),
+                            DropdownMenuItem(
+                                value: 'successRate:asc',
+                                child: Text('Success Rate (Low)')),
+                            DropdownMenuItem(
+                                value: 'totalExecutions:desc',
+                                child: Text('Total Runs (High)')),
+                            DropdownMenuItem(
+                                value: 'totalExecutions:asc',
+                                child: Text('Total Runs (Low)')),
+                            DropdownMenuItem(
+                                value: 'failed:desc',
+                                child: Text('Failures (High)')),
+                            DropdownMenuItem(
+                                value: 'failed:asc',
+                                child: Text('Failures (Low)')),
+                            DropdownMenuItem(
+                                value: 'taskName:asc',
+                                child: Text('Task (A→Z)')),
+                            DropdownMenuItem(
+                                value: 'taskName:desc',
+                                child: Text('Task (Z→A)')),
                           ],
                           onChanged: (value) {
                             if (value == null) return;
@@ -5329,7 +5989,8 @@ class _SocialShellState extends State<SocialShell> {
                               _analyticsOffset = 0;
                               _analyticsHasMore = false;
                             });
-                            unawaited(_loadPanel(PanelKind.analytics, force: true));
+                            unawaited(
+                                _loadPanel(PanelKind.analytics, force: true));
                           },
                         ),
                       ),
@@ -5345,7 +6006,8 @@ class _SocialShellState extends State<SocialShell> {
                   final item = raw is Map<String, dynamic>
                       ? raw
                       : Map<String, dynamic>.from(raw as Map);
-                  final taskName = item['taskName']?.toString() ?? i18n.t('tasks.task', 'Task');
+                  final taskName = item['taskName']?.toString() ??
+                      i18n.t('tasks.task', 'Task');
                   final total = _readInt(item['totalExecutions'], fallback: 0);
                   final ok = _readInt(item['successful'], fallback: 0);
                   final fail = _readInt(item['failed'], fallback: 0);
@@ -5361,7 +6023,8 @@ class _SocialShellState extends State<SocialShell> {
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: scheme.outline.withOpacity(0.55)),
+                      border:
+                          Border.all(color: scheme.outline.withOpacity(0.55)),
                       color: scheme.surface.withOpacity(0.35),
                     ),
                     child: Row(
@@ -5373,31 +6036,42 @@ class _SocialShellState extends State<SocialShell> {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(14),
                             color: rateColor.withOpacity(0.12),
-                            border: Border.all(color: rateColor.withOpacity(0.22)),
+                            border:
+                                Border.all(color: rateColor.withOpacity(0.22)),
                           ),
-                          child: Icon(Icons.analytics_rounded, color: rateColor),
+                          child:
+                              Icon(Icons.analytics_rounded, color: rateColor),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(taskName, style: const TextStyle(fontWeight: FontWeight.w900)),
+                              Text(taskName,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w900)),
                               const SizedBox(height: 6),
                               Wrap(
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: [
-                                  SfBadge('${i18n.t('analytics.executions', 'Executions')}: $total', tone: scheme.onSurface),
-                                  SfBadge('${i18n.t('analytics.kpi.successful', 'Successful')}: $ok', tone: Colors.green.shade700),
-                                  SfBadge('${i18n.t('analytics.kpi.failed', 'Failed')}: $fail', tone: scheme.error),
+                                  SfBadge(
+                                      '${i18n.t('analytics.executions', 'Executions')}: $total',
+                                      tone: scheme.onSurface),
+                                  SfBadge(
+                                      '${i18n.t('analytics.kpi.successful', 'Successful')}: $ok',
+                                      tone: Colors.green.shade700),
+                                  SfBadge(
+                                      '${i18n.t('analytics.kpi.failed', 'Failed')}: $fail',
+                                      tone: scheme.error),
                                 ],
                               ),
                             ],
                           ),
                         ),
                         const SizedBox(width: 10),
-                        SfBadge('${rate.toStringAsFixed(2)}%', tone: rateColor, icon: Icons.trending_up_rounded),
+                        SfBadge('${rate.toStringAsFixed(2)}%',
+                            tone: rateColor, icon: Icons.trending_up_rounded),
                       ],
                     ),
                   );
@@ -5406,7 +6080,9 @@ class _SocialShellState extends State<SocialShell> {
                 const SizedBox(height: 8),
                 Center(
                   child: OutlinedButton(
-                    onPressed: _analyticsLoadingMore ? null : () => unawaited(_loadMoreAnalytics()),
+                    onPressed: _analyticsLoadingMore
+                        ? null
+                        : () => unawaited(_loadMoreAnalytics()),
                     child: Text(
                       _analyticsLoadingMore
                           ? (i18n.isArabic ? '...جاري التحميل' : 'Loading...')
@@ -5419,7 +6095,9 @@ class _SocialShellState extends State<SocialShell> {
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(
                       '${i18n.t('analytics.nextOffset', 'Next offset')}: $nextOffset',
-                      style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w700),
                     ),
                   ),
               ],
@@ -5451,37 +6129,66 @@ class _SocialShellState extends State<SocialShell> {
         'id': 'orbit',
         'name': 'Orbit',
         'desc': i18n.t('settings.preset.orbit', 'Formal enterprise palette.'),
-        'swatches': const <Color>[Color(0xFF0F62FE), Color(0xFF0052CC), Color(0xFF57606A)],
+        'swatches': const <Color>[
+          Color(0xFF0F62FE),
+          Color(0xFF0052CC),
+          Color(0xFF57606A)
+        ],
       },
       {
         'id': 'graphite',
         'name': 'Graphite',
-        'desc': i18n.t('settings.preset.graphite', 'Minimal neutral scheme with subtle accents.'),
-        'swatches': const <Color>[Color(0xFF667086), Color(0xFF7F8EA4), Color(0xFFA6B0C2)],
+        'desc': i18n.t('settings.preset.graphite',
+            'Minimal neutral scheme with subtle accents.'),
+        'swatches': const <Color>[
+          Color(0xFF667086),
+          Color(0xFF7F8EA4),
+          Color(0xFFA6B0C2)
+        ],
       },
       {
         'id': 'sunrise',
         'name': 'Sunrise',
-        'desc': i18n.t('settings.preset.sunrise', 'Warm editorial palette with high contrast.'),
-        'swatches': const <Color>[Color(0xFFE57A39), Color(0xFFEDB84C), Color(0xFF46B8A8)],
+        'desc': i18n.t('settings.preset.sunrise',
+            'Warm editorial palette with high contrast.'),
+        'swatches': const <Color>[
+          Color(0xFFE57A39),
+          Color(0xFFEDB84C),
+          Color(0xFF46B8A8)
+        ],
       },
       {
         'id': 'nord',
         'name': 'Nord',
-        'desc': i18n.t('settings.preset.nord', 'Cool arctic blue-gray with clean contrast.'),
-        'swatches': const <Color>[Color(0xFF5E81AC), Color(0xFF88C0D0), Color(0xFF81A1C1)],
+        'desc': i18n.t('settings.preset.nord',
+            'Cool arctic blue-gray with clean contrast.'),
+        'swatches': const <Color>[
+          Color(0xFF5E81AC),
+          Color(0xFF88C0D0),
+          Color(0xFF81A1C1)
+        ],
       },
       {
         'id': 'ocean',
         'name': 'Ocean',
-        'desc': i18n.t('settings.preset.ocean', 'Airy blue-gray background with frost surfaces.'),
-        'swatches': const <Color>[Color(0xFFEEF3F8), Color(0xFFF8F8FA), Color(0xFF2F84D4)],
+        'desc': i18n.t('settings.preset.ocean',
+            'Airy blue-gray background with frost surfaces.'),
+        'swatches': const <Color>[
+          Color(0xFFEEF3F8),
+          Color(0xFFF8F8FA),
+          Color(0xFF2F84D4)
+        ],
       },
       {
         'id': 'warmlux',
         'name': 'Warm Luxe',
-        'desc': i18n.t('settings.preset.warmlux', 'Warm corporate beige with golden accents.'),
-        'swatches': const <Color>[Color(0xFFE9E6DF), Color(0xFFE5B73B), Color(0xFF2C2C2C)],
+        'desc': i18n.t('settings.preset.warmlux',
+            'Warm corporate beige with golden accents.'),
+        'swatches': const <Color>[
+          Color(0xFFE9E6DF),
+          Color(0xFFE5B73B),
+          Color(0xFF2C2C2C)
+        ],
       },
     ];
 
@@ -5496,7 +6203,8 @@ class _SocialShellState extends State<SocialShell> {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: scheme.outline.withOpacity(isDark ? 0.65 : 0.70)),
+          border: Border.all(
+              color: scheme.outline.withOpacity(isDark ? 0.65 : 0.70)),
           color: scheme.surface.withOpacity(isDark ? 0.35 : 0.55),
         ),
         child: Row(
@@ -5508,7 +6216,8 @@ class _SocialShellState extends State<SocialShell> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
                 color: scheme.primary.withOpacity(isDark ? 0.18 : 0.10),
-                border: Border.all(color: scheme.primary.withOpacity(isDark ? 0.26 : 0.18)),
+                border: Border.all(
+                    color: scheme.primary.withOpacity(isDark ? 0.26 : 0.18)),
               ),
               child: Icon(icon, color: scheme.primary, size: 20),
             ),
@@ -5517,11 +6226,14 @@ class _SocialShellState extends State<SocialShell> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                  Text(title,
+                      style: const TextStyle(fontWeight: FontWeight.w900)),
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700),
                   ),
                 ],
               ),
@@ -5542,10 +6254,13 @@ class _SocialShellState extends State<SocialShell> {
           : scheme.outline.withOpacity(isDark ? 0.65 : 0.70);
 
       return InkWell(
-        onTap: () => unawaited(widget.appState.setThemePreset(opt['id']?.toString() ?? 'orbit')),
+        onTap: () => unawaited(
+            widget.appState.setThemePreset(opt['id']?.toString() ?? 'orbit')),
         borderRadius: BorderRadius.circular(18),
         child: AnimatedContainer(
-          duration: widget.appState.reducedMotion ? Duration.zero : const Duration(milliseconds: 180),
+          duration: widget.appState.reducedMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 180),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
@@ -5584,7 +6299,9 @@ class _SocialShellState extends State<SocialShell> {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: c,
-                        border: Border.all(color: scheme.outline.withOpacity(isDark ? 0.55 : 0.70)),
+                        border: Border.all(
+                            color: scheme.outline
+                                .withOpacity(isDark ? 0.55 : 0.70)),
                       ),
                     ),
                   ],
@@ -5593,7 +6310,9 @@ class _SocialShellState extends State<SocialShell> {
               const SizedBox(height: 10),
               Text(
                 opt['desc']?.toString() ?? '',
-                style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700),
               ),
             ],
           ),
@@ -5602,23 +6321,28 @@ class _SocialShellState extends State<SocialShell> {
     }
 
     Widget credentialsCard() {
-      final platformLabel = _kPlatformLabels[_settingsSelectedPlatform] ?? _settingsSelectedPlatform;
-      final fields = _kPlatformFields[_settingsSelectedPlatform] ?? const <Map<String, dynamic>>[];
+      final platformLabel = _kPlatformLabels[_settingsSelectedPlatform] ??
+          _settingsSelectedPlatform;
+      final fields = _kPlatformFields[_settingsSelectedPlatform] ??
+          const <Map<String, dynamic>>[];
 
       Widget content;
       if (_settingsCredentialsLoading) {
-        content = Text(i18n.t('settings.loadingCredentials', 'Loading credentials...'));
+        content = Text(
+            i18n.t('settings.loadingCredentials', 'Loading credentials...'));
       } else if (_settingsCredentialsError.trim().isNotEmpty) {
         content = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               _settingsCredentialsError,
-              style: TextStyle(color: scheme.error, fontWeight: FontWeight.w800),
+              style:
+                  TextStyle(color: scheme.error, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
-              onPressed: () => unawaited(_loadSettingsPlatformCredentials(force: true)),
+              onPressed: () =>
+                  unawaited(_loadSettingsPlatformCredentials(force: true)),
               icon: const Icon(Icons.refresh_rounded),
               label: Text(i18n.t('common.retry', 'Retry')),
             ),
@@ -5628,7 +6352,8 @@ class _SocialShellState extends State<SocialShell> {
         content = LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= 760;
-            final width = wide ? (constraints.maxWidth - 12) / 2 : constraints.maxWidth;
+            final width =
+                wide ? (constraints.maxWidth - 12) / 2 : constraints.maxWidth;
             return Wrap(
               spacing: 12,
               runSpacing: 12,
@@ -5640,7 +6365,8 @@ class _SocialShellState extends State<SocialShell> {
                 final revealKey = '${_settingsSelectedPlatform}.$key';
                 final revealed = _settingsRevealSecret[revealKey] == true;
 
-                final controller = _settingsCredentialControllers[key] ?? TextEditingController();
+                final controller = _settingsCredentialControllers[key] ??
+                    TextEditingController();
                 _settingsCredentialControllers[key] = controller;
 
                 return SizedBox(
@@ -5648,7 +6374,8 @@ class _SocialShellState extends State<SocialShell> {
                   child: TextField(
                     controller: controller,
                     obscureText: secret && !revealed,
-                    onChanged: (_) => setState(() => _settingsCredentialsDirty = true),
+                    onChanged: (_) =>
+                        setState(() => _settingsCredentialsDirty = true),
                     decoration: InputDecoration(
                       labelText: label,
                       hintText: hint,
@@ -5659,7 +6386,9 @@ class _SocialShellState extends State<SocialShell> {
                                 _settingsRevealSecret[revealKey] = !revealed;
                               }),
                               icon: Icon(
-                                revealed ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                                revealed
+                                    ? Icons.visibility_off_rounded
+                                    : Icons.visibility_rounded,
                               ),
                             )
                           : null,
@@ -5677,14 +6406,16 @@ class _SocialShellState extends State<SocialShell> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SfSectionHeader(
-              title: i18n.t('settings.platformCredentials', 'Platform API Credentials'),
+              title: i18n.t(
+                  'settings.platformCredentials', 'Platform API Credentials'),
               subtitle: i18n.t(
                 'settings.platformCredentials.subtitle',
                 'OAuth and API keys are stored per-user on the server. Keep them private.',
               ),
               trailing: IconButton(
                 tooltip: i18n.t('common.refresh', 'Refresh'),
-                onPressed: () => unawaited(_loadSettingsPlatformCredentials(force: true)),
+                onPressed: () =>
+                    unawaited(_loadSettingsPlatformCredentials(force: true)),
                 icon: const Icon(Icons.refresh_rounded),
               ),
             ),
@@ -5696,7 +6427,8 @@ class _SocialShellState extends State<SocialShell> {
                 prefixIcon: const Icon(Icons.key_rounded),
               ),
               items: _kManagedPlatformIds
-                  .map((id) => DropdownMenuItem(value: id, child: Text(_kPlatformLabels[id] ?? id)))
+                  .map((id) => DropdownMenuItem(
+                      value: id, child: Text(_kPlatformLabels[id] ?? id)))
                   .toList(),
               onChanged: (value) {
                 if (value == null) return;
@@ -5706,7 +6438,8 @@ class _SocialShellState extends State<SocialShell> {
             const SizedBox(height: 12),
             Text(
               '${i18n.t('settings.selected', 'Selected')}: $platformLabel',
-              style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+              style: TextStyle(
+                  color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
             content,
@@ -5716,7 +6449,8 @@ class _SocialShellState extends State<SocialShell> {
               runSpacing: 10,
               children: [
                 FilledButton.icon(
-                  onPressed: (_settingsCredentialsLoading || _settingsCredentialsSaving)
+                  onPressed: (_settingsCredentialsLoading ||
+                          _settingsCredentialsSaving)
                       ? null
                       : () => unawaited(_saveSettingsPlatformCredentials()),
                   icon: _settingsCredentialsSaving
@@ -5728,11 +6462,13 @@ class _SocialShellState extends State<SocialShell> {
                       : const Icon(Icons.save_rounded),
                   label: Text(_settingsCredentialsSaving
                       ? i18n.t('settings.saving', 'Saving...')
-                      : i18n.t('settings.saveCredentials', 'Save Platform Credentials')),
+                      : i18n.t('settings.saveCredentials',
+                          'Save Platform Credentials')),
                 ),
                 OutlinedButton.icon(
                   onPressed: _settingsCredentialsDirty
-                      ? () => _setSettingsSelectedPlatform(_settingsSelectedPlatform)
+                      ? () => _setSettingsSelectedPlatform(
+                          _settingsSelectedPlatform)
                       : null,
                   icon: const Icon(Icons.refresh_rounded),
                   label: Text(i18n.t('settings.resetDraft', 'Reset draft')),
@@ -5766,7 +6502,8 @@ class _SocialShellState extends State<SocialShell> {
                 CircleAvatar(
                   radius: 26,
                   backgroundColor: scheme.surfaceContainerHighest,
-                  foregroundImage: image.trim().isEmpty ? null : NetworkImage(image),
+                  foregroundImage:
+                      image.trim().isEmpty ? null : NetworkImage(image),
                   child: const Icon(Icons.person_rounded),
                 ),
                 const SizedBox(width: 12),
@@ -5774,9 +6511,13 @@ class _SocialShellState extends State<SocialShell> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(profileName, style: const TextStyle(fontWeight: FontWeight.w900)),
+                      Text(profileName,
+                          style: const TextStyle(fontWeight: FontWeight.w900)),
                       const SizedBox(height: 4),
-                      Text(profileEmail, style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700)),
+                      Text(profileEmail,
+                          style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),
@@ -5784,7 +6525,9 @@ class _SocialShellState extends State<SocialShell> {
             ),
             if (_settingsProfileError.trim().isNotEmpty) ...[
               const SizedBox(height: 12),
-              Text(_settingsProfileError, style: TextStyle(color: scheme.error, fontWeight: FontWeight.w800)),
+              Text(_settingsProfileError,
+                  style: TextStyle(
+                      color: scheme.error, fontWeight: FontWeight.w800)),
             ],
             const SizedBox(height: 12),
             TextField(
@@ -5799,18 +6542,26 @@ class _SocialShellState extends State<SocialShell> {
             TextField(
               controller: _settingsImageUrlController,
               decoration: InputDecoration(
-                labelText: i18n.t('settings.profileImageUrl', 'Profile image URL'),
+                labelText:
+                    i18n.t('settings.profileImageUrl', 'Profile image URL'),
                 prefixIcon: const Icon(Icons.image_rounded),
                 hintText: i18n.t('settings.profileImageUrlHint', 'https://...'),
               ),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              onPressed: _settingsSavingProfile ? null : () => unawaited(_saveSettingsProfile()),
+              onPressed: _settingsSavingProfile
+                  ? null
+                  : () => unawaited(_saveSettingsProfile()),
               icon: _settingsSavingProfile
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.save_rounded),
-              label: Text(_settingsSavingProfile ? i18n.t('settings.saving', 'Saving...') : i18n.t('settings.saveProfile', 'Save Profile')),
+              label: Text(_settingsSavingProfile
+                  ? i18n.t('settings.saving', 'Saving...')
+                  : i18n.t('settings.saveProfile', 'Save Profile')),
             ),
             const SizedBox(height: 16),
             const Divider(height: 1),
@@ -5824,7 +6575,8 @@ class _SocialShellState extends State<SocialShell> {
               controller: _settingsCurrentPasswordController,
               obscureText: true,
               decoration: InputDecoration(
-                labelText: i18n.t('settings.currentPassword', 'Current password'),
+                labelText:
+                    i18n.t('settings.currentPassword', 'Current password'),
                 prefixIcon: const Icon(Icons.lock_rounded),
               ),
             ),
@@ -5842,17 +6594,25 @@ class _SocialShellState extends State<SocialShell> {
               controller: _settingsConfirmPasswordController,
               obscureText: true,
               decoration: InputDecoration(
-                labelText: i18n.t('settings.confirmPassword', 'Confirm new password'),
+                labelText:
+                    i18n.t('settings.confirmPassword', 'Confirm new password'),
                 prefixIcon: const Icon(Icons.lock_outline_rounded),
               ),
             ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
-              onPressed: _settingsUpdatingPassword ? null : () => unawaited(_updateSettingsPassword()),
+              onPressed: _settingsUpdatingPassword
+                  ? null
+                  : () => unawaited(_updateSettingsPassword()),
               icon: _settingsUpdatingPassword
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.check_rounded),
-              label: Text(_settingsUpdatingPassword ? i18n.t('settings.updating', 'Updating...') : i18n.t('settings.updatePassword', 'Update Password')),
+              label: Text(_settingsUpdatingPassword
+                  ? i18n.t('settings.updating', 'Updating...')
+                  : i18n.t('settings.updatePassword', 'Update Password')),
             ),
           ],
         ),
@@ -5866,12 +6626,14 @@ class _SocialShellState extends State<SocialShell> {
           children: [
             SfSectionHeader(
               title: i18n.t('settings.appearance', 'Appearance'),
-              subtitle: i18n.t('settings.appearance.subtitle', 'Theme mode and preset palette (mirrors web presets).'),
+              subtitle: i18n.t('settings.appearance.subtitle',
+                  'Theme mode and preset palette (mirrors web presets).'),
             ),
             const SizedBox(height: 12),
             toggleRow(
               title: i18n.t('settings.darkMode', 'Dark mode'),
-              subtitle: i18n.t('settings.darkMode.subtitle', 'Use the dark color scheme across the app.'),
+              subtitle: i18n.t('settings.darkMode.subtitle',
+                  'Use the dark color scheme across the app.'),
               value: isDark,
               onChanged: (_) => unawaited(widget.appState.toggleThemeMode()),
               icon: Icons.dark_mode_rounded,
@@ -5881,7 +6643,8 @@ class _SocialShellState extends State<SocialShell> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: scheme.outline.withOpacity(isDark ? 0.65 : 0.70)),
+                border: Border.all(
+                    color: scheme.outline.withOpacity(isDark ? 0.65 : 0.70)),
                 color: scheme.surface.withOpacity(isDark ? 0.35 : 0.55),
               ),
               child: Row(
@@ -5892,20 +6655,27 @@ class _SocialShellState extends State<SocialShell> {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(14),
                       color: scheme.secondary.withOpacity(isDark ? 0.18 : 0.10),
-                      border: Border.all(color: scheme.secondary.withOpacity(isDark ? 0.26 : 0.18)),
+                      border: Border.all(
+                          color: scheme.secondary
+                              .withOpacity(isDark ? 0.26 : 0.18)),
                     ),
-                    child: Icon(Icons.language_rounded, color: scheme.secondary, size: 20),
+                    child: Icon(Icons.language_rounded,
+                        color: scheme.secondary, size: 20),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(i18n.t('settings.language', 'Language'), style: const TextStyle(fontWeight: FontWeight.w900)),
+                        Text(i18n.t('settings.language', 'Language'),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w900)),
                         const SizedBox(height: 4),
                         Text(
                           isArabic ? 'العربية' : 'English',
-                          style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w700),
                         ),
                       ],
                     ),
@@ -5925,14 +6695,17 @@ class _SocialShellState extends State<SocialShell> {
             const SizedBox(height: 10),
             LayoutBuilder(
               builder: (context, constraints) {
-                final cols = constraints.maxWidth >= 980 ? 3 : (constraints.maxWidth >= 620 ? 2 : 1);
+                final cols = constraints.maxWidth >= 980
+                    ? 3
+                    : (constraints.maxWidth >= 620 ? 2 : 1);
                 final w = (constraints.maxWidth - ((cols - 1) * 12)) / cols;
                 return Wrap(
                   spacing: 12,
                   runSpacing: 12,
                   children: presetOptions.map((opt) {
                     final selected = widget.appState.themePreset == opt['id'];
-                    return SizedBox(width: w, child: presetCard(opt, selected: selected));
+                    return SizedBox(
+                        width: w, child: presetCard(opt, selected: selected));
                   }).toList(),
                 );
               },
@@ -5949,22 +6722,27 @@ class _SocialShellState extends State<SocialShell> {
           children: [
             SfSectionHeader(
               title: i18n.t('settings.experience', 'Workspace Experience'),
-              subtitle: i18n.t('settings.experience.subtitle', 'Motion, navigation density, and ergonomics.'),
+              subtitle: i18n.t('settings.experience.subtitle',
+                  'Motion, navigation density, and ergonomics.'),
             ),
             const SizedBox(height: 12),
             toggleRow(
               title: i18n.t('settings.reducedMotion', 'Reduced motion'),
-              subtitle: i18n.t('settings.reducedMotion.subtitle', 'Minimize animation and transition effects.'),
+              subtitle: i18n.t('settings.reducedMotion.subtitle',
+                  'Minimize animation and transition effects.'),
               value: widget.appState.reducedMotion,
               onChanged: (v) => unawaited(widget.appState.setReducedMotion(v)),
               icon: Icons.motion_photos_off_rounded,
             ),
             const SizedBox(height: 12),
             toggleRow(
-              title: i18n.t('settings.compactNav', 'Collapsed sidebar by default'),
-              subtitle: i18n.t('settings.compactNav.subtitle', 'Keep navigation compact on large screens.'),
+              title:
+                  i18n.t('settings.compactNav', 'Collapsed sidebar by default'),
+              subtitle: i18n.t('settings.compactNav.subtitle',
+                  'Keep navigation compact on large screens.'),
               value: widget.appState.sidebarCollapsed,
-              onChanged: (v) => unawaited(widget.appState.setSidebarCollapsed(v)),
+              onChanged: (v) =>
+                  unawaited(widget.appState.setSidebarCollapsed(v)),
               icon: Icons.space_dashboard_outlined,
             ),
             const SizedBox(height: 12),
@@ -5975,7 +6753,8 @@ class _SocialShellState extends State<SocialShell> {
                 prefixIcon: const Icon(Icons.format_line_spacing_rounded),
               ),
               items: const [
-                DropdownMenuItem(value: 'comfortable', child: Text('Comfortable')),
+                DropdownMenuItem(
+                    value: 'comfortable', child: Text('Comfortable')),
                 DropdownMenuItem(value: 'compact', child: Text('Compact')),
               ],
               onChanged: (value) {
@@ -5995,30 +6774,39 @@ class _SocialShellState extends State<SocialShell> {
           children: [
             SfSectionHeader(
               title: i18n.t('settings.notifications', 'Notifications'),
-              subtitle: i18n.t('settings.notifications.subtitle', 'Local preferences for alerts and notices.'),
+              subtitle: i18n.t('settings.notifications.subtitle',
+                  'Local preferences for alerts and notices.'),
             ),
             const SizedBox(height: 12),
             toggleRow(
-              title: i18n.t('settings.notifications.success', 'Email on success'),
-              subtitle: i18n.t('settings.notifications.success.subtitle', 'Get notified when tasks complete successfully.'),
+              title:
+                  i18n.t('settings.notifications.success', 'Email on success'),
+              subtitle: i18n.t('settings.notifications.success.subtitle',
+                  'Get notified when tasks complete successfully.'),
               value: widget.appState.emailOnSuccess,
-              onChanged: (v) => unawaited(widget.appState.setNotifications(emailOnSuccessValue: v)),
+              onChanged: (v) => unawaited(
+                  widget.appState.setNotifications(emailOnSuccessValue: v)),
               icon: Icons.mark_email_read_rounded,
             ),
             const SizedBox(height: 12),
             toggleRow(
               title: i18n.t('settings.notifications.error', 'Email on error'),
-              subtitle: i18n.t('settings.notifications.error.subtitle', 'Get notified when tasks fail.'),
+              subtitle: i18n.t('settings.notifications.error.subtitle',
+                  'Get notified when tasks fail.'),
               value: widget.appState.emailOnError,
-              onChanged: (v) => unawaited(widget.appState.setNotifications(emailOnErrorValue: v)),
+              onChanged: (v) => unawaited(
+                  widget.appState.setNotifications(emailOnErrorValue: v)),
               icon: Icons.mark_email_unread_rounded,
             ),
             const SizedBox(height: 12),
             toggleRow(
-              title: i18n.t('settings.notifications.push', 'Push notifications'),
-              subtitle: i18n.t('settings.notifications.push.subtitle', 'Receive push notifications (if enabled).'),
+              title:
+                  i18n.t('settings.notifications.push', 'Push notifications'),
+              subtitle: i18n.t('settings.notifications.push.subtitle',
+                  'Receive push notifications (if enabled).'),
               value: widget.appState.pushNotifications,
-              onChanged: (v) => unawaited(widget.appState.setNotifications(pushNotificationsValue: v)),
+              onChanged: (v) => unawaited(
+                  widget.appState.setNotifications(pushNotificationsValue: v)),
               icon: Icons.notifications_active_rounded,
             ),
           ],
@@ -6033,22 +6821,27 @@ class _SocialShellState extends State<SocialShell> {
           children: [
             SfSectionHeader(
               title: i18n.t('settings.privacy', 'Privacy & Data'),
-              subtitle: i18n.t('settings.privacy.subtitle', 'Control analytics and error sharing.'),
+              subtitle: i18n.t('settings.privacy.subtitle',
+                  'Control analytics and error sharing.'),
             ),
             const SizedBox(height: 12),
             toggleRow(
               title: i18n.t('settings.privacy.analytics', 'Usage analytics'),
-              subtitle: i18n.t('settings.privacy.analytics.subtitle', 'Help improve the product by sharing anonymous usage data.'),
+              subtitle: i18n.t('settings.privacy.analytics.subtitle',
+                  'Help improve the product by sharing anonymous usage data.'),
               value: widget.appState.allowAnalytics,
-              onChanged: (v) => unawaited(widget.appState.setPrivacy(allowAnalyticsValue: v)),
+              onChanged: (v) =>
+                  unawaited(widget.appState.setPrivacy(allowAnalyticsValue: v)),
               icon: Icons.analytics_rounded,
             ),
             const SizedBox(height: 12),
             toggleRow(
               title: i18n.t('settings.privacy.errors', 'Share error logs'),
-              subtitle: i18n.t('settings.privacy.errors.subtitle', 'Share error logs to help debug issues faster.'),
+              subtitle: i18n.t('settings.privacy.errors.subtitle',
+                  'Share error logs to help debug issues faster.'),
               value: widget.appState.shareErrorLogs,
-              onChanged: (v) => unawaited(widget.appState.setPrivacy(shareErrorLogsValue: v)),
+              onChanged: (v) =>
+                  unawaited(widget.appState.setPrivacy(shareErrorLogsValue: v)),
               icon: Icons.bug_report_rounded,
             ),
           ],
@@ -6063,7 +6856,8 @@ class _SocialShellState extends State<SocialShell> {
           children: [
             SfSectionHeader(
               title: i18n.t('settings.system', 'System'),
-              subtitle: i18n.t('settings.system.subtitle', 'Diagnostics and storage actions.'),
+              subtitle: i18n.t('settings.system.subtitle',
+                  'Diagnostics and storage actions.'),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
@@ -6100,7 +6894,8 @@ class _SocialShellState extends State<SocialShell> {
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.security_rounded),
               title: Text(i18n.t('settings.authMode', 'Auth mode')),
-              subtitle: Text(i18n.t('settings.authModeValue', 'Bearer token via /api/mobile/login')),
+              subtitle: Text(i18n.t('settings.authModeValue',
+                  'Bearer token via /api/mobile/login')),
             ),
             const Divider(height: 18),
             Wrap(
@@ -6168,11 +6963,167 @@ class _SocialShellState extends State<SocialShell> {
     );
   }
 
+  String _normalizeProfileHandle(String value) {
+    var normalized = value.trim();
+    if (normalized.isEmpty) return '';
+    if (normalized.startsWith('@')) {
+      normalized = normalized.substring(1);
+    }
+    normalized = normalized.replaceAll(RegExp(r'^/+|/+$'), '');
+    return normalized;
+  }
+
+  String? _extractAbsoluteUrl(dynamic value) {
+    final raw = value?.toString().trim() ?? '';
+    if (raw.isEmpty) return null;
+    final uri = Uri.tryParse(raw);
+    if (uri == null) return null;
+    final scheme = uri.scheme.toLowerCase();
+    if ((scheme == 'http' || scheme == 'https') && uri.host.isNotEmpty) {
+      return uri.toString();
+    }
+    return null;
+  }
+
+  String? _buildPlatformProfileUrl({
+    required String platformId,
+    String? username,
+    String? accountId,
+  }) {
+    final normalizedPlatform = platformId.trim().toLowerCase();
+    final handle = _normalizeProfileHandle(username ?? '');
+    final id = (accountId ?? '').trim();
+
+    if (normalizedPlatform.contains('twitter') ||
+        normalizedPlatform == 'x' ||
+        normalizedPlatform.contains('x.com')) {
+      if (handle.isEmpty) return null;
+      return 'https://x.com/$handle';
+    }
+    if (normalizedPlatform.contains('threads')) {
+      if (handle.isEmpty) return null;
+      return 'https://www.threads.net/@$handle';
+    }
+    if (normalizedPlatform.contains('instagram')) {
+      if (handle.isEmpty) return null;
+      return 'https://www.instagram.com/$handle';
+    }
+    if (normalizedPlatform.contains('facebook')) {
+      if (handle.isNotEmpty) return 'https://www.facebook.com/$handle';
+      if (id.isNotEmpty) return 'https://www.facebook.com/profile.php?id=$id';
+      return null;
+    }
+    if (normalizedPlatform.contains('youtube')) {
+      if (handle.isNotEmpty) {
+        if (handle.startsWith('UC') && handle.length >= 20) {
+          return 'https://www.youtube.com/channel/$handle';
+        }
+        return 'https://www.youtube.com/@$handle';
+      }
+      if (id.isNotEmpty) return 'https://www.youtube.com/channel/$id';
+      return null;
+    }
+    if (normalizedPlatform.contains('telegram')) {
+      if (handle.isEmpty) return null;
+      return 'https://t.me/$handle';
+    }
+    if (normalizedPlatform.contains('tiktok')) {
+      if (handle.isEmpty) return null;
+      return 'https://www.tiktok.com/@$handle';
+    }
+    if (normalizedPlatform.contains('linkedin')) {
+      if (handle.isEmpty) return null;
+      return 'https://www.linkedin.com/in/$handle';
+    }
+    if (normalizedPlatform.contains('reddit')) {
+      if (handle.isEmpty) return null;
+      return 'https://www.reddit.com/user/$handle';
+    }
+    if (normalizedPlatform.contains('pinterest')) {
+      if (handle.isEmpty) return null;
+      return 'https://www.pinterest.com/$handle';
+    }
+    if (normalizedPlatform.contains('snap')) {
+      if (handle.isEmpty) return null;
+      return 'https://www.snapchat.com/add/$handle';
+    }
+
+    return null;
+  }
+
+  String? _resolveAccountProfileUrl(Map<String, dynamic> account) {
+    final credentials = account['credentials'] is Map
+        ? Map<String, dynamic>.from(account['credentials'] as Map)
+        : <String, dynamic>{};
+    final accountInfo = credentials['accountInfo'] is Map
+        ? Map<String, dynamic>.from(credentials['accountInfo'] as Map)
+        : <String, dynamic>{};
+
+    final explicitUrl = _extractAbsoluteUrl(account['profileUrl']) ??
+        _extractAbsoluteUrl(account['url']) ??
+        _extractAbsoluteUrl(account['link']) ??
+        _extractAbsoluteUrl(credentials['profileUrl']) ??
+        _extractAbsoluteUrl(credentials['url']) ??
+        _extractAbsoluteUrl(accountInfo['profileUrl']) ??
+        _extractAbsoluteUrl(accountInfo['url']);
+
+    if (explicitUrl != null) return explicitUrl;
+
+    final username = (account['accountUsername']?.toString() ??
+            accountInfo['username']?.toString() ??
+            accountInfo['screenName']?.toString() ??
+            '')
+        .trim();
+    final accountId = (account['accountId']?.toString() ??
+            accountInfo['id']?.toString() ??
+            '')
+        .trim();
+    final platformId = account['platformId']?.toString() ?? '';
+    return _buildPlatformProfileUrl(
+      platformId: platformId,
+      username: username,
+      accountId: accountId,
+    );
+  }
+
+  Future<void> _openAccountProfile(Map<String, dynamic> account) async {
+    final i18n = _i18n(context);
+    final profileUrl = _resolveAccountProfileUrl(account);
+    if (profileUrl == null) {
+      _toast(i18n.isArabic
+          ? 'لا يوجد رابط ملف شخصي لهذا الحساب.'
+          : 'No profile URL available for this account.');
+      return;
+    }
+
+    final uri = Uri.tryParse(profileUrl);
+    if (uri == null) {
+      _toast(i18n.isArabic
+          ? 'رابط الملف الشخصي غير صالح.'
+          : 'Invalid profile URL.');
+      return;
+    }
+
+    try {
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (opened) return;
+    } catch (_) {
+      // Fall back to clipboard.
+    }
+
+    await Clipboard.setData(ClipboardData(text: profileUrl));
+    _toast(i18n.isArabic
+        ? 'تعذر فتح الرابط. تم نسخه إلى الحافظة.'
+        : 'Could not open profile. URL copied to clipboard.');
+  }
+
   IconData _platformIcon(String platformId) {
     final normalized = platformId.trim().toLowerCase();
     if (normalized.isEmpty) return Icons.public_rounded;
     if (normalized.contains('telegram')) return Icons.send_rounded;
-    if (normalized.contains('twitter') || normalized == 'x' || normalized.contains('x.com')) {
+    if (normalized.contains('twitter') ||
+        normalized == 'x' ||
+        normalized.contains('x.com')) {
       return Icons.alternate_email_rounded;
     }
     if (normalized.contains('youtube')) return Icons.ondemand_video_rounded;
@@ -6191,7 +7142,9 @@ class _SocialShellState extends State<SocialShell> {
     final normalized = platformId.trim().toLowerCase();
     if (normalized.isEmpty) return 'Unknown';
     if (normalized.contains('telegram')) return 'Telegram';
-    if (normalized.contains('twitter') || normalized == 'x' || normalized.contains('x.com')) return 'X';
+    if (normalized.contains('twitter') ||
+        normalized == 'x' ||
+        normalized.contains('x.com')) return 'X';
     if (normalized.contains('youtube')) return 'YouTube';
     if (normalized.contains('tiktok')) return 'TikTok';
     if (normalized.contains('instagram')) return 'Instagram';
@@ -6214,7 +7167,8 @@ class _SocialShellState extends State<SocialShell> {
           builder: _buildDashboard,
         );
       case PanelKind.tasks:
-        return _buildPanelFrame(kind: PanelKind.tasks, i18n: i18n, builder: _buildTasks);
+        return _buildPanelFrame(
+            kind: PanelKind.tasks, i18n: i18n, builder: _buildTasks);
       case PanelKind.accounts:
         return _buildPanelFrame(
           kind: PanelKind.accounts,
@@ -6246,7 +7200,8 @@ class _SocialShellState extends State<SocialShell> {
   Widget build(BuildContext context) {
     final currentPanel = kPanelSpecs[_selectedIndex];
     final i18n = _i18n(context);
-    final panelLabel = i18n.t(currentPanel.labelKey, currentPanel.fallbackLabel);
+    final panelLabel =
+        i18n.t(currentPanel.labelKey, currentPanel.fallbackLabel);
     final lastUpdated = _buildLastUpdatedText(i18n, _currentKind);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final scheme = Theme.of(context).colorScheme;
@@ -6313,7 +7268,9 @@ class _SocialShellState extends State<SocialShell> {
                   if (wide) _buildRail(i18n),
                   Expanded(
                     child: AnimatedSwitcher(
-                      duration: reducedMotion ? Duration.zero : const Duration(milliseconds: 220),
+                      duration: reducedMotion
+                          ? Duration.zero
+                          : const Duration(milliseconds: 220),
                       switchInCurve: Curves.easeOutCubic,
                       switchOutCurve: Curves.easeInCubic,
                       transitionBuilder: (child, anim) {
@@ -6416,10 +7373,18 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
         _contentType = normalizedContent;
       }
 
-      final sources = initial['sourceAccounts'] is List ? (initial['sourceAccounts'] as List) : const <dynamic>[];
-      final targets = initial['targetAccounts'] is List ? (initial['targetAccounts'] as List) : const <dynamic>[];
-      _sourceAccountIds.addAll(sources.map((e) => e?.toString() ?? '').where((e) => e.trim().isNotEmpty));
-      _targetAccountIds.addAll(targets.map((e) => e?.toString() ?? '').where((e) => e.trim().isNotEmpty));
+      final sources = initial['sourceAccounts'] is List
+          ? (initial['sourceAccounts'] as List)
+          : const <dynamic>[];
+      final targets = initial['targetAccounts'] is List
+          ? (initial['targetAccounts'] as List)
+          : const <dynamic>[];
+      _sourceAccountIds.addAll(sources
+          .map((e) => e?.toString() ?? '')
+          .where((e) => e.trim().isNotEmpty));
+      _targetAccountIds.addAll(targets
+          .map((e) => e?.toString() ?? '')
+          .where((e) => e.trim().isNotEmpty));
     }
     unawaited(_loadAccounts());
   }
@@ -6456,23 +7421,28 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
       );
       final raw = payload['accounts'];
       final list = raw is List ? raw : const <dynamic>[];
-      final accounts = list.map((entry) {
-        final item = entry is Map<String, dynamic>
-            ? entry
-            : Map<String, dynamic>.from(entry as Map);
-        return <String, dynamic>{
-          'id': item['id']?.toString() ?? '',
-          'platformId': item['platformId']?.toString() ?? 'unknown',
-          'accountName': item['accountName']?.toString() ?? '',
-          'accountUsername': item['accountUsername']?.toString() ?? '',
-          'isActive': item['isActive'] == true,
-        };
-      }).where((a) => (a['id']?.toString() ?? '').trim().isNotEmpty).toList();
+      final accounts = list
+          .map((entry) {
+            final item = entry is Map<String, dynamic>
+                ? entry
+                : Map<String, dynamic>.from(entry as Map);
+            return <String, dynamic>{
+              'id': item['id']?.toString() ?? '',
+              'platformId': item['platformId']?.toString() ?? 'unknown',
+              'accountName': item['accountName']?.toString() ?? '',
+              'accountUsername': item['accountUsername']?.toString() ?? '',
+              'isActive': item['isActive'] == true,
+            };
+          })
+          .where((a) => (a['id']?.toString() ?? '').trim().isNotEmpty)
+          .toList();
 
       accounts.sort((a, b) {
-        final ap = (a['platformId']?.toString() ?? '').compareTo(b['platformId']?.toString() ?? '');
+        final ap = (a['platformId']?.toString() ?? '')
+            .compareTo(b['platformId']?.toString() ?? '');
         if (ap != 0) return ap;
-        return (a['accountName']?.toString() ?? '').compareTo(b['accountName']?.toString() ?? '');
+        return (a['accountName']?.toString() ?? '')
+            .compareTo(b['accountName']?.toString() ?? '');
       });
 
       if (!mounted) return;
@@ -6484,7 +7454,8 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
       if (!mounted) return;
       setState(() {
         _loadingAccounts = false;
-        _error = error is ApiException ? error.message : 'Failed to load accounts.';
+        _error =
+            error is ApiException ? error.message : 'Failed to load accounts.';
       });
     }
   }
@@ -6500,15 +7471,21 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
   bool _validateSelections() {
     final overlap = _sourceAccountIds.intersection(_targetAccountIds);
     if (_sourceAccountIds.isEmpty) {
-      setState(() => _error = widget.i18n.isArabic ? 'اختر حساب مصدر واحد على الأقل.' : 'Select at least one source account.');
+      setState(() => _error = widget.i18n.isArabic
+          ? 'اختر حساب مصدر واحد على الأقل.'
+          : 'Select at least one source account.');
       return false;
     }
     if (_targetAccountIds.isEmpty) {
-      setState(() => _error = widget.i18n.isArabic ? 'اختر حساب هدف واحد على الأقل.' : 'Select at least one target account.');
+      setState(() => _error = widget.i18n.isArabic
+          ? 'اختر حساب هدف واحد على الأقل.'
+          : 'Select at least one target account.');
       return false;
     }
     if (overlap.isNotEmpty) {
-      setState(() => _error = widget.i18n.isArabic ? 'لا يمكن أن يكون نفس الحساب مصدرًا وهدفًا.' : 'A single account cannot be both source and target.');
+      setState(() => _error = widget.i18n.isArabic
+          ? 'لا يمكن أن يكون نفس الحساب مصدرًا وهدفًا.'
+          : 'A single account cannot be both source and target.');
       return false;
     }
     return true;
@@ -6578,12 +7555,17 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                     child: Text(
                       _isEdit
                           ? (widget.i18n.isArabic ? 'تعديل مهمة' : 'Edit Task')
-                          : (widget.i18n.isArabic ? 'إنشاء مهمة' : 'Create Task'),
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                          : (widget.i18n.isArabic
+                              ? 'إنشاء مهمة'
+                              : 'Create Task'),
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w900),
                     ),
                   ),
                   IconButton(
-                    onPressed: _submitting ? null : () => Navigator.of(context).maybePop(),
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).maybePop(),
                     icon: const Icon(Icons.close_rounded),
                   ),
                 ],
@@ -6601,7 +7583,9 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                         Expanded(
                           child: Text(
                             _error,
-                            style: TextStyle(color: scheme.error, fontWeight: FontWeight.w700),
+                            style: TextStyle(
+                                color: scheme.error,
+                                fontWeight: FontWeight.w700),
                           ),
                         ),
                       ],
@@ -6618,12 +7602,15 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                       controller: _nameController,
                       textInputAction: TextInputAction.next,
                       decoration: InputDecoration(
-                        labelText: widget.i18n.isArabic ? 'اسم المهمة' : 'Task name',
+                        labelText:
+                            widget.i18n.isArabic ? 'اسم المهمة' : 'Task name',
                         prefixIcon: const Icon(Icons.task_alt_rounded),
                       ),
                       validator: (value) {
                         if ((value ?? '').trim().isEmpty) {
-                          return widget.i18n.isArabic ? 'اسم المهمة مطلوب.' : 'Task name is required.';
+                          return widget.i18n.isArabic
+                              ? 'اسم المهمة مطلوب.'
+                              : 'Task name is required.';
                         }
                         return null;
                       },
@@ -6634,7 +7621,9 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                       minLines: 2,
                       maxLines: 4,
                       decoration: InputDecoration(
-                        labelText: widget.i18n.isArabic ? 'الوصف (اختياري)' : 'Description (optional)',
+                        labelText: widget.i18n.isArabic
+                            ? 'الوصف (اختياري)'
+                            : 'Description (optional)',
                         prefixIcon: const Icon(Icons.notes_rounded),
                       ),
                     ),
@@ -6645,19 +7634,26 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                           child: DropdownButtonFormField<String>(
                             initialValue: _status,
                             decoration: InputDecoration(
-                              labelText: widget.i18n.isArabic ? 'الحالة' : 'Status',
+                              labelText:
+                                  widget.i18n.isArabic ? 'الحالة' : 'Status',
                               prefixIcon: const Icon(Icons.toggle_on_rounded),
                             ),
                             items: const [
-                              DropdownMenuItem(value: 'active', child: Text('Active')),
-                              DropdownMenuItem(value: 'paused', child: Text('Paused')),
-                              DropdownMenuItem(value: 'completed', child: Text('Completed')),
-                              DropdownMenuItem(value: 'error', child: Text('Error')),
+                              DropdownMenuItem(
+                                  value: 'active', child: Text('Active')),
+                              DropdownMenuItem(
+                                  value: 'paused', child: Text('Paused')),
+                              DropdownMenuItem(
+                                  value: 'completed', child: Text('Completed')),
+                              DropdownMenuItem(
+                                  value: 'error', child: Text('Error')),
                             ],
-                            onChanged: _submitting ? null : (value) {
-                              if (value == null) return;
-                              setState(() => _status = value);
-                            },
+                            onChanged: _submitting
+                                ? null
+                                : (value) {
+                                    if (value == null) return;
+                                    setState(() => _status = value);
+                                  },
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -6665,19 +7661,27 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                           child: DropdownButtonFormField<String>(
                             initialValue: _contentType,
                             decoration: InputDecoration(
-                              labelText: widget.i18n.isArabic ? 'نوع المحتوى' : 'Content type',
+                              labelText: widget.i18n.isArabic
+                                  ? 'نوع المحتوى'
+                                  : 'Content type',
                               prefixIcon: const Icon(Icons.article_rounded),
                             ),
                             items: const [
-                              DropdownMenuItem(value: 'text', child: Text('Text')),
-                              DropdownMenuItem(value: 'image', child: Text('Image')),
-                              DropdownMenuItem(value: 'video', child: Text('Video')),
-                              DropdownMenuItem(value: 'link', child: Text('Link')),
+                              DropdownMenuItem(
+                                  value: 'text', child: Text('Text')),
+                              DropdownMenuItem(
+                                  value: 'image', child: Text('Image')),
+                              DropdownMenuItem(
+                                  value: 'video', child: Text('Video')),
+                              DropdownMenuItem(
+                                  value: 'link', child: Text('Link')),
                             ],
-                            onChanged: _submitting ? null : (value) {
-                              if (value == null) return;
-                              setState(() => _contentType = value);
-                            },
+                            onChanged: _submitting
+                                ? null
+                                : (value) {
+                                    if (value == null) return;
+                                    setState(() => _contentType = value);
+                                  },
                           ),
                         ),
                       ],
@@ -6695,8 +7699,11 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    widget.i18n.isArabic ? 'حسابات المصدر' : 'Source accounts',
-                                    style: const TextStyle(fontWeight: FontWeight.w800),
+                                    widget.i18n.isArabic
+                                        ? 'حسابات المصدر'
+                                        : 'Source accounts',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w800),
                                   ),
                                 ),
                                 Text('${_sourceAccountIds.length}'),
@@ -6704,9 +7711,14 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                             ),
                             const SizedBox(height: 8),
                             if (_loadingAccounts)
-                              const Center(child: Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator()))
+                              const Center(
+                                  child: Padding(
+                                      padding: EdgeInsets.all(10),
+                                      child: CircularProgressIndicator()))
                             else if (_accounts.isEmpty)
-                              Text(widget.i18n.isArabic ? 'لا توجد حسابات.' : 'No accounts found.')
+                              Text(widget.i18n.isArabic
+                                  ? 'لا توجد حسابات.'
+                                  : 'No accounts found.')
                             else
                               ..._accounts.map((account) {
                                 final id = account['id']?.toString() ?? '';
@@ -6726,7 +7738,8 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                                             }
                                           });
                                         },
-                                  secondary: Icon(_platformIcon(account['platformId']?.toString() ?? '')),
+                                  secondary: Icon(_platformIcon(
+                                      account['platformId']?.toString() ?? '')),
                                   title: Text(_accountLabel(account)),
                                   subtitle: Text(
                                     '${account['platformId'] ?? 'unknown'} • @${account['accountUsername'] ?? '-'}',
@@ -6750,8 +7763,11 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                                 const SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    widget.i18n.isArabic ? 'حسابات الهدف' : 'Target accounts',
-                                    style: const TextStyle(fontWeight: FontWeight.w800),
+                                    widget.i18n.isArabic
+                                        ? 'حسابات الهدف'
+                                        : 'Target accounts',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w800),
                                   ),
                                 ),
                                 Text('${_targetAccountIds.length}'),
@@ -6759,9 +7775,14 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                             ),
                             const SizedBox(height: 8),
                             if (_loadingAccounts)
-                              const Center(child: Padding(padding: EdgeInsets.all(10), child: CircularProgressIndicator()))
+                              const Center(
+                                  child: Padding(
+                                      padding: EdgeInsets.all(10),
+                                      child: CircularProgressIndicator()))
                             else if (_accounts.isEmpty)
-                              Text(widget.i18n.isArabic ? 'لا توجد حسابات.' : 'No accounts found.')
+                              Text(widget.i18n.isArabic
+                                  ? 'لا توجد حسابات.'
+                                  : 'No accounts found.')
                             else
                               ..._accounts.map((account) {
                                 final id = account['id']?.toString() ?? '';
@@ -6781,7 +7802,8 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                                             }
                                           });
                                         },
-                                  secondary: Icon(_platformIcon(account['platformId']?.toString() ?? '')),
+                                  secondary: Icon(_platformIcon(
+                                      account['platformId']?.toString() ?? '')),
                                   title: Text(_accountLabel(account)),
                                   subtitle: Text(
                                     '${account['platformId'] ?? 'unknown'} • @${account['accountUsername'] ?? '-'}',
@@ -6794,14 +7816,16 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                     ),
                     const SizedBox(height: 12),
                     FilledButton.icon(
-                      onPressed: _submitting ? null : () => unawaited(_submit()),
+                      onPressed:
+                          _submitting ? null : () => unawaited(_submit()),
                       icon: _submitting
                           ? const SizedBox(
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : Icon(_isEdit ? Icons.save_rounded : Icons.add_rounded),
+                          : Icon(
+                              _isEdit ? Icons.save_rounded : Icons.add_rounded),
                       label: Text(
                         _isEdit
                             ? (widget.i18n.isArabic ? 'حفظ' : 'Save')

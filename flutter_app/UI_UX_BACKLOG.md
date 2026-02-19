@@ -77,7 +77,7 @@ This file tracks concrete UI/UX upgrades for the Flutter APK, aligned with Mater
 67. [PLANNED] Accounts: add skeleton loading list.
 68. [PLANNED] Accounts: add empty-state direct deep link hint to web dashboard.
 69. [DONE] Accounts: add “copy username” action.
-70. [PLANNED] Accounts: add “open platform profile” action if URL exists.
+70. [DONE] Accounts: add “open platform profile” action if URL exists.
 
 71. [DONE] Executions: add status filter chips (Success, Failed, Running, Pending).
 72. [DONE] Executions: add search debounce (reduce rebuilds on every keypress).
@@ -86,7 +86,7 @@ This file tracks concrete UI/UX upgrades for the Flutter APK, aligned with Mater
 75. [DONE] Executions: add "copy error" and "share report" actions.
 76. [DONE] Executions: add timeline rendering (queued -> running -> done).
 77. [DONE] Executions: show source/target accounts with platform chips.
-78. [DONE] Executions: add pagination/infinite scroll with visible loading footer.
+78. [DONE] Executions: use backend pagination (limit/offset/search/status) with loading footer.
 79. [DONE] Executions: add offline indicator and cached last view.
 80. [DONE] Executions: add performance metrics (duration) if available.
 
