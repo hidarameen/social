@@ -44,8 +44,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   String _error = '';
 
-  static const _primary = Color(0xFF6366F1);
-
   @override
   void dispose() {
     _name.dispose();
@@ -104,6 +102,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final i18n = I18n(widget.state.locale);
+    final scheme = Theme.of(context).colorScheme;
     final checks = kPasswordRules
         .map(
           (r) => _RuleCheck(
@@ -289,10 +288,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     : 'Choose a strong password to protect your account.',
                 style: TextStyle(
                     fontSize: 11.5,
-                    color: Colors.white.withOpacity(
-                        widget.state.themeMode == AppThemeMode.dark
-                            ? 0.65
-                            : 0.55)),
+                    color: scheme.onSurfaceVariant.withOpacity(0.92)),
               ),
               const SizedBox(height: 10),
               _LabeledField(
@@ -342,14 +338,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                      color: Colors.white.withOpacity(
+                      color: scheme.outline.withOpacity(
                           widget.state.themeMode == AppThemeMode.dark
-                              ? 0.10
-                              : 0.14)),
-                  color: (widget.state.themeMode == AppThemeMode.dark
-                          ? Colors.white
-                          : const Color(0xFF0D1422))
-                      .withOpacity(0.04),
+                              ? 0.44
+                              : 0.36)),
+                  color: Color.alphaBlend(
+                    scheme.onSurface.withOpacity(0.03),
+                    scheme.surface,
+                  ),
                 ),
                 child: CheckboxListTile(
                   value: _agree,
@@ -380,7 +376,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 key: const Key('register-submit-button'),
                 onPressed: (_busy || !_agree) ? null : _submit,
                 style: FilledButton.styleFrom(
-                  backgroundColor: _primary,
+                  backgroundColor: scheme.primary,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),

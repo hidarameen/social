@@ -137,7 +137,10 @@ class SfTheme {
                 scheme.primary.withAlpha(9),
                 scheme.surface,
               )
-            : const Color(0xFFFFFFFF),
+            : Color.alphaBlend(
+                scheme.primary.withAlpha(6),
+                scheme.surface,
+              ),
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: radius,
@@ -148,7 +151,10 @@ class SfTheme {
         margin: EdgeInsets.zero,
       ),
       listTileTheme: ListTileThemeData(
-        iconColor: scheme.onSurfaceVariant,
+        iconColor: Color.alphaBlend(
+          scheme.secondary.withAlpha(isDark ? 120 : 90),
+          scheme.onSurfaceVariant,
+        ),
         textColor: scheme.onSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
@@ -156,7 +162,10 @@ class SfTheme {
         filled: true,
         fillColor: isDark
             ? scheme.surfaceContainerHighest.withAlpha(158)
-            : const Color(0xFFFFFFFF),
+            : Color.alphaBlend(
+                scheme.primary.withAlpha(6),
+                scheme.surface,
+              ),
         border: OutlineInputBorder(borderRadius: fieldRadius),
         enabledBorder: OutlineInputBorder(
           borderRadius: fieldRadius,
@@ -173,7 +182,7 @@ class SfTheme {
       ),
       chipTheme: base.chipTheme.copyWith(
         backgroundColor: scheme.surface.withAlpha(isDark ? 192 : 255),
-        selectedColor: scheme.primary.withAlpha(isDark ? 62 : 32),
+        selectedColor: scheme.primary.withAlpha(isDark ? 88 : 54),
         side: BorderSide(color: scheme.outline.withAlpha(isDark ? 90 : 112)),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
         labelStyle:
@@ -307,7 +316,10 @@ class SfTheme {
                 states.contains(WidgetState.hovered)) {
               return scheme.primary;
             }
-            return scheme.onSurfaceVariant;
+            return Color.alphaBlend(
+              scheme.secondary.withAlpha(isDark ? 120 : 92),
+              scheme.onSurfaceVariant,
+            );
           }),
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.pressed)) {
@@ -349,9 +361,19 @@ class SfTheme {
         selectedIconTheme: IconThemeData(color: scheme.primary),
         selectedLabelTextStyle:
             TextStyle(fontWeight: FontWeight.w700, color: scheme.primary),
-        unselectedIconTheme: IconThemeData(color: scheme.onSurfaceVariant),
+        unselectedIconTheme: IconThemeData(
+          color: Color.alphaBlend(
+            scheme.secondary.withAlpha(isDark ? 108 : 86),
+            scheme.onSurfaceVariant,
+          ),
+        ),
         unselectedLabelTextStyle: TextStyle(
-            color: scheme.onSurfaceVariant, fontWeight: FontWeight.w500),
+          color: Color.alphaBlend(
+            scheme.secondary.withAlpha(isDark ? 96 : 78),
+            scheme.onSurfaceVariant,
+          ),
+          fontWeight: FontWeight.w500,
+        ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: scheme.surface.withAlpha(isDark ? 184 : 242),
@@ -360,14 +382,22 @@ class SfTheme {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? scheme.primary : scheme.onSurfaceVariant,
+            color: selected
+                ? scheme.primary
+                : Color.alphaBlend(
+                    scheme.secondary.withAlpha(isDark ? 92 : 76),
+                    scheme.onSurfaceVariant,
+                  ),
           );
         }),
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: isDark
             ? Color.alphaBlend(scheme.primary.withAlpha(11), scheme.surface)
-            : const Color(0xFFFFFFFF),
+            : Color.alphaBlend(
+                scheme.primary.withAlpha(6),
+                scheme.surface,
+              ),
         surfaceTintColor: Colors.transparent,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -467,7 +497,7 @@ class SfTheme {
       case 'ocean':
         return _SfPalette(
           primary: const Color(0xFF2F84D4),
-          secondary: const Color(0xFFEEF3F8),
+          secondary: const Color(0xFF66BCEB),
           accent: const Color(0xFF3AA8FF),
           background:
               isDark ? const Color(0xFF0E1720) : const Color(0xFFEEF3F8),

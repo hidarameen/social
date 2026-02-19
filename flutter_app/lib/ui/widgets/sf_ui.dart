@@ -52,8 +52,16 @@ class SfAppBackground extends StatelessWidget {
     final scheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    final bgStart = isDark ? const Color(0xFF0D1524) : const Color(0xFFF4F7FC);
-    final bgEnd = isDark ? const Color(0xFF0A101B) : const Color(0xFFEEF3FA);
+    final bgStart = isDark
+        ? const Color(0xFF0D1524)
+        : Color.alphaBlend(
+            scheme.primary.withAlpha(8), const Color(0xFFF4F7FC));
+    final bgEnd = isDark
+        ? const Color(0xFF0A101B)
+        : Color.alphaBlend(
+            scheme.secondary.withAlpha(8),
+            const Color(0xFFEEF3FA),
+          );
 
     final glowA = scheme.primary.withAlpha(isDark ? 64 : 36);
     final glowB = scheme.secondary.withAlpha(isDark ? 56 : 28);
@@ -248,7 +256,7 @@ class _SfPanelCardState extends State<SfPanelCard> {
     final body = Padding(padding: widget.padding, child: widget.child);
     final surfaceBase = isDark
         ? Color.alphaBlend(scheme.primary.withAlpha(9), scheme.surface)
-        : const Color(0xFFFFFFFF);
+        : Color.alphaBlend(scheme.primary.withAlpha(6), scheme.surface);
     final elevatedOffset = _hovering ? const Offset(0, 10) : const Offset(0, 6);
     final shadow =
         isDark ? Colors.black.withAlpha(54) : Colors.black.withAlpha(26);
@@ -529,22 +537,27 @@ class SfPillSwitch extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.enabledColor = const Color(0xFF4CD964),
-    this.disabledColor = const Color(0xFFD4DBE7),
+    this.disabledColor,
   });
 
   final bool value;
   final ValueChanged<bool>? onChanged;
   final Color enabledColor;
-  final Color disabledColor;
+  final Color? disabledColor;
 
   @override
   Widget build(BuildContext context) {
     final enabled = onChanged != null;
+    final resolvedDisabled = disabledColor ??
+        Color.alphaBlend(
+          Theme.of(context).colorScheme.outline.withAlpha(88),
+          Theme.of(context).colorScheme.surface,
+        );
     final bg = value
         ? enabledColor
         : Theme.of(context).brightness == Brightness.dark
-            ? disabledColor.withOpacity(0.35)
-            : disabledColor;
+            ? resolvedDisabled.withOpacity(0.55)
+            : resolvedDisabled;
 
     return Semantics(
       toggled: value,

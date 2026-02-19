@@ -18,6 +18,7 @@ import 'ui/auth/login_screen.dart';
 import 'ui/auth/register_screen.dart';
 import 'ui/auth/reset_password_screen.dart';
 import 'ui/auth/verify_email_screen.dart';
+import 'ui/platform_brand.dart';
 import 'ui/sf_theme.dart';
 import 'ui/widgets/sf_ui.dart';
 
@@ -2771,37 +2772,31 @@ class _SocialShellState extends State<SocialShell> {
     }
 
     Widget platformChip(String platformId, int? count) {
-      final normalized = platformId.trim().toLowerCase();
-      final icon = (() {
-        if (normalized.contains('telegram')) return Icons.send_rounded;
-        if (normalized.contains('twitter'))
-          return Icons.alternate_email_rounded;
-        if (normalized.contains('youtube')) return Icons.ondemand_video_rounded;
-        if (normalized.contains('tiktok')) return Icons.music_note_rounded;
-        if (normalized.contains('instagram')) return Icons.camera_alt_rounded;
-        if (normalized.contains('facebook')) return Icons.facebook_rounded;
-        return Icons.public_rounded;
-      })();
+      final theme = Theme.of(context);
+      final brandColor = platformBrandColor(
+        platformId,
+        scheme: theme.colorScheme,
+        isDark: theme.brightness == Brightness.dark,
+      );
+      final icon = platformBrandIcon(platformId);
 
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           border: Border.all(
-            color: Theme.of(context)
-                .colorScheme
-                .onSurface
-                .withAlpha((0.12 * 255).round()),
+            color: brandColor.withAlpha((0.36 * 255).round()),
           ),
+          color: brandColor.withAlpha((0.10 * 255).round()),
           borderRadius: BorderRadius.circular(999),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16),
+            Icon(icon, size: 16, color: brandColor),
             const SizedBox(width: 8),
             Text(
               count == null ? platformId : '$platformId $count',
-              style: const TextStyle(fontWeight: FontWeight.w700),
+              style: TextStyle(fontWeight: FontWeight.w700, color: brandColor),
             ),
           ],
         ),
@@ -3556,33 +3551,26 @@ class _SocialShellState extends State<SocialShell> {
       return platformId[0].toUpperCase() + platformId.substring(1);
     }
 
-    IconData platformIcon(String platformId) {
-      final normalized = platformId.trim().toLowerCase();
-      if (normalized.contains('telegram')) return Icons.send_rounded;
-      if (normalized.contains('twitter')) return Icons.alternate_email_rounded;
-      if (normalized.contains('youtube')) return Icons.ondemand_video_rounded;
-      if (normalized.contains('tiktok')) return Icons.music_note_rounded;
-      if (normalized.contains('instagram')) return Icons.camera_alt_rounded;
-      if (normalized.contains('facebook')) return Icons.facebook_rounded;
-      if (normalized.contains('linkedin')) return Icons.work_rounded;
-      return Icons.public_rounded;
-    }
-
     Widget badge(String text, {required Color tone, IconData? icon}) {
       return SfBadge(text, tone: tone, icon: icon);
     }
 
     Widget platformBadge(String platformId) {
-      final tone = scheme.onSurface.withAlpha((0.10 * 255).round());
+      final theme = Theme.of(context);
+      final brandColor = platformBrandColor(
+        platformId,
+        scheme: theme.colorScheme,
+        isDark: theme.brightness == Brightness.dark,
+      );
       return Container(
         width: 36,
         height: 36,
         decoration: BoxDecoration(
-          color: scheme.surface,
-          border: Border.all(color: tone),
+          color: brandColor.withAlpha((0.12 * 255).round()),
+          border: Border.all(color: brandColor.withAlpha((0.42 * 255).round())),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(platformIcon(platformId), size: 18),
+        child: Icon(platformBrandIcon(platformId), size: 18, color: brandColor),
       );
     }
 
@@ -4732,6 +4720,7 @@ class _SocialShellState extends State<SocialShell> {
           (username == null || username.isEmpty) ? '-' : '@$username';
       final platformLabel = _platformLabel(platformId);
       final tone = active ? Colors.green.shade700 : scheme.error;
+      final brandColor = _platformColor(platformId);
       final created = DateTime.tryParse(account['createdAt']?.toString() ?? '');
       final createdLabel = created == null
           ? ''
@@ -4752,13 +4741,11 @@ class _SocialShellState extends State<SocialShell> {
                       height: 44,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(14),
-                        color: scheme.surface.withAlpha((0.55 * 255).round()),
+                        color: brandColor.withAlpha((0.12 * 255).round()),
                         border: Border.all(
-                            color: scheme.onSurface
-                                .withAlpha((0.10 * 255).round())),
+                            color: brandColor.withAlpha((0.34 * 255).round())),
                       ),
-                      child: Icon(_platformIcon(platformId),
-                          color: scheme.onSurfaceVariant),
+                      child: Icon(_platformIcon(platformId), color: brandColor),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -4863,7 +4850,7 @@ class _SocialShellState extends State<SocialShell> {
                     child: Row(
                       children: [
                         Icon(_platformIcon(platformId),
-                            size: 18, color: scheme.onSurfaceVariant),
+                            size: 18, color: _platformColor(platformId)),
                         const SizedBox(width: 8),
                         Text(
                           _platformLabel(platformId),
@@ -5179,7 +5166,9 @@ class _SocialShellState extends State<SocialShell> {
                                       child: Row(
                                         children: [
                                           Icon(_platformIcon(sourcePlatformId),
-                                              size: 16),
+                                              size: 16,
+                                              color: _platformColor(
+                                                  sourcePlatformId)),
                                           const SizedBox(width: 6),
                                           Expanded(
                                             child: Text(
@@ -5211,7 +5200,9 @@ class _SocialShellState extends State<SocialShell> {
                                       child: Row(
                                         children: [
                                           Icon(_platformIcon(targetPlatformId),
-                                              size: 16),
+                                              size: 16,
+                                              color: _platformColor(
+                                                  targetPlatformId)),
                                           const SizedBox(width: 6),
                                           Expanded(
                                             child: Text(
@@ -5841,7 +5832,9 @@ class _SocialShellState extends State<SocialShell> {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Icon(_platformIcon(sourcePlatformId),
-                                            size: 14),
+                                            size: 14,
+                                            color: _platformColor(
+                                                sourcePlatformId)),
                                         const SizedBox(width: 5),
                                         SizedBox(
                                           width: 130,
@@ -5875,7 +5868,9 @@ class _SocialShellState extends State<SocialShell> {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Icon(_platformIcon(targetPlatformId),
-                                            size: 14),
+                                            size: 14,
+                                            color: _platformColor(
+                                                targetPlatformId)),
                                         const SizedBox(width: 5),
                                         SizedBox(
                                           width: 130,
@@ -6631,8 +6626,8 @@ class _SocialShellState extends State<SocialShell> {
         'desc': i18n.t('settings.preset.ocean',
             'Airy blue-gray background with frost surfaces.'),
         'swatches': const <Color>[
-          Color(0xFFEEF3F8),
-          Color(0xFFF8F8FA),
+          Color(0xFF3AA8FF),
+          Color(0xFF66BCEB),
           Color(0xFF2F84D4)
         ],
       },
@@ -7645,24 +7640,16 @@ class _SocialShellState extends State<SocialShell> {
   }
 
   IconData _platformIcon(String platformId) {
-    final normalized = platformId.trim().toLowerCase();
-    if (normalized.isEmpty) return Icons.public_rounded;
-    if (normalized.contains('telegram')) return Icons.send_rounded;
-    if (normalized.contains('twitter') ||
-        normalized == 'x' ||
-        normalized.contains('x.com')) {
-      return Icons.alternate_email_rounded;
-    }
-    if (normalized.contains('youtube')) return Icons.ondemand_video_rounded;
-    if (normalized.contains('tiktok')) return Icons.music_note_rounded;
-    if (normalized.contains('instagram')) return Icons.camera_alt_rounded;
-    if (normalized.contains('facebook')) return Icons.facebook_rounded;
-    if (normalized.contains('linkedin')) return Icons.work_rounded;
-    if (normalized.contains('snap')) return Icons.chat_bubble_rounded;
-    if (normalized.contains('threads')) return Icons.forum_rounded;
-    if (normalized.contains('reddit')) return Icons.forum_rounded;
-    if (normalized.contains('pinterest')) return Icons.push_pin_rounded;
-    return Icons.public_rounded;
+    return platformBrandIcon(platformId);
+  }
+
+  Color _platformColor(String platformId) {
+    final theme = Theme.of(context);
+    return platformBrandColor(
+      platformId,
+      scheme: theme.colorScheme,
+      isDark: theme.brightness == Brightness.dark,
+    );
   }
 
   String _platformLabel(String platformId) {
@@ -7925,15 +7912,16 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
   }
 
   IconData _platformIcon(String platformId) {
-    final normalized = platformId.trim().toLowerCase();
-    if (normalized.contains('telegram')) return Icons.send_rounded;
-    if (normalized.contains('twitter')) return Icons.alternate_email_rounded;
-    if (normalized.contains('youtube')) return Icons.ondemand_video_rounded;
-    if (normalized.contains('tiktok')) return Icons.music_note_rounded;
-    if (normalized.contains('instagram')) return Icons.camera_alt_rounded;
-    if (normalized.contains('facebook')) return Icons.facebook_rounded;
-    if (normalized.contains('linkedin')) return Icons.work_rounded;
-    return Icons.public_rounded;
+    return platformBrandIcon(platformId);
+  }
+
+  Color _platformColor(String platformId) {
+    final theme = Theme.of(context);
+    return platformBrandColor(
+      platformId,
+      scheme: theme.colorScheme,
+      isDark: theme.brightness == Brightness.dark,
+    );
   }
 
   Future<void> _loadAccounts() async {
@@ -8298,9 +8286,14 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                                                 }
                                               });
                                             },
-                                      secondary: Icon(_platformIcon(
-                                          account['platformId']?.toString() ??
-                                              '')),
+                                      secondary: Icon(
+                                          _platformIcon(account['platformId']
+                                                  ?.toString() ??
+                                              ''),
+                                          color: _platformColor(
+                                              account['platformId']
+                                                      ?.toString() ??
+                                                  '')),
                                       title: Text(_accountLabel(account)),
                                       subtitle: Text(
                                         '${account['platformId'] ?? 'unknown'} • @${account['accountUsername'] ?? '-'}',
@@ -8364,9 +8357,14 @@ class _TaskComposerSheetState extends State<_TaskComposerSheet> {
                                                 }
                                               });
                                             },
-                                      secondary: Icon(_platformIcon(
-                                          account['platformId']?.toString() ??
-                                              '')),
+                                      secondary: Icon(
+                                          _platformIcon(account['platformId']
+                                                  ?.toString() ??
+                                              ''),
+                                          color: _platformColor(
+                                              account['platformId']
+                                                      ?.toString() ??
+                                                  '')),
                                       title: Text(_accountLabel(account)),
                                       subtitle: Text(
                                         '${account['platformId'] ?? 'unknown'} • @${account['accountUsername'] ?? '-'}',

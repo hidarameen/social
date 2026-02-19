@@ -17,28 +17,32 @@ class AuthShell extends StatelessWidget {
   final String description;
   final Widget child;
 
-  static const _primary = Color(0xFF9C2CF3);
-  static const _accent = Color(0xFF3A49F9);
-
   @override
   Widget build(BuildContext context) {
     final i18n = I18n(state.locale);
     final isDark = state.themeMode == AppThemeMode.dark;
+    final scheme = Theme.of(context).colorScheme;
 
     final bg = BoxDecoration(
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: isDark
-            ? const [
-                Color(0xFF131725),
-                Color(0xFF151A2B),
-                Color(0xFF1D2438),
+            ? [
+                Color.alphaBlend(
+                    scheme.primary.withOpacity(0.10), const Color(0xFF111827)),
+                Color.alphaBlend(scheme.secondary.withOpacity(0.08),
+                    const Color(0xFF131B2A)),
+                Color.alphaBlend(
+                    scheme.tertiary.withOpacity(0.08), const Color(0xFF18243A)),
               ]
-            : const [
-                Color(0xFFF2F4F8),
-                Color(0xFFEEF2F8),
-                Color(0xFFFFFFFF),
+            : [
+                Color.alphaBlend(
+                    scheme.primary.withOpacity(0.04), const Color(0xFFF2F4F8)),
+                Color.alphaBlend(scheme.secondary.withOpacity(0.04),
+                    const Color(0xFFEEF2F8)),
+                Color.alphaBlend(
+                    scheme.tertiary.withOpacity(0.03), const Color(0xFFFFFFFF)),
               ],
       ),
     );
@@ -48,7 +52,7 @@ class AuthShell extends StatelessWidget {
         center: const Alignment(0.7, -0.85),
         radius: 1.1,
         colors: [
-          (isDark ? _primary : _accent).withOpacity(isDark ? 0.22 : 0.12),
+          scheme.primary.withOpacity(isDark ? 0.20 : 0.12),
           Colors.transparent,
         ],
       ),
@@ -65,13 +69,15 @@ class AuthShell extends StatelessWidget {
               top: -70,
               right: -50,
               child: _GlowOrb(
-                  color: _primary.withOpacity(isDark ? 0.33 : 0.20), size: 210),
+                  color: scheme.primary.withOpacity(isDark ? 0.33 : 0.20),
+                  size: 210),
             ),
             Positioned(
               bottom: -90,
               left: -60,
               child: _GlowOrb(
-                  color: _accent.withOpacity(isDark ? 0.28 : 0.20), size: 240),
+                  color: scheme.secondary.withOpacity(isDark ? 0.28 : 0.20),
+                  size: 240),
             ),
             PositionedDirectional(
               top: 24,
@@ -132,10 +138,13 @@ class _TopControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final isDark = state.themeMode == AppThemeMode.dark;
     return Material(
-      color:
-          (isDark ? const Color(0xFF1D2335) : Colors.white).withOpacity(0.84),
+      color: Color.alphaBlend(
+        scheme.onSurface.withOpacity(isDark ? 0.08 : 0.04),
+        scheme.surface,
+      ).withOpacity(0.90),
       elevation: 8,
       borderRadius: BorderRadius.circular(999),
       child: Padding(
@@ -158,10 +167,8 @@ class _TopControls extends StatelessWidget {
                   size: 18),
               constraints: const BoxConstraints.tightFor(width: 38, height: 38),
               style: IconButton.styleFrom(
-                backgroundColor:
-                    isDark ? const Color(0xFFE9EEF9) : const Color(0xFF3A49F9),
-                foregroundColor:
-                    isDark ? const Color(0xFF0D1422) : const Color(0xFFFFFFFF),
+                backgroundColor: scheme.primary,
+                foregroundColor: scheme.onPrimary,
               ),
             ),
           ],
@@ -179,11 +186,13 @@ class _IdentityPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final panelBg =
-        (isDark ? const Color(0xFF1D2335) : Colors.white).withOpacity(0.86);
-    final border = (isDark ? Colors.white : Colors.black).withOpacity(0.08);
-    final fg = isDark ? const Color(0xFFE9EEF9) : const Color(0xFF1D1D35);
-    final muted = fg.withOpacity(0.68);
+        Color.alphaBlend(scheme.onSurface.withOpacity(0.06), scheme.surface)
+            .withOpacity(0.88);
+    final border = scheme.outline.withOpacity(0.45);
+    final fg = scheme.onSurface;
+    final muted = scheme.onSurfaceVariant;
 
     return Container(
       decoration: BoxDecoration(
@@ -192,8 +201,10 @@ class _IdentityPanel extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             panelBg,
-            (isDark ? const Color(0xFF262F45) : const Color(0xFFF8FAFF))
-                .withOpacity(0.68),
+            Color.alphaBlend(
+              scheme.primary.withOpacity(isDark ? 0.14 : 0.07),
+              panelBg,
+            ),
           ],
         ),
         borderRadius: BorderRadius.circular(24),
@@ -297,7 +308,6 @@ class _IdentityPanel extends StatelessWidget {
                 'Email verification protects account ownership from day one.'),
             icon: Icons.verified_user_rounded,
             fg: fg,
-            isDark: isDark,
           ),
           const SizedBox(height: 10),
           _FeatureCard(
@@ -306,7 +316,6 @@ class _IdentityPanel extends StatelessWidget {
                 'Smart sign-in experience with callback routing and quick recovery flows.'),
             icon: Icons.flash_on_rounded,
             fg: fg,
-            isDark: isDark,
           ),
           const SizedBox(height: 10),
           _FeatureCard(
@@ -315,7 +324,6 @@ class _IdentityPanel extends StatelessWidget {
                 'Optimized for validation clarity and accessibility.'),
             icon: Icons.badge_rounded,
             fg: fg,
-            isDark: isDark,
           ),
         ],
       ),
@@ -413,19 +421,19 @@ class _FeatureCard extends StatelessWidget {
     required this.body,
     required this.icon,
     required this.fg,
-    required this.isDark,
   });
 
   final String title;
   final String body;
   final IconData icon;
   final Color fg;
-  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final bg =
-        (isDark ? const Color(0xFF131B30) : Colors.white).withOpacity(0.86);
+        Color.alphaBlend(scheme.onSurface.withOpacity(0.05), scheme.surface)
+            .withOpacity(0.86);
     final border = fg.withOpacity(0.10);
     return Container(
       decoration: BoxDecoration(
@@ -477,11 +485,13 @@ class _AuthCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final bg =
-        (isDark ? const Color(0xFF1D2335) : Colors.white).withOpacity(0.90);
-    final border = (isDark ? Colors.white : Colors.black).withOpacity(0.08);
-    final fg = isDark ? const Color(0xFFE9EEF9) : const Color(0xFF1D1D35);
-    final muted = fg.withOpacity(0.68);
+        Color.alphaBlend(scheme.onSurface.withOpacity(0.06), scheme.surface)
+            .withOpacity(0.90);
+    final border = scheme.outline.withOpacity(0.45);
+    final fg = scheme.onSurface;
+    final muted = scheme.onSurfaceVariant;
 
     return Container(
       decoration: BoxDecoration(
@@ -490,8 +500,10 @@ class _AuthCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             bg,
-            (isDark ? const Color(0xFF2A334A) : const Color(0xFFF8FBFF))
-                .withOpacity(0.84),
+            Color.alphaBlend(
+              scheme.primary.withOpacity(isDark ? 0.12 : 0.07),
+              bg,
+            ),
           ],
         ),
         borderRadius: BorderRadius.circular(24),

@@ -47,7 +47,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   static const _success = Color(0xFF10B981);
   static const _danger = Color(0xFFEF4444);
-  static const _primary = Color(0xFF6366F1);
 
   @override
   void initState() {
@@ -167,9 +166,10 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final i18n = I18n(widget.state.locale);
+    final scheme = Theme.of(context).colorScheme;
     final isDark = widget.state.themeMode == AppThemeMode.dark;
-    final fg = isDark ? const Color(0xFFE9EEF9) : const Color(0xFF0D1422);
-    final muted = fg.withOpacity(0.65);
+    final fg = scheme.onSurface;
+    final muted = scheme.onSurfaceVariant;
 
     return AuthShell(
       state: widget.state,
@@ -263,10 +263,12 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 12),
               Container(
                 decoration: BoxDecoration(
-                  color: (isDark ? Colors.white : const Color(0xFF0D1422))
-                      .withOpacity(0.04),
+                  color: Color.alphaBlend(
+                    fg.withOpacity(0.03),
+                    scheme.surface,
+                  ),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: fg.withOpacity(0.08)),
+                  border: Border.all(color: scheme.outline.withOpacity(0.45)),
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 child: Row(
@@ -306,12 +308,11 @@ class _LoginScreenState extends State<LoginScreen> {
               if (_needsVerification)
                 Container(
                   decoration: BoxDecoration(
-                    color: (isDark
-                            ? const Color(0xFF22345C)
-                            : const Color(0xFFE9F0FF))
-                        .withOpacity(0.65),
+                    color: scheme.primary.withOpacity(isDark ? 0.26 : 0.14),
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: fg.withOpacity(0.10)),
+                    border: Border.all(
+                        color:
+                            scheme.primary.withOpacity(isDark ? 0.34 : 0.24)),
                   ),
                   padding: const EdgeInsets.all(12),
                   margin: const EdgeInsets.only(bottom: 12),
@@ -352,7 +353,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 key: const Key('login-submit-button'),
                 onPressed: _busy ? null : _submit,
                 style: FilledButton.styleFrom(
-                  backgroundColor: _primary,
+                  backgroundColor: scheme.primary,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
