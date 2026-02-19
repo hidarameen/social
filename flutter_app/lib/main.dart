@@ -4420,7 +4420,7 @@ class _SocialShellState extends State<SocialShell> {
               children: [
                 CircleAvatar(
                   radius: 26,
-                  backgroundColor: scheme.surfaceVariant,
+                  backgroundColor: scheme.surfaceContainerHighest,
                   foregroundImage: image.trim().isEmpty ? null : NetworkImage(image),
                   child: const Icon(Icons.person_rounded),
                 ),

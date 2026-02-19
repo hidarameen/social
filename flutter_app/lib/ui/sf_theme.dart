@@ -35,11 +35,9 @@ class SfTheme {
       onSecondary: p.onSecondary,
       tertiary: p.accent,
       onTertiary: p.onAccent,
-      background: p.background,
-      onBackground: p.onBackground,
       surface: p.surface,
       onSurface: p.onSurface,
-      surfaceVariant: p.surfaceVariant,
+      surfaceContainerHighest: p.surfaceVariant,
       onSurfaceVariant: p.onSurfaceVariant,
       outline: p.outline,
       outlineVariant: p.outline,
@@ -56,11 +54,9 @@ class SfTheme {
       onSecondary: p.onSecondary,
       tertiary: p.accent,
       onTertiary: p.onAccent,
-      background: p.background,
-      onBackground: p.onBackground,
       surface: p.surface,
       onSurface: p.onSurface,
-      surfaceVariant: p.surfaceVariant,
+      surfaceContainerHighest: p.surfaceVariant,
       onSurfaceVariant: p.onSurfaceVariant,
       outline: p.outline,
       outlineVariant: p.outline,
@@ -91,8 +87,8 @@ class SfTheme {
     final fieldRadius = BorderRadius.circular(16);
 
     return base.copyWith(
-      scaffoldBackgroundColor: scheme.background,
-      canvasColor: scheme.background,
+      scaffoldBackgroundColor: scheme.surface,
+      canvasColor: scheme.surface,
       appBarTheme: AppBarTheme(
         centerTitle: false,
         elevation: 0,

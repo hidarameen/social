@@ -51,7 +51,7 @@ class SfAppBackground extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     final bgStart = isDark ? const Color(0xFF1F232A) : const Color(0xFFFFFFFF);
-    final bgEnd = scheme.background;
+    final bgEnd = scheme.surface;
 
     final glowA = scheme.primary.withOpacity(isDark ? 0.14 : 0.10);
     final glowB = scheme.secondary.withOpacity(isDark ? 0.10 : 0.08);
