@@ -273,7 +273,7 @@ export function GlobalShellEnhancements() {
             </Button>
             <Button variant="ghost" className="w-full justify-start" onClick={() => setUpdatesOpen(true)}>
               <Megaphone size={15} />
-              What's New
+              What&apos;s New
             </Button>
           </div>
         )}
@@ -405,7 +405,7 @@ export function GlobalShellEnhancements() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles size={16} />
-              What's New
+              What&apos;s New
             </DialogTitle>
             <DialogDescription>Latest UI and productivity upgrades.</DialogDescription>
           </DialogHeader>

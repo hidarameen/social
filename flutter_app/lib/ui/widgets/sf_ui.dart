@@ -500,11 +500,11 @@ class SfKpiTile extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    resolved.withOpacity(0.18),
-                    resolved.withOpacity(0.08),
+                    resolved.withValues(alpha: 0.18),
+                    resolved.withValues(alpha: 0.08),
                   ],
                 ),
-                border: Border.all(color: resolved.withOpacity(0.22)),
+                border: Border.all(color: resolved.withValues(alpha: 0.22)),
               ),
               child: Icon(icon, color: resolved, size: 22),
             ),
@@ -563,7 +563,7 @@ class SfPillSwitch extends StatelessWidget {
     final bg = value
         ? enabledColor
         : Theme.of(context).brightness == Brightness.dark
-            ? resolvedDisabled.withOpacity(0.55)
+            ? resolvedDisabled.withValues(alpha: 0.55)
             : resolvedDisabled;
 
     return Semantics(
@@ -585,7 +585,7 @@ class SfPillSwitch extends StatelessWidget {
               borderRadius: BorderRadius.circular(999),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
+                  color: Colors.black.withValues(alpha: 0.08),
                   blurRadius: 12,
                   offset: const Offset(0, 5),
                 ),
@@ -652,7 +652,7 @@ class SfBarChart extends StatelessWidget {
                 labels: labels,
                 maxValue: safeMax,
                 barColor: scheme.primary,
-                gridColor: scheme.outline.withOpacity(isDark ? 0.34 : 0.45),
+                gridColor: scheme.outline.withValues(alpha: isDark ? 0.34 : 0.45),
                 textColor: scheme.onSurfaceVariant,
               ),
               child: const SizedBox.expand(),
@@ -733,7 +733,7 @@ class _SfBarChartPainter extends CustomPainter {
         Rect.fromLTWH(x, y, barWidth, barH),
         const Radius.circular(10),
       );
-      paint.color = barColor.withOpacity(0.85);
+      paint.color = barColor.withValues(alpha: 0.85);
       canvas.drawRRect(rrect, paint);
 
       // Value label (top)

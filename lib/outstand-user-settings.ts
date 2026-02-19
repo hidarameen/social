@@ -33,6 +33,15 @@ export type OutstandUserSettings = {
   applyToAllAccounts: boolean;
 };
 
+export type OutstandSelectorSource = {
+  accountId?: unknown;
+  accountUsername?: unknown;
+  accountName?: unknown;
+  username?: unknown;
+  displayName?: unknown;
+  credentials?: unknown;
+};
+
 type UpsertOutstandUserSettingsInput = {
   enabled?: boolean;
   apiKey?: string;
@@ -44,6 +53,55 @@ type UpsertOutstandUserSettingsInput = {
 
 function trimString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function pushSelector(map: Map<string, string>, value: unknown) {
+  const trimmed = trimString(value);
+  if (!trimmed) return;
+  const key = trimmed.toLowerCase();
+  if (!map.has(key)) {
+    map.set(key, trimmed);
+  }
+}
+
+function collectSelectorsFromRecord(map: Map<string, string>, record: Record<string, unknown>) {
+  const scalarKeys = [
+    'outstandAccountId',
+    'outstandingAccountId',
+    'selector',
+    'accountSelector',
+    'socialAccountId',
+    'outstandSocialAccountId',
+    'id',
+    'accountId',
+    'username',
+    'handle',
+    'chatId',
+    'platformAccountId',
+  ];
+  for (const key of scalarKeys) {
+    pushSelector(map, record[key]);
+  }
+
+  const arrayKeys = [
+    'accounts',
+    'accountIds',
+    'outstandAccountIds',
+    'outstandingAccountIds',
+    'selectors',
+  ];
+  for (const key of arrayKeys) {
+    const raw = record[key];
+    if (!Array.isArray(raw)) continue;
+    for (const entry of raw) {
+      pushSelector(map, entry);
+    }
+  }
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
 }
 
 function parseBoolean(value: unknown, fallback: boolean): boolean {
@@ -151,22 +209,76 @@ export async function upsertOutstandUserSettings(
   return normalizeSettings((saved.credentials || {}) as Record<string, unknown>);
 }
 
+export function getOutstandAccountSelectors(source: OutstandSelectorSource): string[] {
+  const selectors = new Map<string, string>();
+  pushSelector(selectors, source.accountId);
+  pushSelector(selectors, source.accountUsername);
+  pushSelector(selectors, source.accountName);
+  pushSelector(selectors, source.username);
+  pushSelector(selectors, source.displayName);
+
+  const credentials = toRecord(source.credentials);
+  collectSelectorsFromRecord(selectors, credentials);
+  collectSelectorsFromRecord(selectors, toRecord(credentials.customData));
+  collectSelectorsFromRecord(selectors, toRecord(credentials.accountInfo));
+
+  return [...selectors.values()];
+}
+
 export function createOutstandPublishToken(params: {
   userId?: string;
   apiKey?: string;
   tenantId?: string;
   baseUrl?: string;
+  applyToAllAccounts?: boolean;
+  selectors?: string[];
 }): string {
-  const payload: Record<string, string> = {};
+  const payload: Record<string, unknown> = {};
   const userId = trimString(params.userId);
   const apiKey = trimString(params.apiKey);
   const tenantId = trimString(params.tenantId);
   const baseUrl = trimString(params.baseUrl);
+  const applyToAllAccounts = params.applyToAllAccounts !== false;
+  const selectors = Array.isArray(params.selectors)
+    ? params.selectors
+        .map((value) => trimString(value))
+        .filter(Boolean)
+    : [];
 
   if (userId) payload.userId = userId;
   if (apiKey) payload.apiKey = apiKey;
   if (tenantId) payload.tenantId = tenantId;
   if (baseUrl) payload.baseUrl = baseUrl;
+  if (!applyToAllAccounts) {
+    payload.applyToAllAccounts = false;
+    if (selectors.length > 0) {
+      payload.selectors = selectors;
+      payload.accounts = selectors;
+      payload.accountSelector = selectors[0];
+    }
+  }
 
   return JSON.stringify(payload);
+}
+
+export function createOutstandPublishTokenForAccount(params: {
+  userId?: string;
+  apiKey?: string;
+  tenantId?: string;
+  baseUrl?: string;
+  applyToAllAccounts?: boolean;
+  account?: OutstandSelectorSource;
+}): string {
+  const applyToAllAccounts = params.applyToAllAccounts !== false;
+  const selectors =
+    !applyToAllAccounts && params.account ? getOutstandAccountSelectors(params.account) : [];
+
+  return createOutstandPublishToken({
+    userId: params.userId,
+    apiKey: params.apiKey,
+    tenantId: params.tenantId,
+    baseUrl: params.baseUrl,
+    applyToAllAccounts,
+    selectors,
+  });
 }

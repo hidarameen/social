@@ -8,6 +8,7 @@ import type { PlatformId } from '@/lib/platforms/types';
 import { randomUUID } from 'crypto';
 import {
   createOutstandPublishToken,
+  createOutstandPublishTokenForAccount,
   getOutstandUserSettings,
 } from '@/lib/outstand-user-settings';
 
@@ -47,12 +48,15 @@ export class TaskProcessor {
       );
     }
 
+    const outstandSettings = await getOutstandUserSettings(task.userId);
+    const applyOutstandToAllAccounts = outstandSettings.applyToAllAccounts !== false;
+
     const dedupedTargetAccounts: PlatformAccount[] = [];
     const seenOutstandPlatforms = new Set<PlatformId>();
     for (const targetAccount of targetAccounts) {
       const provider = providerByTargetId.get(targetAccount.id) || 'native';
       const targetPlatformId = targetAccount.platformId as PlatformId;
-      if (provider === 'outstanding') {
+      if (provider === 'outstanding' && applyOutstandToAllAccounts) {
         if (seenOutstandPlatforms.has(targetPlatformId)) {
           continue;
         }
@@ -61,13 +65,21 @@ export class TaskProcessor {
       dedupedTargetAccounts.push(targetAccount);
     }
 
-    const outstandSettings = await getOutstandUserSettings(task.userId);
-    const outstandPublishToken = createOutstandPublishToken({
-      userId: task.userId,
-      apiKey: outstandSettings.apiKey,
-      tenantId: outstandSettings.tenantId,
-      baseUrl: outstandSettings.baseUrl,
-    });
+    const outstandPublishTokenByTargetId = new Map<string, string>();
+    for (const targetAccount of dedupedTargetAccounts) {
+      if ((providerByTargetId.get(targetAccount.id) || 'native') !== 'outstanding') continue;
+      outstandPublishTokenByTargetId.set(
+        targetAccount.id,
+        createOutstandPublishTokenForAccount({
+          userId: task.userId,
+          apiKey: outstandSettings.apiKey,
+          tenantId: outstandSettings.tenantId,
+          baseUrl: outstandSettings.baseUrl,
+          applyToAllAccounts: applyOutstandToAllAccounts,
+          account: targetAccount,
+        })
+      );
+    }
 
     // معالجة كل زوج من (مصدر -> هدف) بالتوازي
     const routePairs = sourceAccounts.flatMap((sourceAccount) =>
@@ -75,11 +87,12 @@ export class TaskProcessor {
         sourceAccount,
         targetAccount,
         targetProvider: providerByTargetId.get(targetAccount.id) || 'native',
+        outstandPublishToken: outstandPublishTokenByTargetId.get(targetAccount.id),
       }))
     );
 
     const executionResults = await Promise.all(
-      routePairs.map(async ({ sourceAccount, targetAccount, targetProvider }) => {
+      routePairs.map(async ({ sourceAccount, targetAccount, targetProvider, outstandPublishToken }) => {
         try {
           return await this.executeTransfer(
             task,
@@ -87,7 +100,7 @@ export class TaskProcessor {
             targetAccount,
             executionGroupId,
             targetProvider,
-            outstandPublishToken
+            outstandPublishToken,
           );
         } catch (error) {
           return db.createExecution({

@@ -8,7 +8,7 @@ import { TelegramClient } from '@/platforms/telegram/client'
 import { getPlatformHandler, getPlatformHandlerForUser } from './platforms/handlers'
 import { getPlatformApiProvider, getPlatformApiProviderForUser } from './platforms/provider'
 import type { PlatformId, PostRequest } from './platforms/types'
-import { createOutstandPublishToken, getOutstandUserSettings } from './outstand-user-settings'
+import { createOutstandPublishToken, createOutstandPublishTokenForAccount, getOutstandUserSettings } from './outstand-user-settings'
 
 const MANAGED_PLATFORMS: ReadonlySet<PlatformId> = new Set([
   'facebook',
@@ -48,11 +48,13 @@ function mapContentToPostRequest(content: ContentItem): PostRequest {
 async function buildOutstandingToken(account: PlatformAccount): Promise<string> {
   try {
     const settings = await getOutstandUserSettings(account.userId)
-    return createOutstandPublishToken({
+    return createOutstandPublishTokenForAccount({
       userId: account.userId,
       apiKey: settings.apiKey || account.credentials.apiKey,
       tenantId: settings.tenantId,
       baseUrl: settings.baseUrl,
+      applyToAllAccounts: settings.applyToAllAccounts,
+      account,
     })
   } catch {
     return createOutstandPublishToken({

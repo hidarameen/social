@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { hashVerificationCode, isEmailVerificationEnabled, normalizeVerificationCode } from '@/lib/auth/email-verification';
 import { createHash } from 'crypto';
+import { getClientKey, rateLimit } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 
@@ -21,6 +22,11 @@ function hashTokenForLegacyLink(token: string): string {
 
 export async function POST(request: NextRequest) {
   try {
+    const limiter = rateLimit(`auth:verify-email:${getClientKey(request)}`, 10, 60_000);
+    if (!limiter.ok) {
+      return NextResponse.json({ success: false, error: 'Too many requests' }, { status: 429 });
+    }
+
     if (!isEmailVerificationEnabled()) {
       return NextResponse.json({
         success: true,

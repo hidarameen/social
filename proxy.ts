@@ -17,7 +17,7 @@ const PUBLIC_PATHS = new Set([
   '/offline',
 ]);
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const forceLogin = request.nextUrl.searchParams.get('forceLogin') === '1';
   const requestId = request.headers.get('x-request-id') || crypto.randomUUID();
@@ -61,15 +61,6 @@ export async function middleware(request: NextRequest) {
     if (!token) return next();
     const url = request.nextUrl.clone();
     url.pathname = '/';
-    const response = NextResponse.redirect(url);
-    response.headers.set('x-request-id', requestId);
-    return response;
-  }
-
-  const taskDetailMatch = pathname.match(/^\/tasks\/([^/]+)$/);
-  if (taskDetailMatch && taskDetailMatch[1] !== 'new') {
-    const url = request.nextUrl.clone();
-    url.pathname = '/tasks';
     const response = NextResponse.redirect(url);
     response.headers.set('x-request-id', requestId);
     return response;

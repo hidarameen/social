@@ -21,9 +21,9 @@ export default function OfflinePage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-2 sm:flex-row">
-          <a href="/" className="flex-1">
+          <Link href="/" className="flex-1">
             <Button className="w-full">Retry</Button>
-          </a>
+          </Link>
           <Link href="/" className="flex-1">
             <Button variant="outline" className="w-full">
               Go to Dashboard

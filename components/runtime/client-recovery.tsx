@@ -25,13 +25,13 @@ function isChunkAssetUrl(url: string): boolean {
 }
 
 export function ClientRecovery() {
-  // Dev mode can trigger many non-fatal transient resource events (HMR, blocked assets, etc.).
-  // Recovery reloads are only useful in production for broken chunk/module states.
-  if (process.env.NODE_ENV !== 'production') {
-    return null;
-  }
-
   useEffect(() => {
+    // Dev mode can trigger many non-fatal transient resource events (HMR, blocked assets, etc.).
+    // Recovery reloads are only useful in production for broken chunk/module states.
+    if (process.env.NODE_ENV !== 'production') {
+      return;
+    }
+
     const recover = () => {
       try {
         const alreadyRecovered = window.sessionStorage.getItem(RECOVERY_KEY) === '1';

@@ -49,13 +49,13 @@ class _PremiumLoadingScreenState extends State<PremiumLoadingScreen>
                   end: Alignment.bottomRight,
                   colors: [
                     Color.alphaBlend(
-                      scheme.primary.withOpacity(isDark ? 0.24 : 0.12),
+                      scheme.primary.withValues(alpha: isDark ? 0.24 : 0.12),
                       isDark
                           ? const Color(0xFF0C1220)
                           : const Color(0xFFF7FAFF),
                     ),
                     Color.alphaBlend(
-                      scheme.secondary.withOpacity(isDark ? 0.16 : 0.08),
+                      scheme.secondary.withValues(alpha: isDark ? 0.16 : 0.08),
                       isDark
                           ? const Color(0xFF0E1A31)
                           : const Color(0xFFF4F9FF),
@@ -88,13 +88,13 @@ class _PremiumLoadingScreenState extends State<PremiumLoadingScreen>
                               end: Alignment.bottomRight,
                               colors: [
                                 Color.alphaBlend(
-                                  scheme.primary.withOpacity(
+                                  scheme.primary.withValues(alpha: 
                                     isDark ? 0.70 : 0.94,
                                   ),
                                   scheme.secondary,
                                 ),
                                 Color.alphaBlend(
-                                  scheme.tertiary.withOpacity(
+                                  scheme.tertiary.withValues(alpha: 
                                     isDark ? 0.26 : 0.14,
                                   ),
                                   scheme.primary,
@@ -103,7 +103,7 @@ class _PremiumLoadingScreenState extends State<PremiumLoadingScreen>
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: scheme.primary.withOpacity(
+                                color: scheme.primary.withValues(alpha: 
                                   isDark ? 0.42 : 0.24,
                                 ),
                                 blurRadius: 26,
@@ -148,7 +148,7 @@ class _PremiumLoadingScreenState extends State<PremiumLoadingScreen>
                       child: LinearProgressIndicator(
                         minHeight: 7,
                         color: scheme.primary,
-                        backgroundColor: scheme.onSurface.withOpacity(0.12),
+                        backgroundColor: scheme.onSurface.withValues(alpha: 0.12),
                       ),
                     ),
                   ),

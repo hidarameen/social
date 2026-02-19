@@ -79,11 +79,7 @@ function readInitialShellState(): InitialShellState {
 }
 
 export function ShellProvider({ children }: { children: React.ReactNode }) {
-  const initialStateRef = React.useRef<InitialShellState | null>(null);
-  if (initialStateRef.current === null) {
-    initialStateRef.current = readInitialShellState();
-  }
-  const initialState = initialStateRef.current;
+  const initialState = React.useMemo(() => readInitialShellState(), []);
 
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(initialState.sidebarCollapsed);
   const [reducedMotion, setReducedMotion] = React.useState(initialState.reducedMotion);

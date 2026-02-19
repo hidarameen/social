@@ -353,10 +353,10 @@ class _OtpDigitField extends StatelessWidget {
       builder: (context, _) {
         final focused = focusNode.hasFocus;
         final borderColor = hasError
-            ? scheme.error.withOpacity(0.62)
+            ? scheme.error.withValues(alpha: 0.62)
             : focused
             ? scheme.primary
-            : scheme.outline.withOpacity(0.38);
+            : scheme.outline.withValues(alpha: 0.38);
         return AnimatedContainer(
           duration: const Duration(milliseconds: 170),
           width: 46,
@@ -367,7 +367,7 @@ class _OtpDigitField extends StatelessWidget {
             boxShadow: focused
                 ? [
                     BoxShadow(
-                      color: scheme.primary.withOpacity(0.22),
+                      color: scheme.primary.withValues(alpha: 0.22),
                       blurRadius: 14,
                       offset: const Offset(0, 4),
                     ),
@@ -421,7 +421,7 @@ class _FieldFrame extends StatelessWidget {
             boxShadow: focused
                 ? [
                     BoxShadow(
-                      color: scheme.primary.withOpacity(0.20),
+                      color: scheme.primary.withValues(alpha: 0.20),
                       blurRadius: 14,
                       offset: const Offset(0, 4),
                     ),
@@ -452,9 +452,9 @@ class _InlineBanner extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
+        color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.24)),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
       ),
       child: Row(
         children: [
@@ -497,14 +497,14 @@ class _GradientCtaButton extends StatelessWidget {
           colors: [
             scheme.primary,
             Color.alphaBlend(
-              scheme.secondary.withOpacity(0.32),
+              scheme.secondary.withValues(alpha: 0.32),
               scheme.primary,
             ),
           ],
         ),
         boxShadow: [
           BoxShadow(
-            color: scheme.primary.withOpacity(0.30),
+            color: scheme.primary.withValues(alpha: 0.30),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),

@@ -81,8 +81,8 @@ class _CheckEmailScreenState extends State<CheckEmailScreen> {
           Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.25)),
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.10),
+              border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.25)),
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.10),
             ),
             padding: const EdgeInsets.all(14),
             child: Column(
@@ -136,8 +136,8 @@ class _CheckEmailScreenState extends State<CheckEmailScreen> {
             Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.6)),
-                color: Theme.of(context).colorScheme.surface.withOpacity(0.55),
+                border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.6)),
+                color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.55),
               ),
               padding: const EdgeInsets.all(12),
               child: Column(

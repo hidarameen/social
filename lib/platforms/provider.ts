@@ -86,7 +86,12 @@ export async function getPlatformApiProviderForUser(
   try {
     const settings = await getOutstandUserSettings(userId);
     if (isOutstandEnabledForPlatform(settings, platformId)) {
-      return 'outstanding';
+      if (String(settings.apiKey || '').trim().length > 0) {
+        return 'outstanding';
+      }
+      // Misconfigured user settings: Outstand selected but API key is missing.
+      // Fall back to native provider instead of failing publish at runtime.
+      return 'native';
     }
     if (settings.enabled && settings.platforms.length > 0) {
       return 'native';

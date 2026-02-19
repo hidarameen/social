@@ -34,15 +34,15 @@ class AuthShell extends StatelessWidget {
       end: Alignment.bottomRight,
       colors: [
         Color.alphaBlend(
-          scheme.primary.withOpacity(isDark ? 0.24 : 0.12),
+          scheme.primary.withValues(alpha: isDark ? 0.24 : 0.12),
           isDark ? const Color(0xFF0D1424) : const Color(0xFFF7FAFF),
         ),
         Color.alphaBlend(
-          scheme.secondary.withOpacity(isDark ? 0.18 : 0.10),
+          scheme.secondary.withValues(alpha: isDark ? 0.18 : 0.10),
           isDark ? const Color(0xFF0E192E) : const Color(0xFFFAFCFF),
         ),
         Color.alphaBlend(
-          scheme.tertiary.withOpacity(isDark ? 0.14 : 0.08),
+          scheme.tertiary.withValues(alpha: isDark ? 0.14 : 0.08),
           isDark ? const Color(0xFF101B34) : const Color(0xFFF4F9FF),
         ),
       ],
@@ -62,7 +62,7 @@ class AuthShell extends StatelessWidget {
               top: -72,
               right: -52,
               child: _BlurOrb(
-                color: scheme.primary.withOpacity(isDark ? 0.34 : 0.20),
+                color: scheme.primary.withValues(alpha: isDark ? 0.34 : 0.20),
                 size: 210,
               ),
             ),
@@ -70,7 +70,7 @@ class AuthShell extends StatelessWidget {
               bottom: -90,
               left: -60,
               child: _BlurOrb(
-                color: scheme.secondary.withOpacity(isDark ? 0.30 : 0.18),
+                color: scheme.secondary.withValues(alpha: isDark ? 0.30 : 0.18),
                 size: 240,
               ),
             ),
@@ -105,35 +105,35 @@ class AuthShell extends StatelessWidget {
                                     end: Alignment.bottomRight,
                                     colors: [
                                       Color.alphaBlend(
-                                        scheme.onSurface.withOpacity(
+                                        scheme.onSurface.withValues(alpha: 
                                           isDark ? 0.09 : 0.04,
                                         ),
                                         scheme.surface,
-                                      ).withOpacity(isDark ? 0.94 : 0.96),
+                                      ).withValues(alpha: isDark ? 0.94 : 0.96),
                                       Color.alphaBlend(
-                                        scheme.primary.withOpacity(
+                                        scheme.primary.withValues(alpha: 
                                           isDark ? 0.17 : 0.08,
                                         ),
                                         scheme.surface,
-                                      ).withOpacity(isDark ? 0.92 : 0.95),
+                                      ).withValues(alpha: isDark ? 0.92 : 0.95),
                                     ],
                                   ),
                                   borderRadius: BorderRadius.circular(28),
                                   border: Border.all(
-                                    color: scheme.outline.withOpacity(
+                                    color: scheme.outline.withValues(alpha: 
                                       isDark ? 0.46 : 0.36,
                                     ),
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(
+                                      color: Colors.black.withValues(alpha: 
                                         isDark ? 0.30 : 0.08,
                                       ),
                                       blurRadius: 26,
                                       offset: const Offset(0, 14),
                                     ),
                                     BoxShadow(
-                                      color: scheme.primary.withOpacity(
+                                      color: scheme.primary.withValues(alpha: 
                                         isDark ? 0.20 : 0.12,
                                       ),
                                       blurRadius: 32,
@@ -209,9 +209,9 @@ class _TopControls extends StatelessWidget {
     final isDark = state.themeMode == AppThemeMode.dark;
     return Material(
       color: Color.alphaBlend(
-        scheme.onSurface.withOpacity(isDark ? 0.08 : 0.05),
+        scheme.onSurface.withValues(alpha: isDark ? 0.08 : 0.05),
         scheme.surface,
-      ).withOpacity(0.92),
+      ).withValues(alpha: 0.92),
       borderRadius: BorderRadius.circular(999),
       child: Padding(
         padding: const EdgeInsets.all(6),
@@ -257,11 +257,11 @@ class _BrandBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: Color.alphaBlend(
-          scheme.onSurface.withOpacity(isDark ? 0.08 : 0.05),
+          scheme.onSurface.withValues(alpha: isDark ? 0.08 : 0.05),
           scheme.surface,
-        ).withOpacity(0.9),
+        ).withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: scheme.outline.withOpacity(0.24)),
+        border: Border.all(color: scheme.outline.withValues(alpha: 0.24)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -277,7 +277,7 @@ class _BrandBadge extends StatelessWidget {
                 colors: [
                   scheme.primary,
                   Color.alphaBlend(
-                    scheme.secondary.withOpacity(0.40),
+                    scheme.secondary.withValues(alpha: 0.40),
                     scheme.primary,
                   ),
                 ],
@@ -327,18 +327,18 @@ class _HeroIcon extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: [
                 Color.alphaBlend(
-                  scheme.primary.withOpacity(isDark ? 0.60 : 0.92),
+                  scheme.primary.withValues(alpha: isDark ? 0.60 : 0.92),
                   scheme.secondary,
                 ),
                 Color.alphaBlend(
-                  scheme.tertiary.withOpacity(isDark ? 0.30 : 0.18),
+                  scheme.tertiary.withValues(alpha: isDark ? 0.30 : 0.18),
                   scheme.primary,
                 ),
               ],
             ),
             boxShadow: [
               BoxShadow(
-                color: scheme.primary.withOpacity(isDark ? 0.38 : 0.26),
+                color: scheme.primary.withValues(alpha: isDark ? 0.38 : 0.26),
                 blurRadius: 24,
                 offset: const Offset(0, 10),
               ),

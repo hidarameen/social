@@ -79,7 +79,7 @@ FROM ${APK_STAGE} AS apk_artifacts
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY package.json pnpm-lock.yaml next.config.mjs tsconfig.json postcss.config.mjs middleware.ts instrumentation.ts components.json ./
+COPY package.json pnpm-lock.yaml next.config.mjs tsconfig.json postcss.config.mjs proxy.ts instrumentation.ts components.json ./
 # next-env.d.ts is typically generated locally and often gitignored.
 # Ensure it exists so TypeScript/Next builds are consistent in CI.
 RUN test -f next-env.d.ts || printf '%s\n' \

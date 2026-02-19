@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getAuthUser } from '@/lib/auth';
 import { startTelegramUserAuth, verifyTelegramUserAuth } from '@/lib/telegram-user-auth';
+import { getClientKey, rateLimit } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 
@@ -21,6 +22,11 @@ const requestSchema = z.discriminatedUnion('action', [startSchema, verifySchema]
 
 export async function POST(request: NextRequest) {
   try {
+    const limiter = rateLimit(`telegram:auth:${getClientKey(request)}`, 12, 60_000);
+    if (!limiter.ok) {
+      return NextResponse.json({ success: false, error: 'Too many requests' }, { status: 429 });
+    }
+
     const user = await getAuthUser();
     if (!user?.id) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -74,4 +80,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

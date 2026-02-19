@@ -69,24 +69,24 @@ class _WorkflowHero extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             Color.alphaBlend(
-              scheme.primary.withOpacity(isDark ? 0.26 : 0.12),
+              scheme.primary.withValues(alpha: isDark ? 0.26 : 0.12),
               scheme.surface,
             ),
             Color.alphaBlend(
-              scheme.secondary.withOpacity(isDark ? 0.20 : 0.10),
+              scheme.secondary.withValues(alpha: isDark ? 0.20 : 0.10),
               scheme.surface,
             ),
           ],
         ),
-        border: Border.all(color: scheme.outline.withOpacity(0.24)),
+        border: Border.all(color: scheme.outline.withValues(alpha: 0.24)),
       ),
       child: CustomPaint(
         size: const Size(280, 150),
         painter: _WorkflowPainter(
           nodeColor: scheme.primary,
-          edgeColor: scheme.onSurfaceVariant.withOpacity(isDark ? 0.58 : 0.46),
+          edgeColor: scheme.onSurfaceVariant.withValues(alpha: isDark ? 0.58 : 0.46),
           accentColor: Color.alphaBlend(
-            scheme.secondary.withOpacity(0.38),
+            scheme.secondary.withValues(alpha: 0.38),
             scheme.primary,
           ),
         ),
@@ -114,7 +114,7 @@ class _WorkflowPainter extends CustomPainter {
       ..style = PaintingStyle.stroke;
 
     final glow = Paint()
-      ..color = nodeColor.withOpacity(0.24)
+      ..color = nodeColor.withValues(alpha: 0.24)
       ..style = PaintingStyle.fill;
 
     final mainNode = Paint()
@@ -199,10 +199,10 @@ class _Pill extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
         color: Color.alphaBlend(
-          scheme.onSurface.withOpacity(0.02),
+          scheme.onSurface.withValues(alpha: 0.02),
           scheme.surface,
         ),
-        border: Border.all(color: scheme.outline.withOpacity(0.28)),
+        border: Border.all(color: scheme.outline.withValues(alpha: 0.28)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -239,7 +239,7 @@ class _Dot extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         color: active
             ? scheme.primary
-            : scheme.onSurfaceVariant.withOpacity(0.34),
+            : scheme.onSurfaceVariant.withValues(alpha: 0.34),
       ),
     );
   }
@@ -263,14 +263,14 @@ class _GradientCtaButton extends StatelessWidget {
           colors: [
             scheme.primary,
             Color.alphaBlend(
-              scheme.secondary.withOpacity(0.32),
+              scheme.secondary.withValues(alpha: 0.32),
               scheme.primary,
             ),
           ],
         ),
         boxShadow: [
           BoxShadow(
-            color: scheme.primary.withOpacity(0.30),
+            color: scheme.primary.withValues(alpha: 0.30),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),

@@ -16,7 +16,7 @@ import { getPlatformApiProviderForUser } from '@/lib/platforms/provider';
 import { getPlatformHandlerForUser } from '@/lib/platforms/handlers';
 import type { PlatformId, PostRequest } from '@/lib/platforms/types';
 import {
-  createOutstandPublishToken,
+  createOutstandPublishTokenForAccount,
   getOutstandUserSettings,
 } from '@/lib/outstand-user-settings';
 
@@ -46,11 +46,13 @@ function asManagedPlatformId(platformId: string): PlatformId | null {
 
 async function buildOutstandingPublishToken(target: PlatformAccount): Promise<string> {
   const settings = await getOutstandUserSettings(target.userId);
-  return createOutstandPublishToken({
+  return createOutstandPublishTokenForAccount({
     userId: target.userId,
     apiKey: settings.apiKey,
     tenantId: settings.tenantId,
     baseUrl: settings.baseUrl,
+    applyToAllAccounts: settings.applyToAllAccounts,
+    account: target,
   });
 }
 

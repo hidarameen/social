@@ -259,10 +259,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   value: progress,
                   minHeight: 8,
                   color: Color.alphaBlend(
-                    scheme.secondary.withOpacity(0.22),
+                    scheme.secondary.withValues(alpha: 0.22),
                     scheme.primary,
                   ),
-                  backgroundColor: scheme.onSurface.withOpacity(0.12),
+                  backgroundColor: scheme.onSurface.withValues(alpha: 0.12),
                 ),
               ),
               const SizedBox(height: 8),
@@ -290,7 +290,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           size: 14,
                           color: c.pass
                               ? scheme.primary
-                              : scheme.onSurfaceVariant.withOpacity(0.74),
+                              : scheme.onSurfaceVariant.withValues(alpha: 0.74),
                         ),
                         const SizedBox(width: 6),
                         Text(
@@ -361,9 +361,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
               Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: scheme.outline.withOpacity(0.30)),
+                  border: Border.all(color: scheme.outline.withValues(alpha: 0.30)),
                   color: Color.alphaBlend(
-                    scheme.onSurface.withOpacity(0.02),
+                    scheme.onSurface.withValues(alpha: 0.02),
                     scheme.surface,
                   ),
                 ),
@@ -453,7 +453,7 @@ class _FieldFrame extends StatelessWidget {
             boxShadow: focused
                 ? [
                     BoxShadow(
-                      color: scheme.primary.withOpacity(0.20),
+                      color: scheme.primary.withValues(alpha: 0.20),
                       blurRadius: 14,
                       offset: const Offset(0, 4),
                     ),
@@ -484,9 +484,9 @@ class _InlineBanner extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
+        color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.24)),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
       ),
       child: Row(
         children: [
@@ -530,14 +530,14 @@ class _GradientCtaButton extends StatelessWidget {
           colors: [
             scheme.primary,
             Color.alphaBlend(
-              scheme.secondary.withOpacity(0.32),
+              scheme.secondary.withValues(alpha: 0.32),
               scheme.primary,
             ),
           ],
         ),
         boxShadow: [
           BoxShadow(
-            color: scheme.primary.withOpacity(0.30),
+            color: scheme.primary.withValues(alpha: 0.30),
             blurRadius: 18,
             offset: const Offset(0, 10),
           ),

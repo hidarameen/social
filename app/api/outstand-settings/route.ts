@@ -47,6 +47,23 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid payload' }, { status: 400 });
     }
 
+    const current = await getOutstandUserSettings(user.id);
+    const nextSettings = {
+      enabled: parsed.data.enabled ?? current.enabled,
+      apiKey: typeof parsed.data.apiKey === 'string' ? parsed.data.apiKey : current.apiKey,
+      platforms: parsed.data.platforms ?? current.platforms,
+    };
+    if (
+      nextSettings.enabled &&
+      nextSettings.platforms.length > 0 &&
+      String(nextSettings.apiKey || '').trim().length === 0
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Outstand API key is required when Outstand is enabled for any platform.' },
+        { status: 400 }
+      );
+    }
+
     const settings = await upsertOutstandUserSettings(user.id, parsed.data);
     return NextResponse.json({ success: true, settings });
   } catch (error) {
