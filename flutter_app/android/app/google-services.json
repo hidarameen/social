@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "36129617130",
+    "project_id": "gen-lang-client-0879451078",
+    "storage_bucket": "gen-lang-client-0879451078.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:36129617130:android:9b3ad8ea167c1ba48f9393",
+        "android_client_info": {
+          "package_name": "com.example.socialflow_flutter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhEHdmYm3PQ-50EfKRY2lG4UZ4J0L4V8k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

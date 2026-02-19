@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,6 +12,7 @@ import 'app_config.dart';
 import 'app_state.dart';
 import 'storage_keys.dart';
 import 'api/api_client.dart';
+import 'firebase_options.dart';
 import 'i18n.dart';
 import 'ui/auth/check_email_screen.dart';
 import 'ui/auth/forgot_password_screen.dart';
@@ -22,8 +24,11 @@ import 'ui/platform_brand.dart';
 import 'ui/sf_theme.dart';
 import 'ui/widgets/sf_ui.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(const SocialFlowApp());
 }
 
