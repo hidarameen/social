@@ -2023,8 +2023,29 @@ class _SocialShellState extends State<SocialShell> {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 6),
                     child: ListTile(
-                      leading: Icon(panel.icon),
+                      leading: Icon(
+                        panel.icon,
+                        color: selected ? scheme.primary : null,
+                      ),
                       title: Text(i18n.t(panel.labelKey, panel.fallbackLabel)),
+                      subtitle: Text(
+                        i18n.t(panel.captionKey, panel.fallbackCaption),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: selected
+                              ? scheme.primary
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      trailing: selected
+                          ? Icon(
+                              Icons.arrow_forward_ios_rounded,
+                              size: 14,
+                              color: scheme.primary,
+                            )
+                          : null,
                       selected: selected,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -2060,80 +2081,175 @@ class _SocialShellState extends State<SocialShell> {
   Widget _buildRail(I18n i18n) {
     final collapsed = widget.appState.sidebarCollapsed;
     final scheme = Theme.of(context).colorScheme;
-    return NavigationRail(
-      selectedIndex: _selectedIndex,
-      extended: !collapsed,
-      labelType: collapsed
-          ? NavigationRailLabelType.selected
-          : NavigationRailLabelType.none,
-      leading: Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            color: scheme.surface.withAlpha(132),
-            border: Border.all(color: scheme.outline.withAlpha(84)),
-          ),
-          child: IconButton(
-            tooltip: collapsed ? 'Expand sidebar' : 'Collapse sidebar',
-            onPressed: () => unawaited(_toggleSidebar(wide: true)),
-            icon:
-                Icon(collapsed ? Icons.menu_open_rounded : Icons.menu_rounded),
-          ),
-        ),
-      ),
-      trailing: Padding(
-        padding: const EdgeInsets.only(bottom: 12, left: 8, right: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (collapsed) ...[
-              IconButton(
-                tooltip: i18n.t('settings.profile', 'Profile'),
-                onPressed: () => _openProfilePanel(closeDrawer: false),
-                icon: const Icon(Icons.person_rounded),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 0, 8, 12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        width: collapsed ? 92 : 230,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(22),
+          border:
+              Border.all(color: scheme.outline.withAlpha(isDark ? 104 : 116)),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color.alphaBlend(
+                scheme.primary.withAlpha(isDark ? 20 : 10),
+                scheme.surface.withAlpha(isDark ? 164 : 226),
               ),
-              IconButton(
-                tooltip: i18n.t('common.signOut', 'Sign out'),
-                onPressed: () async {
-                  await widget.onSignOut();
-                },
-                icon: const Icon(Icons.logout_rounded),
-              ),
-            ] else ...[
-              SizedBox(
-                width: 168,
-                child: OutlinedButton.icon(
-                  onPressed: () => _openProfilePanel(closeDrawer: false),
-                  icon: const Icon(Icons.person_rounded),
-                  label: Text(i18n.t('settings.profile', 'Profile')),
-                ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: 168,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    await widget.onSignOut();
-                  },
-                  icon: const Icon(Icons.logout_rounded),
-                  label: Text(i18n.t('common.signOut', 'Sign out')),
-                ),
+              Color.alphaBlend(
+                scheme.secondary.withAlpha(isDark ? 16 : 8),
+                scheme.surface.withAlpha(isDark ? 146 : 214),
               ),
             ],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withAlpha(isDark ? 54 : 18),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
+            ),
           ],
         ),
-      ),
-      onDestinationSelected: (index) => unawaited(_onPanelSelected(index)),
-      destinations: kPanelSpecs
-          .map(
-            (panel) => NavigationRailDestination(
-              icon: Icon(panel.icon),
-              selectedIcon: Icon(panel.icon),
-              label: Text(i18n.t(panel.labelKey, panel.fallbackLabel)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: NavigationRail(
+            backgroundColor: Colors.transparent,
+            selectedIndex: _selectedIndex,
+            extended: !collapsed,
+            minWidth: 74,
+            minExtendedWidth: 216,
+            useIndicator: true,
+            indicatorColor: scheme.primary.withAlpha(isDark ? 62 : 34),
+            selectedIconTheme: IconThemeData(color: scheme.primary, size: 20),
+            unselectedIconTheme: IconThemeData(
+              color: scheme.onSurfaceVariant,
+              size: 19,
             ),
-          )
-          .toList(),
+            selectedLabelTextStyle: TextStyle(
+              color: scheme.primary,
+              fontWeight: FontWeight.w800,
+            ),
+            unselectedLabelTextStyle: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+            ),
+            labelType: collapsed
+                ? NavigationRailLabelType.selected
+                : NavigationRailLabelType.none,
+            leading: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      color: scheme.surface.withAlpha(132),
+                      border: Border.all(color: scheme.outline.withAlpha(84)),
+                    ),
+                    child: IconButton(
+                      tooltip:
+                          collapsed ? 'Expand sidebar' : 'Collapse sidebar',
+                      onPressed: () => unawaited(_toggleSidebar(wide: true)),
+                      icon: Icon(
+                        collapsed
+                            ? Icons.menu_open_rounded
+                            : Icons.menu_rounded,
+                      ),
+                    ),
+                  ),
+                  if (!collapsed) ...[
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.asset(
+                            'assets/icon-192.png',
+                            width: 24,
+                            height: 24,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'SocialFlow',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            trailing: Padding(
+              padding: const EdgeInsets.only(bottom: 12, left: 8, right: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (collapsed) ...[
+                    IconButton(
+                      tooltip: i18n.t('settings.profile', 'Profile'),
+                      onPressed: () => _openProfilePanel(closeDrawer: false),
+                      icon: const Icon(Icons.person_rounded),
+                    ),
+                    IconButton(
+                      tooltip: i18n.t('common.signOut', 'Sign out'),
+                      onPressed: () async {
+                        await widget.onSignOut();
+                      },
+                      icon: const Icon(Icons.logout_rounded),
+                    ),
+                  ] else ...[
+                    SizedBox(
+                      width: 168,
+                      child: OutlinedButton.icon(
+                        onPressed: () => _openProfilePanel(closeDrawer: false),
+                        icon: const Icon(Icons.person_rounded),
+                        label: Text(i18n.t('settings.profile', 'Profile')),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: 168,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          await widget.onSignOut();
+                        },
+                        icon: const Icon(Icons.logout_rounded),
+                        label: Text(i18n.t('common.signOut', 'Sign out')),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            onDestinationSelected: (index) =>
+                unawaited(_onPanelSelected(index)),
+            destinations: kPanelSpecs
+                .map(
+                  (panel) => NavigationRailDestination(
+                    icon: Icon(panel.icon),
+                    selectedIcon: Icon(panel.icon),
+                    label: Text(i18n.t(panel.labelKey, panel.fallbackLabel)),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+      ),
     );
   }
 
@@ -3407,9 +3523,9 @@ class _SocialShellState extends State<SocialShell> {
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(flex: 8, child: recentAutomationsCard()),
+                  Expanded(flex: 1, child: recentAutomationsCard()),
                   const SizedBox(width: 14),
-                  Expanded(flex: 4, child: systemHealthCard()),
+                  Expanded(flex: 1, child: systemHealthCard()),
                 ],
               );
             },
@@ -3430,9 +3546,9 @@ class _SocialShellState extends State<SocialShell> {
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(flex: 7, child: recentExecutionsCard()),
+                  Expanded(flex: 1, child: recentExecutionsCard()),
                   const SizedBox(width: 14),
-                  Expanded(flex: 5, child: topTasksCard()),
+                  Expanded(flex: 1, child: topTasksCard()),
                 ],
               );
             },
@@ -8062,27 +8178,32 @@ class _SocialShellState extends State<SocialShell> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Container(
-                      constraints: const BoxConstraints(maxWidth: 320),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 8),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: scheme.outline.withAlpha(70)),
-                        color: scheme.surface.withAlpha(isDark ? 108 : 208),
-                      ),
-                      child: Text(
-                        caption,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: scheme.onSurfaceVariant,
+                    if (wide) ...[
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 360),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            border:
+                                Border.all(color: scheme.outline.withAlpha(70)),
+                            color: scheme.surface.withAlpha(isDark ? 108 : 208),
+                          ),
+                          child: Text(
+                            caption,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ],
