@@ -105,14 +105,14 @@ class AuthShell extends StatelessWidget {
                                     end: Alignment.bottomRight,
                                     colors: [
                                       Color.alphaBlend(
-                                        scheme.onSurface.withValues(alpha: 
-                                          isDark ? 0.09 : 0.04,
+                                        scheme.onSurface.withValues(
+                                          alpha: isDark ? 0.09 : 0.04,
                                         ),
                                         scheme.surface,
                                       ).withValues(alpha: isDark ? 0.94 : 0.96),
                                       Color.alphaBlend(
-                                        scheme.primary.withValues(alpha: 
-                                          isDark ? 0.17 : 0.08,
+                                        scheme.primary.withValues(
+                                          alpha: isDark ? 0.17 : 0.08,
                                         ),
                                         scheme.surface,
                                       ).withValues(alpha: isDark ? 0.92 : 0.95),
@@ -120,21 +120,21 @@ class AuthShell extends StatelessWidget {
                                   ),
                                   borderRadius: BorderRadius.circular(28),
                                   border: Border.all(
-                                    color: scheme.outline.withValues(alpha: 
-                                      isDark ? 0.46 : 0.36,
+                                    color: scheme.outline.withValues(
+                                      alpha: isDark ? 0.46 : 0.36,
                                     ),
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withValues(alpha: 
-                                        isDark ? 0.30 : 0.08,
+                                      color: Colors.black.withValues(
+                                        alpha: isDark ? 0.30 : 0.08,
                                       ),
                                       blurRadius: 26,
                                       offset: const Offset(0, 14),
                                     ),
                                     BoxShadow(
-                                      color: scheme.primary.withValues(alpha: 
-                                        isDark ? 0.20 : 0.12,
+                                      color: scheme.primary.withValues(
+                                        alpha: isDark ? 0.20 : 0.12,
                                       ),
                                       blurRadius: 32,
                                       offset: const Offset(0, 8),
@@ -207,40 +207,42 @@ class _TopControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final isDark = state.themeMode == AppThemeMode.dark;
-    return Material(
-      color: Color.alphaBlend(
-        scheme.onSurface.withValues(alpha: isDark ? 0.08 : 0.05),
-        scheme.surface,
-      ).withValues(alpha: 0.92),
-      borderRadius: BorderRadius.circular(999),
-      child: Padding(
-        padding: const EdgeInsets.all(6),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              tooltip: state.locale == 'ar' ? 'EN' : 'AR',
-              onPressed: state.toggleLocale,
-              icon: const Icon(Icons.language_rounded, size: 18),
-              constraints: const BoxConstraints.tightFor(width: 38, height: 38),
-            ),
-            const SizedBox(width: 6),
-            IconButton(
-              tooltip: isDark ? 'Light mode' : 'Dark mode',
-              onPressed: state.toggleThemeMode,
-              icon: Icon(
-                isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                size: 18,
-              ),
-              constraints: const BoxConstraints.tightFor(width: 38, height: 38),
-              style: IconButton.styleFrom(
-                backgroundColor: scheme.primary,
-                foregroundColor: scheme.onPrimary,
-              ),
-            ),
-          ],
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: state.locale == 'ar' ? 'EN' : 'AR',
+          onPressed: state.toggleLocale,
+          icon: const Icon(Icons.language_rounded, size: 19),
+          style: IconButton.styleFrom(
+            foregroundColor: scheme.onSurfaceVariant,
+            backgroundColor: Colors.transparent,
+          ),
+          constraints: const BoxConstraints.tightFor(width: 38, height: 38),
         ),
-      ),
+        const SizedBox(width: 6),
+        IconButton(
+          tooltip: isDark ? 'Light mode' : 'Dark mode',
+          onPressed: state.toggleThemeMode,
+          icon: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 170),
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(scale: animation, child: child),
+            ),
+            child: Icon(
+              isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+              key: ValueKey<bool>(isDark),
+              size: 19,
+            ),
+          ),
+          style: IconButton.styleFrom(
+            foregroundColor: isDark ? const Color(0xFFFFD36B) : scheme.primary,
+            backgroundColor: Colors.transparent,
+          ),
+          constraints: const BoxConstraints.tightFor(width: 38, height: 38),
+        ),
+      ],
     );
   }
 }

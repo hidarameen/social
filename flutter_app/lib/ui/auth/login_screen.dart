@@ -8,6 +8,7 @@ import '../../app_state.dart';
 import '../../i18n.dart';
 import '../../storage_keys.dart';
 import 'auth_shell.dart';
+import 'auth_social.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
@@ -39,25 +40,40 @@ class _LoginScreenState extends State<LoginScreen> {
   final FocusNode _passwordFocus = FocusNode();
 
   bool _rememberMe = false;
+  bool _rememberReady = false;
   bool _showPassword = false;
   bool _busy = false;
   bool _needsVerification = false;
+  bool _entered = false;
   String _error = '';
   String _info = '';
 
   @override
   void initState() {
     super.initState();
+    _emailController.addListener(_onEmailChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _entered = true);
+    });
     unawaited(_restoreRememberedEmail());
   }
 
   Future<void> _restoreRememberedEmail() async {
-    final prefs = await SharedPreferences.getInstance();
-    final enabled = prefs.getString(StorageKeys.authRememberEnabled) == '1';
-    final email = prefs.getString(StorageKeys.authRememberEmail) ?? '';
+    String email = '';
+    bool enabled = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      enabled = prefs.getString(StorageKeys.authRememberEnabled) == '1';
+      email = prefs.getString(StorageKeys.authRememberEmail) ?? '';
+    } catch (_) {
+      enabled = false;
+      email = '';
+    }
     if (!mounted) return;
     setState(() {
       _rememberMe = enabled;
+      _rememberReady = true;
       final preferred = (widget.prefillEmail ?? '').trim();
       if (preferred.isNotEmpty) {
         _emailController.text = preferred;
@@ -69,11 +85,52 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _emailController.removeListener(_onEmailChanged);
     _emailController.dispose();
     _passwordController.dispose();
     _emailFocus.dispose();
     _passwordFocus.dispose();
     super.dispose();
+  }
+
+  void _onEmailChanged() {
+    if (!_rememberReady || !_rememberMe) return;
+    unawaited(
+      _persistRememberPreferences(
+        enabled: true,
+        email: _emailController.text.trim().toLowerCase(),
+      ),
+    );
+  }
+
+  Future<void> _persistRememberPreferences({
+    required bool enabled,
+    required String email,
+  }) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (enabled) {
+        await prefs.setString(StorageKeys.authRememberEnabled, '1');
+        if (email.isNotEmpty) {
+          await prefs.setString(StorageKeys.authRememberEmail, email);
+        }
+      } else {
+        await prefs.setString(StorageKeys.authRememberEnabled, '0');
+        await prefs.remove(StorageKeys.authRememberEmail);
+      }
+    } catch (_) {
+      // Ignore storage errors; login should continue.
+    }
+  }
+
+  void _setRememberMe(bool value) {
+    setState(() => _rememberMe = value);
+    unawaited(
+      _persistRememberPreferences(
+        enabled: value,
+        email: _emailController.text.trim().toLowerCase(),
+      ),
+    );
   }
 
   bool _isValidEmail(String value) {
@@ -97,21 +154,13 @@ class _LoginScreenState extends State<LoginScreen> {
       final password = _passwordController.text;
       final session = await widget.api.login(email: email, password: password);
 
-      final prefs = await SharedPreferences.getInstance();
-      if (_rememberMe) {
-        await prefs.setString(StorageKeys.authRememberEnabled, '1');
-        await prefs.setString(StorageKeys.authRememberEmail, email);
-      } else {
-        await prefs.setString(StorageKeys.authRememberEnabled, '0');
-        await prefs.remove(StorageKeys.authRememberEmail);
-      }
+      await _persistRememberPreferences(enabled: _rememberMe, email: email);
 
       await widget.onSignedIn(session);
     } catch (error) {
       if (!mounted) return;
-      final message = error is ApiException
-          ? error.message
-          : 'Unable to sign in.';
+      final message =
+          error is ApiException ? error.message : 'Unable to sign in.';
       final lower = message.toLowerCase();
       setState(() {
         _error = message;
@@ -144,9 +193,8 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error is ApiException
-            ? error.message
-            : 'Unable to resend code.';
+        _error =
+            error is ApiException ? error.message : 'Unable to resend code.';
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -186,240 +234,291 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _FieldFrame(
-                focusNode: _emailFocus,
-                child: TextFormField(
-                  key: const Key('login-email-field'),
-                  controller: _emailController,
+              _staggered(
+                index: 0,
+                child: _FieldFrame(
                   focusNode: _emailFocus,
-                  keyboardType: TextInputType.emailAddress,
-                  autofillHints: const [AutofillHints.email],
-                  textDirection: TextDirection.ltr,
-                  textInputAction: TextInputAction.next,
-                  onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
-                  onTapOutside: (_) =>
-                      FocusManager.instance.primaryFocus?.unfocus(),
-                  decoration: InputDecoration(
-                    labelText: i18n.t('auth.email', 'Email'),
-                    hintText: 'you@example.com',
-                    prefixIcon: const Icon(Icons.mail_outline_rounded),
-                    floatingLabelBehavior: FloatingLabelBehavior.auto,
+                  child: TextFormField(
+                    key: const Key('login-email-field'),
+                    controller: _emailController,
+                    focusNode: _emailFocus,
+                    keyboardType: TextInputType.emailAddress,
+                    autofillHints: const [AutofillHints.email],
+                    textDirection: TextDirection.ltr,
+                    textInputAction: TextInputAction.next,
+                    onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
+                    onTapOutside: (_) =>
+                        FocusManager.instance.primaryFocus?.unfocus(),
+                    decoration: InputDecoration(
+                      labelText: i18n.t('auth.email', 'Email'),
+                      hintText: 'you@example.com',
+                      prefixIcon: const Icon(Icons.alternate_email_rounded),
+                      floatingLabelBehavior: FloatingLabelBehavior.auto,
+                    ),
+                    validator: (value) {
+                      final v = (value ?? '').trim();
+                      if (v.isEmpty) {
+                        return i18n.isArabic
+                            ? 'البريد مطلوب.'
+                            : 'Email is required.';
+                      }
+                      if (!_isValidEmail(v)) {
+                        return i18n.isArabic
+                            ? 'أدخل بريدًا صحيحًا.'
+                            : 'Enter a valid email address.';
+                      }
+                      return null;
+                    },
                   ),
-                  validator: (value) {
-                    final v = (value ?? '').trim();
-                    if (v.isEmpty) {
-                      return i18n.isArabic
-                          ? 'البريد مطلوب.'
-                          : 'Email is required.';
-                    }
-                    if (!_isValidEmail(v)) {
-                      return i18n.isArabic
-                          ? 'أدخل بريدًا صحيحًا.'
-                          : 'Enter a valid email address.';
-                    }
-                    return null;
-                  },
                 ),
               ),
               const SizedBox(height: 12),
-              _FieldFrame(
-                focusNode: _passwordFocus,
-                child: TextFormField(
-                  key: const Key('login-password-field'),
-                  controller: _passwordController,
+              _staggered(
+                index: 1,
+                child: _FieldFrame(
                   focusNode: _passwordFocus,
-                  obscureText: !_showPassword,
-                  autofillHints: const [AutofillHints.password],
-                  textDirection: TextDirection.ltr,
-                  textInputAction: TextInputAction.done,
-                  onFieldSubmitted: (_) => _submit(),
-                  onTapOutside: (_) =>
-                      FocusManager.instance.primaryFocus?.unfocus(),
-                  decoration: InputDecoration(
-                    labelText: i18n.t('auth.password', 'Password'),
-                    hintText: '••••••••',
-                    prefixIcon: const Icon(Icons.lock_outline_rounded),
-                    floatingLabelBehavior: FloatingLabelBehavior.auto,
-                    suffixIcon: IconButton(
-                      onPressed: _busy
-                          ? null
-                          : () =>
+                  child: TextFormField(
+                    key: const Key('login-password-field'),
+                    controller: _passwordController,
+                    focusNode: _passwordFocus,
+                    obscureText: !_showPassword,
+                    autofillHints: const [AutofillHints.password],
+                    textDirection: TextDirection.ltr,
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) => _submit(),
+                    onTapOutside: (_) =>
+                        FocusManager.instance.primaryFocus?.unfocus(),
+                    decoration: InputDecoration(
+                      labelText: i18n.t('auth.password', 'Password'),
+                      hintText: '••••••••',
+                      prefixIcon: const Icon(Icons.password_rounded),
+                      floatingLabelBehavior: FloatingLabelBehavior.auto,
+                      suffixIcon: IconButton(
+                        onPressed: _busy
+                            ? null
+                            : () =>
                                 setState(() => _showPassword = !_showPassword),
-                      icon: Icon(
-                        _showPassword
-                            ? Icons.visibility_off_rounded
-                            : Icons.visibility_rounded,
+                        icon: Icon(
+                          _showPassword
+                              ? Icons.visibility_off_rounded
+                              : Icons.visibility_rounded,
+                        ),
                       ),
                     ),
+                    validator: (value) {
+                      if ((value ?? '').isEmpty) {
+                        return i18n.isArabic
+                            ? 'كلمة المرور مطلوبة.'
+                            : 'Password is required.';
+                      }
+                      return null;
+                    },
                   ),
-                  validator: (value) {
-                    if ((value ?? '').isEmpty) {
-                      return i18n.isArabic
-                          ? 'كلمة المرور مطلوبة.'
-                          : 'Password is required.';
-                    }
-                    return null;
-                  },
                 ),
               ),
               const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  color: Color.alphaBlend(
-                    scheme.onSurface.withValues(alpha: 0.03),
-                    scheme.surface,
+              _staggered(
+                index: 2,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    color: Color.alphaBlend(
+                      scheme.onSurface.withValues(alpha: 0.03),
+                      scheme.surface,
+                    ),
+                    border: Border.all(
+                        color: scheme.outline.withValues(alpha: 0.28)),
                   ),
-                  border: Border.all(color: scheme.outline.withValues(alpha: 0.28)),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.bookmark_add_outlined,
+                              size: 16,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 6),
+                            Switch.adaptive(
+                              value: _rememberMe,
+                              onChanged: _busy ? null : _setRememberMe,
+                            ),
+                            Expanded(
+                              child: Text(
+                                i18n.t('auth.rememberMe', 'Remember me'),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _busy ? null : widget.onGoToForgotPassword,
+                        child: Text(
+                          i18n.t('auth.forgotPassword', 'Forgot password?'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+              ),
+              const SizedBox(height: 12),
+              if (_error.isNotEmpty)
+                _staggered(
+                  index: 3,
+                  child: _InlineBanner(
+                    text: _error,
+                    icon: Icons.error_outline_rounded,
+                    color: scheme.error,
+                  ),
+                ),
+              if (_info.isNotEmpty)
+                _staggered(
+                  index: 4,
+                  child: _InlineBanner(
+                    text: _info,
+                    icon: Icons.check_circle_outline_rounded,
+                    color: scheme.primary,
+                  ),
+                ),
+              if (_needsVerification)
+                _staggered(
+                  index: 5,
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      color: scheme.primary.withValues(alpha: 0.12),
+                      border: Border.all(
+                          color: scheme.primary.withValues(alpha: 0.28)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          i18n.t(
+                            'auth.verificationRequired',
+                            'Verification Required',
+                          ),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          i18n.isArabic
+                              ? 'تحقق من بريدك الإلكتروني ثم سجّل الدخول.'
+                              : 'Verify your email first, then sign in.',
+                          style: TextStyle(color: scheme.onSurfaceVariant),
+                        ),
+                        const SizedBox(height: 10),
+                        OutlinedButton(
+                          onPressed: _busy ? null : _resendVerification,
+                          child: Text(i18n.t('auth.resendCode', 'Resend Code')),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              _staggered(
+                index: 6,
+                child: _GradientCtaButton(
+                  key: const Key('login-submit-button'),
+                  label: i18n.t('auth.signIn', 'Sign In'),
+                  loadingLabel:
+                      i18n.isArabic ? 'جاري تسجيل الدخول...' : 'Signing in...',
+                  loading: _busy,
+                  onPressed: _busy ? null : _submit,
+                ),
+              ),
+              const SizedBox(height: 14),
+              _staggered(
+                index: 7,
                 child: Row(
                   children: [
                     Expanded(
-                      child: Row(
-                        children: [
-                          Switch.adaptive(
-                            value: _rememberMe,
-                            onChanged: _busy
-                                ? null
-                                : (v) => setState(() => _rememberMe = v),
-                          ),
-                          Expanded(
-                            child: Text(
-                              i18n.t('auth.rememberMe', 'Remember me'),
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: scheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                        ],
+                      child: Divider(
+                          color: scheme.outline.withValues(alpha: 0.36)),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Text(
+                        'Or continue with',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                    TextButton(
-                      onPressed: _busy ? null : widget.onGoToForgotPassword,
-                      child: Text(
-                        i18n.t('auth.forgotPassword', 'Forgot password?'),
-                      ),
+                    Expanded(
+                      child: Divider(
+                          color: scheme.outline.withValues(alpha: 0.36)),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 12),
-              if (_error.isNotEmpty)
-                _InlineBanner(
-                  text: _error,
-                  icon: Icons.error_outline_rounded,
-                  color: scheme.error,
-                ),
-              if (_info.isNotEmpty)
-                _InlineBanner(
-                  text: _info,
-                  icon: Icons.check_circle_outline_rounded,
-                  color: scheme.primary,
-                ),
-              if (_needsVerification)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    color: scheme.primary.withValues(alpha: 0.12),
-                    border: Border.all(color: scheme.primary.withValues(alpha: 0.28)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        i18n.t(
-                          'auth.verificationRequired',
-                          'Verification Required',
-                        ),
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: scheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        i18n.isArabic
-                            ? 'تحقق من بريدك الإلكتروني ثم سجّل الدخول.'
-                            : 'Verify your email first, then sign in.',
-                        style: TextStyle(color: scheme.onSurfaceVariant),
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton(
-                        onPressed: _busy ? null : _resendVerification,
-                        child: Text(i18n.t('auth.resendCode', 'Resend Code')),
-                      ),
-                    ],
-                  ),
-                ),
-              _GradientCtaButton(
-                key: const Key('login-submit-button'),
-                label: i18n.t('auth.signIn', 'Sign In'),
-                loadingLabel: i18n.isArabic
-                    ? 'جاري تسجيل الدخول...'
-                    : 'Signing in...',
-                loading: _busy,
-                onPressed: _busy ? null : _submit,
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: Divider(color: scheme.outline.withValues(alpha: 0.36)),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: Text(
-                      'Or continue with',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: scheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w600,
-                      ),
+              _staggered(
+                index: 8,
+                child: Column(
+                  children: [
+                    SocialAuthButton(
+                      provider: SocialProvider.google,
+                      label: 'Continue with Google',
+                      onPressed: () => _showSocialMessage('Google'),
                     ),
-                  ),
-                  Expanded(
-                    child: Divider(color: scheme.outline.withValues(alpha: 0.36)),
-                  ),
-                ],
+                    const SizedBox(height: 10),
+                    SocialAuthButton(
+                      provider: SocialProvider.apple,
+                      label: 'Continue with Apple',
+                      onPressed: () => _showSocialMessage('Apple'),
+                    ),
+                    const SizedBox(height: 10),
+                    SocialAuthButton(
+                      provider: SocialProvider.x,
+                      label: 'Continue with X',
+                      onPressed: () => _showSocialMessage('X'),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _SocialCircleButton(
-                    icon: Icons.g_mobiledata_rounded,
-                    label: 'Google',
-                    onTap: () => _showSocialMessage('Google'),
+              _staggered(
+                index: 9,
+                child: TextButton(
+                  onPressed: _busy ? null : widget.onGoToRegister,
+                  child: Text(
+                    "Don't have an account? Create Account",
+                    textAlign: TextAlign.center,
                   ),
-                  const SizedBox(width: 12),
-                  _SocialCircleButton(
-                    icon: Icons.apple_rounded,
-                    label: 'Apple',
-                    onTap: () => _showSocialMessage('Apple'),
-                  ),
-                  const SizedBox(width: 12),
-                  _SocialCircleButton(
-                    icon: Icons.alternate_email_rounded,
-                    label: 'X',
-                    onTap: () => _showSocialMessage('X'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: _busy ? null : widget.onGoToRegister,
-                child: Text(
-                  "Don't have an account? Create Account",
-                  textAlign: TextAlign.center,
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _staggered({required int index, required Widget child}) {
+    final duration = Duration(milliseconds: 260 + (index * 45));
+    return AnimatedSlide(
+      duration: duration,
+      curve: Curves.easeOutCubic,
+      offset: _entered ? Offset.zero : const Offset(0, 0.06),
+      child: AnimatedOpacity(
+        duration: duration,
+        opacity: _entered ? 1 : 0,
+        child: child,
       ),
     );
   }
@@ -574,43 +673,6 @@ class _GradientCtaButton extends StatelessWidget {
                     const Icon(Icons.arrow_forward_rounded, size: 18),
                   ],
                 ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SocialCircleButton extends StatelessWidget {
-  const _SocialCircleButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Tooltip(
-      message: label,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Ink(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: scheme.outline.withValues(alpha: 0.32)),
-            color: Color.alphaBlend(
-              scheme.onSurface.withValues(alpha: 0.02),
-              scheme.surface,
-            ),
-          ),
-          child: Icon(icon, size: 22, color: scheme.onSurfaceVariant),
         ),
       ),
     );

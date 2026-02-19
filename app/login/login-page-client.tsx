@@ -10,6 +10,7 @@ import { AuthShell } from '@/components/auth/auth-shell';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { useLanguage } from '@/components/i18n/language-provider';
 
 const REMEMBER_EMAIL_KEY = 'socialflow_auth_remember_email';
@@ -31,6 +32,23 @@ function readRememberPreferences() {
     };
   } catch {
     return { rememberEnabled: false, rememberedEmail: '' };
+  }
+}
+
+function writeRememberPreferences(rememberEnabled: boolean, email: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (rememberEnabled) {
+      window.localStorage.setItem(REMEMBER_ENABLED_KEY, '1');
+      if (email.trim()) {
+        window.localStorage.setItem(REMEMBER_EMAIL_KEY, email.trim().toLowerCase());
+      }
+      return;
+    }
+    window.localStorage.removeItem(REMEMBER_ENABLED_KEY);
+    window.localStorage.removeItem(REMEMBER_EMAIL_KEY);
+  } catch {
+    // ignore storage failures
   }
 }
 
@@ -175,13 +193,7 @@ export default function LoginPageClient({
       return;
     }
 
-    if (rememberMe) {
-      window.localStorage.setItem(REMEMBER_ENABLED_KEY, '1');
-      window.localStorage.setItem(REMEMBER_EMAIL_KEY, normalizedEmail);
-    } else {
-      window.localStorage.removeItem(REMEMBER_ENABLED_KEY);
-      window.localStorage.removeItem(REMEMBER_EMAIL_KEY);
-    }
+    writeRememberPreferences(rememberMe, normalizedEmail);
     setLoading(false);
     setRedirecting(true);
     const redirectTarget = (() => {
@@ -250,6 +262,9 @@ export default function LoginPageClient({
             value={email}
             onChange={(e) => {
               setEmail(e.target.value);
+              if (rememberMe) {
+                writeRememberPreferences(true, e.target.value);
+              }
               if (emailError) setEmailError('');
               if (error) setError('');
             }}
@@ -304,12 +319,14 @@ export default function LoginPageClient({
 
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
           <label htmlFor="login-remember-me" className="inline-flex cursor-pointer items-center gap-2 text-muted-foreground">
-            <input
+            <Switch
               id="login-remember-me"
-              type="checkbox"
               checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-              className="h-4 w-4 rounded border-input accent-primary"
+              onCheckedChange={(checked) => {
+                const nextValue = Boolean(checked);
+                setRememberMe(nextValue);
+                writeRememberPreferences(nextValue, email);
+              }}
               disabled={isBusy}
             />
             {isArabic ? 'تذكرني' : 'Remember me'}
