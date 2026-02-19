@@ -314,3 +314,115 @@ This report replaces previous fragmented README files with a single organized te
 ### ملاحظة مهنية مهمة
 طلب "اكتشاف 19000 عيب مؤكد" لا يمكن تنفيذه بشكل صادق بدون اختلاق بيانات.  
 التقرير الحالي يعطي نتائج **قابلة للقياس والتحقق** من الكود الحالي، مع أرقام حقيقية ومراجع ملفات مباشرة، ويغطي الويب Next.js بشكل صريح.
+
+## 15) UI Logic Walkthrough (Settings + Tasks)
+
+This section explains the runtime logic of the two panels you asked for: Settings and Tasks.
+
+### A) Settings Panel Logic
+Reference: `app/settings/page.tsx`
+
+1. Initial loading behavior
+- On mount, the page loads user email from session (`useSession`).
+- It fetches platform credentials from `GET /api/platform-credentials`.
+- It fetches Outstand config from `GET /api/outstand-settings`.
+- Both requests handle loading and error states, and show toast errors on failure.
+
+2. Platform Credentials section
+- User selects a platform (`twitter`, `facebook`, `instagram`, `youtube`, `tiktok`, `linkedin`).
+- The form fields shown are dynamic per platform (client id/secret, api keys, tokens, etc.).
+- On save:
+  - It sanitizes values (trim + keep non-empty values only).
+  - Sends `PUT /api/platform-credentials` with `{ platformId, credentials }`.
+  - Updates local state with normalized response and shows success toast.
+
+3. Outstand Integration section
+- Includes:
+  - `enabled` switch
+  - `apiKey`
+  - `baseUrl`
+  - `tenantId`
+  - platform selection chips
+  - `applyToAllAccounts` switch
+- Platform chips toggle selection in local state.
+- On save, it sends `PUT /api/outstand-settings` with all fields above.
+- Returned settings are normalized and reloaded into UI state.
+
+4. Account / Appearance / Workspace / Notifications / Privacy / Storage
+- Account email is read-only from session.
+- Timezone is currently local settings state.
+- Theme toggle uses `next-themes` (`light` / `dark`).
+- Theme preset uses theme provider (`useThemePreset`).
+- Workspace toggles use shell preferences (`reducedMotion`, `sidebarCollapsed`).
+- Notifications/privacy/storage controls are currently local UI state unless backed by dedicated API.
+- `Save All Changes` currently shows confirmation toast (global persistence is partial by section).
+
+### B) Tasks Panel Logic (List)
+Reference: `app/tasks/page.tsx`
+
+1. Data loading
+- Fetches tasks from `GET /api/tasks` with server-side params:
+  - `search` (debounced),
+  - `status`,
+  - `sortBy`,
+  - `sortDir`,
+  - pagination (`limit`, `offset`).
+- Uses short-lived client cache (`getCachedQuery` / `setCachedQuery`) to reduce repeated network calls.
+
+2. UI filtering pipeline
+- Server filters: search/status/sort.
+- Client filters: platform, last-run window (`24h`, `7d`, `never`), issue type (`errors`, `warnings`).
+- Final displayed list is `filteredTasks`.
+
+3. Row actions
+- Enable/disable task: `PATCH /api/tasks/:id` with new status.
+- Delete task: `DELETE /api/tasks/:id`.
+- View execution logs: route to `/executions?taskId=...`.
+- Edit task: route to `/tasks/:id/edit`.
+- Export CSV: `/api/tasks/export`.
+- Load more: fetches next page and appends.
+
+### C) Task Create / Edit Wizard Logic
+References:
+- `app/tasks/new/page.tsx`
+- `app/tasks/[id]/edit/page.tsx`
+- `components/tasks/task-wizard.tsx`
+
+1. Entry points
+- Create page mounts `TaskWizard` in `mode="create"`.
+- Edit page mounts `TaskWizard` in `mode="edit"` (task id from route).
+
+2. Wizard structure (5 steps)
+- Step 1: Task basics (name/description).
+- Step 2: Source accounts.
+- Step 3: Triggers + filters + media rules.
+- Step 4: Target accounts.
+- Step 5: Action/delivery details (Twitter/YouTube/Telegram options, etc.).
+
+3. Validation rules
+- Step 1: task name required.
+- Step 2: at least one source; source and target cannot overlap.
+- Step 3: platform-specific trigger validation:
+  - Twitter trigger/username requirements.
+  - Telegram source must have chat identifier (ID / @username / t.me) directly or from account credentials.
+- Step 4: at least one target; no source-target overlap.
+- Step 5:
+  - YouTube playlist required if "upload to playlist" enabled.
+  - Telegram target must have chat identifier directly or from account credentials.
+
+4. Save behavior by mode
+- Edit mode:
+  - On each Next, current state is validated then `PATCH /api/tasks/:id` is sent.
+  - This gives step-by-step server save behavior.
+- Create mode:
+  - Uses local draft persistence (`socialflow:task-wizard:create`) while user moves between steps.
+  - On final submit, sends `POST /api/tasks` with full payload + `status: active`.
+  - If backend detects duplicate, UI shows "task reused" success message.
+
+5. Payload composition
+- Wizard composes a structured request body including:
+  - `name`, `description`,
+  - `sourceAccounts`, `targetAccounts`,
+  - `transformations` (template, media, twitter actions, youtube actions/video metadata, telegram target chat ids),
+  - `filters` (trigger and platform-specific conditions),
+  - schedule-related fields (when applicable).
