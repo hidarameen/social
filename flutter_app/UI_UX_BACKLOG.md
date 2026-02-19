@@ -79,11 +79,11 @@ This file tracks concrete UI/UX upgrades for the Flutter APK, aligned with Mater
 69. [DONE] Accounts: add “copy username” action.
 70. [PLANNED] Accounts: add “open platform profile” action if URL exists.
 
-71. [PLANNED] Executions: add status filter chips (Success, Failed, Running, Pending).
-72. [PLANNED] Executions: add search debounce (reduce rebuilds on every keypress).
+71. [DONE] Executions: add status filter chips (Success, Failed, Running, Pending).
+72. [DONE] Executions: add search debounce (reduce rebuilds on every keypress).
 73. [PLANNED] Executions: add details view with logs, payload, and error stack.
 74. [PLANNED] Executions: add "retry execution" (if backend supports).
-75. [PLANNED] Executions: add "copy error" and "share report" actions.
+75. [DONE] Executions: add "copy error" and "share report" actions.
 76. [PLANNED] Executions: add timeline rendering (queued -> running -> done).
 77. [PLANNED] Executions: show source/target accounts with platform chips.
 78. [PLANNED] Executions: add pagination/infinite scroll with visible loading footer.

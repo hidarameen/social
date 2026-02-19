@@ -938,13 +938,16 @@ class _SocialShellState extends State<SocialShell> {
   final TextEditingController _accountsSearchController = TextEditingController();
   String _accountsQuery = '';
   String _accountsStatusFilter = 'all';
+  final TextEditingController _executionsSearchController = TextEditingController();
   String _executionsQuery = '';
+  String _executionsStatusFilter = 'all';
   String _analyticsQuery = '';
   String _analyticsSortBy = 'successRate';
   String _analyticsSortDir = 'desc';
   int _analyticsOffset = 0;
   bool _analyticsHasMore = false;
   bool _analyticsLoadingMore = false;
+  Timer? _executionsDebounceTimer;
   Timer? _analyticsDebounceTimer;
   final TextEditingController _analyticsSearchController = TextEditingController();
   final Map<String, String> _taskActionState = <String, String>{};
@@ -981,6 +984,7 @@ class _SocialShellState extends State<SocialShell> {
     super.initState();
     _tasksSearchController.text = _tasksQuery;
     _accountsSearchController.text = _accountsQuery;
+    _executionsSearchController.text = _executionsQuery;
     _analyticsSearchController.text = _analyticsQuery;
     unawaited(_loadCurrentPanel(force: true));
 
@@ -998,9 +1002,11 @@ class _SocialShellState extends State<SocialShell> {
   void dispose() {
     _dashboardRefreshTimer?.cancel();
     _tasksDebounceTimer?.cancel();
+    _executionsDebounceTimer?.cancel();
     _analyticsDebounceTimer?.cancel();
     _tasksSearchController.dispose();
     _accountsSearchController.dispose();
+    _executionsSearchController.dispose();
     _analyticsSearchController.dispose();
     _settingsNameController.dispose();
     _settingsImageUrlController.dispose();
@@ -1575,6 +1581,16 @@ class _SocialShellState extends State<SocialShell> {
     _tasksDebounceTimer = Timer(const Duration(milliseconds: 300), () {
       if (!mounted) return;
       unawaited(_loadTasksPage(reset: true, showPanelLoading: true));
+    });
+  }
+
+  void _onExecutionsQueryChanged(String value) {
+    final next = value.trim();
+    _executionsDebounceTimer?.cancel();
+    _executionsDebounceTimer = Timer(const Duration(milliseconds: 220), () {
+      if (!mounted) return;
+      if (_executionsQuery == next) return;
+      setState(() => _executionsQuery = next);
     });
   }
 
@@ -3781,6 +3797,7 @@ class _SocialShellState extends State<SocialShell> {
                                               if (idx < 0) return;
                                               setState(() {
                                                 _executionsQuery = task['name']?.toString() ?? '';
+                                                _executionsSearchController.text = _executionsQuery;
                                                 _selectedIndex = idx;
                                               });
                                               unawaited(_loadPanel(PanelKind.executions, force: true));
@@ -4129,20 +4146,137 @@ class _SocialShellState extends State<SocialShell> {
 
   Widget _buildExecutions(Map<String, dynamic> data) {
     final i18n = _i18n(context);
-    final executions = data['executions'] is List
+    final scheme = Theme.of(context).colorScheme;
+    final executionsRaw = data['executions'] is List
         ? (data['executions'] as List)
         : const <dynamic>[];
+    final executions = executionsRaw
+        .map((raw) => raw is Map<String, dynamic> ? raw : Map<String, dynamic>.from(raw as Map))
+        .toList();
 
-    final filtered = executions.where((raw) {
-      final item = raw is Map<String, dynamic>
-          ? raw
-          : Map<String, dynamic>.from(raw as Map);
+    String normalizeStatus(String status) {
+      final v = status.trim().toLowerCase();
+      if (v.contains('success') || v.contains('completed') || v.contains('done')) {
+        return 'success';
+      }
+      if (v.contains('fail') || v.contains('error')) return 'failed';
+      if (v.contains('running') || v.contains('processing') || v.contains('progress')) {
+        return 'running';
+      }
+      if (v.contains('pending') || v.contains('queued') || v.contains('wait')) {
+        return 'pending';
+      }
+      return 'other';
+    }
+
+    bool matchesStatus(Map<String, dynamic> item) {
+      if (_executionsStatusFilter == 'all') return true;
+      final normalized = normalizeStatus(item['status']?.toString() ?? '');
+      return normalized == _executionsStatusFilter;
+    }
+
+    bool matchesQuery(Map<String, dynamic> item) {
       if (_executionsQuery.isEmpty) return true;
       final query = _executionsQuery.toLowerCase();
       final taskName = item['taskName']?.toString().toLowerCase() ?? '';
       final status = item['status']?.toString().toLowerCase() ?? '';
-      return taskName.contains(query) || status.contains(query);
+      final source = item['sourceAccountName']?.toString().toLowerCase() ?? '';
+      final target = item['targetAccountName']?.toString().toLowerCase() ?? '';
+      return taskName.contains(query) ||
+          status.contains(query) ||
+          source.contains(query) ||
+          target.contains(query);
+    }
+
+    final filtered = executions.where((item) {
+      return matchesQuery(item) && matchesStatus(item);
     }).toList();
+
+    final total = executions.length;
+    final successCount =
+        executions.where((e) => normalizeStatus(e['status']?.toString() ?? '') == 'success').length;
+    final failedCount =
+        executions.where((e) => normalizeStatus(e['status']?.toString() ?? '') == 'failed').length;
+    final runningCount =
+        executions.where((e) => normalizeStatus(e['status']?.toString() ?? '') == 'running').length;
+    final pendingCount =
+        executions.where((e) => normalizeStatus(e['status']?.toString() ?? '') == 'pending').length;
+    final hasExecutionFilters = _executionsQuery.isNotEmpty || _executionsStatusFilter != 'all';
+
+    String statusLabel(String normalized) {
+      if (normalized == 'success') return i18n.isArabic ? 'نجاح' : 'Success';
+      if (normalized == 'failed') return i18n.isArabic ? 'فشل' : 'Failed';
+      if (normalized == 'running') return i18n.isArabic ? 'قيد التشغيل' : 'Running';
+      if (normalized == 'pending') return i18n.isArabic ? 'معلّق' : 'Pending';
+      return i18n.isArabic ? 'أخرى' : 'Other';
+    }
+
+    Color statusTone(String normalized) {
+      if (normalized == 'success') return Colors.green.shade700;
+      if (normalized == 'failed') return scheme.error;
+      if (normalized == 'running') return scheme.primary;
+      if (normalized == 'pending') return Colors.orange.shade700;
+      return scheme.onSurfaceVariant;
+    }
+
+    String formatWhen(dynamic value) {
+      final raw = value?.toString().trim() ?? '';
+      if (raw.isEmpty) return i18n.isArabic ? 'غير متاح' : 'Unknown time';
+      final date = DateTime.tryParse(raw);
+      if (date == null) return raw;
+      final local = date.toLocal();
+      final day = '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+      final time = MaterialLocalizations.of(context).formatTimeOfDay(
+        TimeOfDay.fromDateTime(local),
+        alwaysUse24HourFormat: true,
+      );
+      return '$day $time';
+    }
+
+    String formatDuration(Map<String, dynamic> execution) {
+      final ms = _readInt(execution['durationMs'], fallback: -1);
+      if (ms > 0) {
+        if (ms < 1000) return '${ms}ms';
+        final sec = ms / 1000.0;
+        if (sec < 60) return '${sec.toStringAsFixed(sec >= 10 ? 0 : 1)}s';
+        final minutes = (sec / 60).floor();
+        final seconds = (sec % 60).round();
+        return '${minutes}m ${seconds}s';
+      }
+      final sec = _readDouble(execution['durationSeconds'], fallback: -1);
+      if (sec > 0) {
+        if (sec < 60) return '${sec.toStringAsFixed(sec >= 10 ? 0 : 1)}s';
+        final minutes = (sec / 60).floor();
+        final seconds = (sec % 60).round();
+        return '${minutes}m ${seconds}s';
+      }
+      return '-';
+    }
+
+    Future<void> copyExecutionReport(Map<String, dynamic> execution) async {
+      final taskName = execution['taskName']?.toString().trim();
+      final statusText = execution['status']?.toString() ?? 'unknown';
+      final sourceName = execution['sourceAccountName']?.toString() ?? 'Unknown source';
+      final targetName = execution['targetAccountName']?.toString() ?? 'Unknown target';
+      final when = formatWhen(execution['executedAt'] ?? execution['createdAt'] ?? execution['updatedAt']);
+      final errorText = (execution['error']?.toString() ??
+              execution['errorMessage']?.toString() ??
+              execution['lastError']?.toString() ??
+              '')
+          .trim();
+
+      final lines = <String>[
+        'Task: ${(taskName == null || taskName.isEmpty) ? 'Task execution' : taskName}',
+        'Status: $statusText',
+        'Route: $sourceName -> $targetName',
+        'When: $when',
+      ];
+      if (errorText.isNotEmpty) {
+        lines.add('Error: $errorText');
+      }
+      await Clipboard.setData(ClipboardData(text: lines.join('\n')));
+      _toast(i18n.isArabic ? 'تم نسخ تقرير التنفيذ.' : 'Execution report copied');
+    }
 
     Widget searchCard() {
       return SfPanelCard(
@@ -4163,11 +4297,57 @@ class _SocialShellState extends State<SocialShell> {
             ),
             const SizedBox(height: 12),
             TextField(
+              controller: _executionsSearchController,
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search_rounded),
                 hintText: i18n.t('executions.searchHint', 'Search by task name or status'),
               ),
-              onChanged: (value) => setState(() => _executionsQuery = value.trim()),
+              onChanged: _onExecutionsQueryChanged,
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                SfBadge('${i18n.t('executions.total', 'Total')}: $total', tone: scheme.onSurface),
+                ChoiceChip(
+                  label: Text(i18n.isArabic ? 'الكل' : 'All'),
+                  selected: _executionsStatusFilter == 'all',
+                  onSelected: (_) => setState(() => _executionsStatusFilter = 'all'),
+                ),
+                ChoiceChip(
+                  label: Text('${statusLabel('success')} ($successCount)'),
+                  selected: _executionsStatusFilter == 'success',
+                  onSelected: (_) => setState(() => _executionsStatusFilter = 'success'),
+                ),
+                ChoiceChip(
+                  label: Text('${statusLabel('failed')} ($failedCount)'),
+                  selected: _executionsStatusFilter == 'failed',
+                  onSelected: (_) => setState(() => _executionsStatusFilter = 'failed'),
+                ),
+                ChoiceChip(
+                  label: Text('${statusLabel('running')} ($runningCount)'),
+                  selected: _executionsStatusFilter == 'running',
+                  onSelected: (_) => setState(() => _executionsStatusFilter = 'running'),
+                ),
+                ChoiceChip(
+                  label: Text('${statusLabel('pending')} ($pendingCount)'),
+                  selected: _executionsStatusFilter == 'pending',
+                  onSelected: (_) => setState(() => _executionsStatusFilter = 'pending'),
+                ),
+                if (hasExecutionFilters)
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _executionsQuery = '';
+                        _executionsSearchController.text = '';
+                        _executionsStatusFilter = 'all';
+                      });
+                    },
+                    icon: const Icon(Icons.filter_alt_off_rounded),
+                    label: Text(i18n.isArabic ? 'مسح الفلاتر' : 'Clear Filters'),
+                  ),
+              ],
             ),
           ],
         ),
@@ -4176,34 +4356,145 @@ class _SocialShellState extends State<SocialShell> {
 
     Widget executionTile(Map<String, dynamic> execution) {
       final statusText = execution['status']?.toString() ?? 'unknown';
-      final statusColor = _statusColor(statusText);
+      final normalized = normalizeStatus(statusText);
+      final statusColor = statusTone(normalized);
       final taskName = execution['taskName']?.toString().trim();
-      final when = execution['executedAt']?.toString().trim();
+      final sourceName = execution['sourceAccountName']?.toString().trim();
+      final targetName = execution['targetAccountName']?.toString().trim();
+      final when = formatWhen(execution['executedAt'] ?? execution['createdAt'] ?? execution['updatedAt']);
+      final duration = formatDuration(execution);
+      final errorText = (execution['error']?.toString() ??
+              execution['errorMessage']?.toString() ??
+              execution['lastError']?.toString() ??
+              '')
+          .trim();
       final title = (taskName == null || taskName.isEmpty)
           ? i18n.t('executions.item', 'Task execution')
           : taskName;
 
       return Card(
         margin: const EdgeInsets.only(bottom: 10),
-        child: ListTile(
-          leading: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              color: statusColor.withOpacity(0.12),
-              border: Border.all(color: statusColor.withOpacity(0.26)),
-            ),
-            child: Icon(Icons.history_rounded, color: statusColor),
-          ),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
-          subtitle: Text(when ?? ''),
-          trailing: SfBadge(
-            statusText,
-            tone: statusColor,
-            icon: statusText.toLowerCase().contains('fail') || statusText.toLowerCase().contains('error')
-                ? Icons.error_outline_rounded
-                : Icons.check_circle_outline_rounded,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      color: statusColor.withOpacity(0.12),
+                      border: Border.all(color: statusColor.withOpacity(0.26)),
+                    ),
+                    child: Icon(Icons.history_rounded, color: statusColor),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            SfBadge(
+                              statusLabel(normalized),
+                              tone: statusColor,
+                              icon: normalized == 'failed'
+                                  ? Icons.error_outline_rounded
+                                  : (normalized == 'success'
+                                      ? Icons.check_circle_outline_rounded
+                                      : Icons.hourglass_top_rounded),
+                            ),
+                            SfBadge(
+                              '${i18n.isArabic ? 'المدة' : 'Duration'}: $duration',
+                              tone: scheme.onSurfaceVariant,
+                              icon: Icons.timer_outlined,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: i18n.isArabic ? 'نسخ التقرير' : 'Copy report',
+                    onPressed: () => unawaited(copyExecutionReport(execution)),
+                    icon: const Icon(Icons.copy_all_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(Icons.compare_arrows_rounded, size: 16, color: scheme.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '${sourceName == null || sourceName.isEmpty ? 'Unknown source' : sourceName} -> ${targetName == null || targetName.isEmpty ? 'Unknown target' : targetName}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.schedule_rounded, size: 16, color: scheme.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      when,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: scheme.onSurfaceVariant),
+                    ),
+                  ),
+                ],
+              ),
+              if (errorText.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: scheme.error.withAlpha((0.10 * 255).round()),
+                    border: Border.all(color: scheme.error.withAlpha((0.22 * 255).round())),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.error_outline_rounded, color: scheme.error, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          errorText,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: scheme.error, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: i18n.isArabic ? 'نسخ الخطأ' : 'Copy error',
+                        onPressed: () async {
+                          await Clipboard.setData(ClipboardData(text: errorText));
+                          _toast(i18n.isArabic ? 'تم نسخ الخطأ.' : 'Error copied');
+                        },
+                        icon: const Icon(Icons.content_copy_rounded, size: 18),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       );
@@ -4222,14 +4513,21 @@ class _SocialShellState extends State<SocialShell> {
               'executions.empty.subtitle',
               'Once tasks run, execution history will appear here.',
             ),
+            primary: hasExecutionFilters
+                ? OutlinedButton(
+                    onPressed: () {
+                      setState(() {
+                        _executionsQuery = '';
+                        _executionsSearchController.text = '';
+                        _executionsStatusFilter = 'all';
+                      });
+                    },
+                    child: Text(i18n.isArabic ? 'مسح الفلاتر' : 'Clear Filters'),
+                  )
+                : null,
           )
         else
-          ...filtered.take(120).map((raw) {
-            final item = raw is Map<String, dynamic>
-                ? raw
-                : Map<String, dynamic>.from(raw as Map);
-            return executionTile(item);
-          }),
+          ...filtered.take(120).map(executionTile),
       ],
     );
   }
@@ -5273,22 +5571,6 @@ class _SocialShellState extends State<SocialShell> {
     if (normalized.contains('reddit')) return 'Reddit';
     if (normalized.contains('pinterest')) return 'Pinterest';
     return platformId.trim().isEmpty ? 'Unknown' : platformId.trim();
-  }
-
-  Color _statusColor(String status) {
-    final normalized = status.toLowerCase();
-    if (normalized.contains('success') ||
-        normalized.contains('active') ||
-        normalized.contains('completed')) {
-      return Colors.green;
-    }
-    if (normalized.contains('error') || normalized.contains('failed')) {
-      return Colors.red;
-    }
-    if (normalized.contains('paused')) {
-      return Colors.orange;
-    }
-    return Colors.blueGrey;
   }
 
   Widget _buildCurrentPanel() {
