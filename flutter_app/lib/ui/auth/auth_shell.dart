@@ -64,12 +64,14 @@ class AuthShell extends StatelessWidget {
             Positioned(
               top: -70,
               right: -50,
-              child: _GlowOrb(color: _primary.withOpacity(isDark ? 0.33 : 0.20), size: 210),
+              child: _GlowOrb(
+                  color: _primary.withOpacity(isDark ? 0.33 : 0.20), size: 210),
             ),
             Positioned(
               bottom: -90,
               left: -60,
-              child: _GlowOrb(color: _accent.withOpacity(isDark ? 0.28 : 0.20), size: 240),
+              child: _GlowOrb(
+                  color: _accent.withOpacity(isDark ? 0.28 : 0.20), size: 240),
             ),
             PositionedDirectional(
               top: 24,
@@ -80,8 +82,10 @@ class AuthShell extends StatelessWidget {
               child: Align(
                 alignment: Alignment.center,
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1024),
                     child: LayoutBuilder(
@@ -92,7 +96,8 @@ class AuthShell extends StatelessWidget {
                           children: [
                             if (wide) ...[
                               Expanded(
-                                child: _IdentityPanel(i18n: i18n, isDark: isDark),
+                                child:
+                                    _IdentityPanel(i18n: i18n, isDark: isDark),
                               ),
                               const SizedBox(width: 18),
                             ],
@@ -129,7 +134,8 @@ class _TopControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = state.themeMode == AppThemeMode.dark;
     return Material(
-      color: (isDark ? const Color(0xFF0F162A) : Colors.white).withOpacity(0.66),
+      color:
+          (isDark ? const Color(0xFF0F162A) : Colors.white).withOpacity(0.66),
       elevation: 14,
       borderRadius: BorderRadius.circular(999),
       child: Padding(
@@ -147,11 +153,15 @@ class _TopControls extends StatelessWidget {
             IconButton(
               tooltip: isDark ? 'Light mode' : 'Dark mode',
               onPressed: () => state.toggleThemeMode(),
-              icon: Icon(isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded, size: 18),
+              icon: Icon(
+                  isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+                  size: 18),
               constraints: const BoxConstraints.tightFor(width: 38, height: 38),
               style: IconButton.styleFrom(
-                backgroundColor: isDark ? const Color(0xFFE9EEF9) : const Color(0xFF0D1422),
-                foregroundColor: isDark ? const Color(0xFF0D1422) : const Color(0xFFE9EEF9),
+                backgroundColor:
+                    isDark ? const Color(0xFFE9EEF9) : const Color(0xFF0D1422),
+                foregroundColor:
+                    isDark ? const Color(0xFF0D1422) : const Color(0xFFE9EEF9),
               ),
             ),
           ],
@@ -169,7 +179,8 @@ class _IdentityPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final panelBg = (isDark ? const Color(0xFF0F162A) : Colors.white).withOpacity(0.66);
+    final panelBg =
+        (isDark ? const Color(0xFF0F162A) : Colors.white).withOpacity(0.66);
     final border = (isDark ? Colors.white : Colors.black).withOpacity(0.10);
     final fg = isDark ? const Color(0xFFE9EEF9) : const Color(0xFF0D1422);
     final muted = fg.withOpacity(0.68);
@@ -181,7 +192,8 @@ class _IdentityPanel extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             panelBg,
-            (isDark ? const Color(0xFF111C34) : const Color(0xFFF4F8FF)).withOpacity(0.55),
+            (isDark ? const Color(0xFF111C34) : const Color(0xFFF4F8FF))
+                .withOpacity(0.55),
           ],
         ),
         borderRadius: BorderRadius.circular(26),
@@ -213,7 +225,8 @@ class _IdentityPanel extends StatelessWidget {
               const SizedBox(width: 10),
               Text(
                 'SocialFlow Orbit',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: fg),
+                style: TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w700, color: fg),
               ),
             ],
           ),
@@ -222,9 +235,18 @@ class _IdentityPanel extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _TrendChip(label: i18n.isArabic ? 'تصميم حديث 2026' : 'Modern 2026 UI', icon: Icons.tips_and_updates_rounded, fg: fg),
-              _TrendChip(label: i18n.isArabic ? 'سهولة الاستخدام' : 'High usability', icon: Icons.touch_app_rounded, fg: fg),
-              _TrendChip(label: i18n.isArabic ? 'وصول أسرع' : 'Faster access', icon: Icons.rocket_launch_rounded, fg: fg),
+              _TrendChip(
+                  label: i18n.isArabic ? 'واجهة احترافية' : 'Premium interface',
+                  icon: Icons.tips_and_updates_rounded,
+                  fg: fg),
+              _TrendChip(
+                  label: i18n.isArabic ? 'وضوح أفضل' : 'Clearer UX',
+                  icon: Icons.touch_app_rounded,
+                  fg: fg),
+              _TrendChip(
+                  label: i18n.isArabic ? 'أداء سريع' : 'Fast flow',
+                  icon: Icons.rocket_launch_rounded,
+                  fg: fg),
             ],
           ),
           const SizedBox(height: 16),
@@ -242,15 +264,21 @@ class _IdentityPanel extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   i18n.t('auth.identity', 'SocialFlow Identity'),
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: fg),
+                  style: TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700, color: fg),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 16),
           Text(
-            i18n.t('auth.secureAccessTitle', 'Secure access to your automation workspace'),
-            style: TextStyle(fontSize: 32, height: 1.12, fontWeight: FontWeight.w700, color: fg),
+            i18n.t('auth.secureAccessTitle',
+                'Secure access to your automation workspace'),
+            style: TextStyle(
+                fontSize: 32,
+                height: 1.12,
+                fontWeight: FontWeight.w700,
+                color: fg),
           ),
           const SizedBox(height: 14),
           Text(
@@ -260,10 +288,13 @@ class _IdentityPanel extends StatelessWidget {
             ),
             style: TextStyle(fontSize: 13, height: 1.5, color: muted),
           ),
+          const SizedBox(height: 16),
+          _SignalStrip(i18n: i18n, fg: fg),
           const SizedBox(height: 18),
           _FeatureCard(
             title: i18n.t('auth.verificationTitle', 'Verification First'),
-            body: i18n.t('auth.verificationDescription', 'Email verification protects account ownership from day one.'),
+            body: i18n.t('auth.verificationDescription',
+                'Email verification protects account ownership from day one.'),
             icon: Icons.verified_user_rounded,
             fg: fg,
             isDark: isDark,
@@ -271,7 +302,8 @@ class _IdentityPanel extends StatelessWidget {
           const SizedBox(height: 10),
           _FeatureCard(
             title: i18n.t('auth.sessionTitle', 'Fast Session Access'),
-            body: i18n.t('auth.sessionDescription', 'Smart sign-in experience with callback routing and quick recovery flows.'),
+            body: i18n.t('auth.sessionDescription',
+                'Smart sign-in experience with callback routing and quick recovery flows.'),
             icon: Icons.flash_on_rounded,
             fg: fg,
             isDark: isDark,
@@ -279,13 +311,98 @@ class _IdentityPanel extends StatelessWidget {
           const SizedBox(height: 10),
           _FeatureCard(
             title: i18n.t('auth.uxTitle', 'Role-ready UX'),
-            body: i18n.t('auth.uxDescription', 'Optimized for validation clarity and accessibility.'),
+            body: i18n.t('auth.uxDescription',
+                'Optimized for validation clarity and accessibility.'),
             icon: Icons.badge_rounded,
             fg: fg,
             isDark: isDark,
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SignalStrip extends StatelessWidget {
+  const _SignalStrip({required this.i18n, required this.fg});
+
+  final I18n i18n;
+  final Color fg;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: fg.withOpacity(0.06),
+        border: Border.all(color: fg.withOpacity(0.10)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          _SignalPoint(
+              icon: Icons.verified_rounded,
+              text: i18n.isArabic ? 'تحقق' : 'Verified',
+              fg: fg),
+          _SignalDivider(fg: fg),
+          _SignalPoint(
+              icon: Icons.timer_outlined,
+              text: i18n.isArabic ? 'استجابة سريعة' : 'Quick access',
+              fg: fg),
+          _SignalDivider(fg: fg),
+          _SignalPoint(
+              icon: Icons.lock_clock_outlined,
+              text: i18n.isArabic ? 'جلسات آمنة' : 'Secure sessions',
+              fg: fg),
+        ],
+      ),
+    );
+  }
+}
+
+class _SignalPoint extends StatelessWidget {
+  const _SignalPoint(
+      {required this.icon, required this.text, required this.fg});
+
+  final IconData icon;
+  final String text;
+  final Color fg;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 14, color: fg),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  fontSize: 11.5, fontWeight: FontWeight.w700, color: fg),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SignalDivider extends StatelessWidget {
+  const _SignalDivider({required this.fg});
+
+  final Color fg;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 16,
+      margin: const EdgeInsets.symmetric(horizontal: 6),
+      color: fg.withOpacity(0.18),
     );
   }
 }
@@ -307,7 +424,8 @@ class _FeatureCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = (isDark ? const Color(0xFF0B1020) : Colors.white).withOpacity(0.60);
+    final bg =
+        (isDark ? const Color(0xFF0B1020) : Colors.white).withOpacity(0.60);
     final border = fg.withOpacity(0.10);
     return Container(
       decoration: BoxDecoration(
@@ -326,7 +444,8 @@ class _FeatureCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: fg),
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700, color: fg),
                 ),
               ),
             ],
@@ -334,7 +453,8 @@ class _FeatureCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             body,
-            style: TextStyle(fontSize: 12, height: 1.35, color: fg.withOpacity(0.7)),
+            style: TextStyle(
+                fontSize: 12, height: 1.35, color: fg.withOpacity(0.7)),
           ),
         ],
       ),
@@ -357,7 +477,8 @@ class _AuthCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = (isDark ? const Color(0xFF0F162A) : Colors.white).withOpacity(0.74);
+    final bg =
+        (isDark ? const Color(0xFF0F162A) : Colors.white).withOpacity(0.74);
     final border = (isDark ? Colors.white : Colors.black).withOpacity(0.10);
     final fg = isDark ? const Color(0xFFE9EEF9) : const Color(0xFF0D1422);
     final muted = fg.withOpacity(0.68);
@@ -369,7 +490,8 @@ class _AuthCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             bg,
-            (isDark ? const Color(0xFF141F3A) : const Color(0xFFF8FBFF)).withOpacity(0.78),
+            (isDark ? const Color(0xFF141F3A) : const Color(0xFFF8FBFF))
+                .withOpacity(0.78),
           ],
         ),
         borderRadius: BorderRadius.circular(26),
@@ -401,7 +523,8 @@ class _AuthCard extends StatelessWidget {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: fg),
+            style:
+                TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: fg),
           ),
           const SizedBox(height: 8),
           Text(
@@ -438,7 +561,9 @@ class _TrendChip extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: fg),
           const SizedBox(width: 6),
-          Text(label, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: fg)),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11.5, fontWeight: FontWeight.w700, color: fg)),
         ],
       ),
     );
@@ -460,7 +585,10 @@ class _GlowOrb extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           boxShadow: [
-            BoxShadow(color: color, blurRadius: size * 0.42, spreadRadius: size * 0.05),
+            BoxShadow(
+                color: color,
+                blurRadius: size * 0.42,
+                spreadRadius: size * 0.05),
           ],
         ),
       ),

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../app_config.dart';
 import '../../app_state.dart';
 import '../../i18n.dart';
 import '../../storage_keys.dart';
@@ -36,6 +35,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final FocusNode _emailFocus = FocusNode();
+  final FocusNode _passwordFocus = FocusNode();
 
   bool _rememberMe = false;
   bool _showPassword = false;
@@ -74,6 +75,8 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -110,7 +113,8 @@ class _LoginScreenState extends State<LoginScreen> {
       await widget.onSignedIn(session);
     } catch (error) {
       if (!mounted) return;
-      final message = error is ApiException ? error.message : 'Unable to sign in.';
+      final message =
+          error is ApiException ? error.message : 'Unable to sign in.';
       final lower = message.toLowerCase();
       setState(() {
         _error = message;
@@ -143,7 +147,8 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = error is ApiException ? error.message : 'Unable to resend code.';
+        _error =
+            error is ApiException ? error.message : 'Unable to resend code.';
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -173,178 +178,234 @@ class _LoginScreenState extends State<LoginScreen> {
         'auth.signInDesc',
         'Access your verified workspace and continue your automation flow.',
       ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _LabeledField(
-              label: i18n.t('auth.email', 'Email'),
-              icon: Icons.alternate_email_rounded,
-              child: TextFormField(
-                key: const Key('login-email-field'),
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                autofillHints: const [AutofillHints.email],
-                textDirection: TextDirection.ltr,
-                decoration: const InputDecoration(
-                  hintText: 'you@example.com',
-                  prefixIcon: Icon(Icons.mail_outline_rounded),
-                ),
-                validator: (value) {
-                  final v = (value ?? '').trim();
-                  if (v.isEmpty) return i18n.isArabic ? 'البريد مطلوب.' : 'Email is required.';
-                  if (!_isValidEmail(v)) return i18n.isArabic ? 'أدخل بريدًا صحيحًا.' : 'Enter a valid email address.';
-                  return null;
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
-            _LabeledField(
-              label: i18n.t('auth.password', 'Password'),
-              icon: Icons.lock_outline_rounded,
-              child: TextFormField(
-                key: const Key('login-password-field'),
-                controller: _passwordController,
-                obscureText: !_showPassword,
-                autofillHints: const [AutofillHints.password],
-                textDirection: TextDirection.ltr,
-                decoration: InputDecoration(
-                  hintText: '••••••••',
-                  prefixIcon: const Icon(Icons.password_rounded),
-                  suffixIcon: IconButton(
-                    onPressed: _busy ? null : () => setState(() => _showPassword = !_showPassword),
-                    icon: Icon(_showPassword ? Icons.visibility_off_rounded : Icons.visibility_rounded),
+      child: AutofillGroup(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _LabeledField(
+                label: i18n.t('auth.email', 'Email'),
+                icon: Icons.alternate_email_rounded,
+                child: TextFormField(
+                  key: const Key('login-email-field'),
+                  controller: _emailController,
+                  focusNode: _emailFocus,
+                  keyboardType: TextInputType.emailAddress,
+                  autofillHints: const [AutofillHints.email],
+                  textDirection: TextDirection.ltr,
+                  textInputAction: TextInputAction.next,
+                  onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
+                  onTapOutside: (_) =>
+                      FocusManager.instance.primaryFocus?.unfocus(),
+                  decoration: const InputDecoration(
+                    hintText: 'you@example.com',
+                    prefixIcon: Icon(Icons.mail_outline_rounded),
                   ),
+                  validator: (value) {
+                    final v = (value ?? '').trim();
+                    if (v.isEmpty)
+                      return i18n.isArabic
+                          ? 'البريد مطلوب.'
+                          : 'Email is required.';
+                    if (!_isValidEmail(v))
+                      return i18n.isArabic
+                          ? 'أدخل بريدًا صحيحًا.'
+                          : 'Enter a valid email address.';
+                    return null;
+                  },
                 ),
-                validator: (value) {
-                  if ((value ?? '').isEmpty) return i18n.isArabic ? 'كلمة المرور مطلوبة.' : 'Password is required.';
-                  return null;
-                },
               ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              decoration: BoxDecoration(
-                color: (isDark ? Colors.white : const Color(0xFF0D1422)).withOpacity(0.04),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: fg.withOpacity(0.08)),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      value: _rememberMe,
-                      onChanged: _busy ? null : (v) => setState(() => _rememberMe = v == true),
-                      title: Text(i18n.t('auth.rememberMe', 'Remember me'), style: TextStyle(color: muted)),
-                      controlAffinity: ListTileControlAffinity.leading,
+              const SizedBox(height: 12),
+              _LabeledField(
+                label: i18n.t('auth.password', 'Password'),
+                icon: Icons.lock_outline_rounded,
+                child: TextFormField(
+                  key: const Key('login-password-field'),
+                  controller: _passwordController,
+                  focusNode: _passwordFocus,
+                  obscureText: !_showPassword,
+                  autofillHints: const [AutofillHints.password],
+                  textDirection: TextDirection.ltr,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _submit(),
+                  onTapOutside: (_) =>
+                      FocusManager.instance.primaryFocus?.unfocus(),
+                  decoration: InputDecoration(
+                    hintText: '••••••••',
+                    prefixIcon: const Icon(Icons.password_rounded),
+                    suffixIcon: IconButton(
+                      onPressed: _busy
+                          ? null
+                          : () =>
+                              setState(() => _showPassword = !_showPassword),
+                      icon: Icon(_showPassword
+                          ? Icons.visibility_off_rounded
+                          : Icons.visibility_rounded),
                     ),
                   ),
-                  TextButton.icon(
-                    onPressed: _busy ? null : widget.onGoToForgotPassword,
-                    icon: const Icon(Icons.help_outline_rounded, size: 16),
-                    label: Text(i18n.t('auth.forgotPassword', 'Forgot password?')),
-                  ),
-                ],
+                  validator: (value) {
+                    if ((value ?? '').isEmpty)
+                      return i18n.isArabic
+                          ? 'كلمة المرور مطلوبة.'
+                          : 'Password is required.';
+                    return null;
+                  },
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            if (_error.isNotEmpty)
-              _StatusCard(icon: Icons.error_outline_rounded, text: _error, color: _danger),
-            if (_info.isNotEmpty)
-              _StatusCard(icon: Icons.check_circle_outline_rounded, text: _info, color: _success),
-            if (_needsVerification)
+              const SizedBox(height: 8),
+              Text(
+                i18n.isArabic
+                    ? 'استخدم بريدك الموثق وكلمة المرور للمتابعة بأمان.'
+                    : 'Use your verified email and password for secure access.',
+                style: TextStyle(fontSize: 11.5, color: muted),
+              ),
+              const SizedBox(height: 12),
               Container(
                 decoration: BoxDecoration(
-                  color: (isDark ? const Color(0xFF22345C) : const Color(0xFFE9F0FF)).withOpacity(0.65),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: fg.withOpacity(0.10)),
+                  color: (isDark ? Colors.white : const Color(0xFF0D1422))
+                      .withOpacity(0.04),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: fg.withOpacity(0.08)),
                 ),
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(bottom: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                child: Row(
                   children: [
-                    Row(
-                      children: [
-                        Icon(Icons.mark_email_read_rounded, size: 18, color: fg),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            i18n.t('auth.verificationRequired', 'Verification Required'),
-                            style: TextStyle(fontWeight: FontWeight.w700, color: fg),
-                          ),
-                        ),
-                      ],
+                    Expanded(
+                      child: CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: _rememberMe,
+                        onChanged: _busy
+                            ? null
+                            : (v) => setState(() => _rememberMe = v == true),
+                        title: Text(i18n.t('auth.rememberMe', 'Remember me'),
+                            style: TextStyle(color: muted)),
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      i18n.isArabic
-                          ? 'تحقق من بريدك الإلكتروني ثم حاول تسجيل الدخول مرة أخرى.'
-                          : 'Verify your email first, then sign in again.',
-                      style: TextStyle(color: fg.withOpacity(0.75)),
-                    ),
-                    const SizedBox(height: 10),
-                    OutlinedButton(
-                      onPressed: _busy ? null : _resendVerification,
-                      child: Text(i18n.t('auth.resendCode', 'Resend Code')),
+                    TextButton.icon(
+                      onPressed: _busy ? null : widget.onGoToForgotPassword,
+                      icon: const Icon(Icons.help_outline_rounded, size: 16),
+                      label: Text(
+                          i18n.t('auth.forgotPassword', 'Forgot password?')),
                     ),
                   ],
                 ),
               ),
-            FilledButton(
-              key: const Key('login-submit-button'),
-              onPressed: _busy ? null : _submit,
-              style: FilledButton.styleFrom(
-                backgroundColor: _primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              const SizedBox(height: 8),
+              if (_error.isNotEmpty)
+                _StatusCard(
+                    icon: Icons.error_outline_rounded,
+                    text: _error,
+                    color: _danger),
+              if (_info.isNotEmpty)
+                _StatusCard(
+                    icon: Icons.check_circle_outline_rounded,
+                    text: _info,
+                    color: _success),
+              if (_needsVerification)
+                Container(
+                  decoration: BoxDecoration(
+                    color: (isDark
+                            ? const Color(0xFF22345C)
+                            : const Color(0xFFE9F0FF))
+                        .withOpacity(0.65),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: fg.withOpacity(0.10)),
+                  ),
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.mark_email_read_rounded,
+                              size: 18, color: fg),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              i18n.t('auth.verificationRequired',
+                                  'Verification Required'),
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w700, color: fg),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        i18n.isArabic
+                            ? 'تحقق من بريدك الإلكتروني ثم حاول تسجيل الدخول مرة أخرى.'
+                            : 'Verify your email first, then sign in again.',
+                        style: TextStyle(color: fg.withOpacity(0.75)),
+                      ),
+                      const SizedBox(height: 10),
+                      OutlinedButton(
+                        onPressed: _busy ? null : _resendVerification,
+                        child: Text(i18n.t('auth.resendCode', 'Resend Code')),
+                      ),
+                    ],
+                  ),
+                ),
+              FilledButton(
+                key: const Key('login-submit-button'),
+                onPressed: _busy ? null : _submit,
+                style: FilledButton.styleFrom(
+                  backgroundColor: _primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: _busy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text(i18n.t('auth.signIn', 'Sign In')),
+                ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                child: _busy
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(i18n.t('auth.signIn', 'Sign In')),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: _busy ? null : widget.onGoToRegister,
+                child: Text(
+                  '${i18n.t('auth.noAccount', "Don't have an account?")} ${i18n.t('auth.goToRegister', 'Create one')}',
+                  textAlign: TextAlign.center,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: _busy ? null : widget.onGoToRegister,
-              child: Text(
-                '${i18n.t('auth.noAccount', "Don't have an account?")} ${i18n.t('auth.goToRegister', 'Create one')}',
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: [
+                  _MetaPill(
+                      text: i18n.isArabic ? 'واجهات نظيفة' : 'Clean layouts',
+                      icon: Icons.grid_view_rounded,
+                      fg: fg),
+                  _MetaPill(
+                      text: i18n.isArabic ? 'أيقونات حديثة' : 'Modern icons',
+                      icon: Icons.interests_rounded,
+                      fg: fg),
+                  _MetaPill(
+                      text: i18n.isArabic ? 'UX أسرع' : 'Faster UX',
+                      icon: Icons.speed_rounded,
+                      fg: fg),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _TrustRow(isArabic: i18n.isArabic, muted: muted),
+              const SizedBox(height: 10),
+              Text(
+                '${i18n.t('auth.credit', 'Programming & Design: Oday Algholy')} - ${i18n.t('auth.rights', 'All rights reserved')}',
                 textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11, color: muted),
               ),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
-              children: [
-                _MetaPill(text: i18n.isArabic ? 'واجهات نظيفة' : 'Clean layouts', icon: Icons.grid_view_rounded, fg: fg),
-                _MetaPill(text: i18n.isArabic ? 'أيقونات حديثة' : 'Modern icons', icon: Icons.interests_rounded, fg: fg),
-                _MetaPill(text: i18n.isArabic ? 'UX أسرع' : 'Faster UX', icon: Icons.speed_rounded, fg: fg),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'APP_URL: ${AppConfig.baseUri.toString()}',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: muted),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              '${i18n.t('auth.credit', 'Programming & Design: Oday Algholy')} - ${i18n.t('auth.rights', 'All rights reserved')}',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: muted),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -380,7 +441,8 @@ class _LabeledField extends StatelessWidget {
 }
 
 class _StatusCard extends StatelessWidget {
-  const _StatusCard({required this.icon, required this.text, required this.color});
+  const _StatusCard(
+      {required this.icon, required this.text, required this.color});
 
   final IconData icon;
   final String text;
@@ -428,9 +490,33 @@ class _MetaPill extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: fg),
           const SizedBox(width: 6),
-          Text(text, style: TextStyle(fontSize: 11.5, color: fg, fontWeight: FontWeight.w600)),
+          Text(text,
+              style: TextStyle(
+                  fontSize: 11.5, color: fg, fontWeight: FontWeight.w600)),
         ],
       ),
+    );
+  }
+}
+
+class _TrustRow extends StatelessWidget {
+  const _TrustRow({required this.isArabic, required this.muted});
+
+  final bool isArabic;
+  final Color muted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.verified_user_rounded, size: 13, color: muted),
+        const SizedBox(width: 6),
+        Text(
+          isArabic ? 'تسجيل دخول موثّق ومشفّر' : 'Encrypted verified sign in',
+          style: TextStyle(fontSize: 11, color: muted),
+        ),
+      ],
     );
   }
 }
