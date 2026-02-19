@@ -20,4 +20,6 @@ class StorageKeys {
   static const String privacyAllowAnalytics = 'socialflow_privacy_allow_analytics_v1'; // '1' | '0'
   static const String privacyShareErrorLogs = 'socialflow_privacy_share_error_logs_v1'; // '1' | '0'
   static const String timezone = 'socialflow_timezone_v1'; // e.g. 'UTC'
+
+  static const String cachedExecutionsPayload = 'socialflow_cached_executions_payload_v1';
 }

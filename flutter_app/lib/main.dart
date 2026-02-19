@@ -1096,12 +1096,45 @@ class _SocialShellState extends State<SocialShell> {
           _analyticsHasMore = payload['hasMore'] == true;
         }
       });
+
+      if (kind == PanelKind.executions) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(StorageKeys.cachedExecutionsPayload, jsonEncode(payload));
+        } catch (_) {
+          // Ignore cache persistence failures.
+        }
+      }
     } catch (error) {
+      Map<String, dynamic>? fallbackExecutions;
+      if (kind == PanelKind.executions) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final raw = (prefs.getString(StorageKeys.cachedExecutionsPayload) ?? '').trim();
+          if (raw.isNotEmpty) {
+            final decoded = jsonDecode(raw);
+            if (decoded is Map) {
+              fallbackExecutions = decoded.map((k, v) => MapEntry(k.toString(), v));
+            }
+          }
+        } catch (_) {
+          fallbackExecutions = null;
+        }
+      }
+
       if (!mounted) return;
+      final i18n = _i18n(context);
       setState(() {
         state.loading = false;
-        state.error =
-            error is ApiException ? error.message : 'Failed to load panel.';
+        final message = error is ApiException ? error.message : 'Failed to load panel.';
+        if (kind == PanelKind.executions && fallbackExecutions != null) {
+          state.data = fallbackExecutions;
+          state.error = i18n.isArabic
+              ? '$message. عرض آخر نسخة محفوظة.'
+              : '$message. Showing cached last view.';
+          return;
+        }
+        state.error = message;
       });
     }
   }
@@ -4168,6 +4201,8 @@ class _SocialShellState extends State<SocialShell> {
   Widget _buildExecutions(Map<String, dynamic> data) {
     final i18n = _i18n(context);
     final scheme = Theme.of(context).colorScheme;
+    final panelState = _panelStates[PanelKind.executions]!;
+    final showingCachedView = panelState.error != null && panelState.data != null;
     final executionsRaw = data['executions'] is List
         ? (data['executions'] as List)
         : const <dynamic>[];
@@ -4623,6 +4658,33 @@ class _SocialShellState extends State<SocialShell> {
                 icon: const Icon(Icons.refresh_rounded),
               ),
             ),
+            if (showingCachedView) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.orange.withAlpha((0.12 * 255).round()),
+                  border: Border.all(color: Colors.orange.withAlpha((0.32 * 255).round())),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.wifi_off_rounded, size: 18, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        panelState.error ??
+                            (i18n.isArabic
+                                ? 'عرض آخر نسخة محفوظة.'
+                                : 'Showing cached last view.'),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             TextField(
               controller: _executionsSearchController,
