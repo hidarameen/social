@@ -1,8 +1,15 @@
 import { db, type Task, type PlatformAccount, type TaskExecution } from '@/lib/db';
-import { getPlatformHandler } from '@/lib/platforms/handlers';
-import { getPlatformApiProvider } from '@/lib/platforms/provider';
+import { getPlatformHandlerForUser } from '@/lib/platforms/handlers';
+import {
+  getPlatformApiProviderForUser,
+  type PlatformApiProvider,
+} from '@/lib/platforms/provider';
 import type { PlatformId } from '@/lib/platforms/types';
 import { randomUUID } from 'crypto';
+import {
+  createOutstandPublishToken,
+  getOutstandUserSettings,
+} from '@/lib/outstand-user-settings';
 
 const GENERIC_TASK_SUPPORTED_TARGETS_NATIVE = new Set<PlatformId>(['facebook']);
 
@@ -31,19 +38,56 @@ export class TaskProcessor {
       throw new Error('Source or target accounts not found');
     }
 
+    const providerByTargetId = new Map<string, PlatformApiProvider>();
+    for (const targetAccount of targetAccounts) {
+      const targetPlatformId = targetAccount.platformId as PlatformId;
+      providerByTargetId.set(
+        targetAccount.id,
+        await getPlatformApiProviderForUser(task.userId, targetPlatformId)
+      );
+    }
+
+    const dedupedTargetAccounts: PlatformAccount[] = [];
+    const seenOutstandPlatforms = new Set<PlatformId>();
+    for (const targetAccount of targetAccounts) {
+      const provider = providerByTargetId.get(targetAccount.id) || 'native';
+      const targetPlatformId = targetAccount.platformId as PlatformId;
+      if (provider === 'outstanding') {
+        if (seenOutstandPlatforms.has(targetPlatformId)) {
+          continue;
+        }
+        seenOutstandPlatforms.add(targetPlatformId);
+      }
+      dedupedTargetAccounts.push(targetAccount);
+    }
+
+    const outstandSettings = await getOutstandUserSettings(task.userId);
+    const outstandPublishToken = createOutstandPublishToken({
+      userId: task.userId,
+      apiKey: outstandSettings.apiKey,
+      tenantId: outstandSettings.tenantId,
+      baseUrl: outstandSettings.baseUrl,
+    });
+
     // معالجة كل زوج من (مصدر -> هدف) بالتوازي
     const routePairs = sourceAccounts.flatMap((sourceAccount) =>
-      targetAccounts.map((targetAccount) => ({ sourceAccount, targetAccount }))
+      dedupedTargetAccounts.map((targetAccount) => ({
+        sourceAccount,
+        targetAccount,
+        targetProvider: providerByTargetId.get(targetAccount.id) || 'native',
+      }))
     );
 
     const executionResults = await Promise.all(
-      routePairs.map(async ({ sourceAccount, targetAccount }) => {
+      routePairs.map(async ({ sourceAccount, targetAccount, targetProvider }) => {
         try {
           return await this.executeTransfer(
             task,
             sourceAccount,
             targetAccount,
-            executionGroupId
+            executionGroupId,
+            targetProvider,
+            outstandPublishToken
           );
         } catch (error) {
           return db.createExecution({
@@ -87,12 +131,16 @@ export class TaskProcessor {
     task: Task,
     sourceAccount: PlatformAccount,
     targetAccount: PlatformAccount,
-    executionGroupId: string
+    executionGroupId: string,
+    targetProvider?: PlatformApiProvider,
+    outstandPublishToken?: string
   ): Promise<TaskExecution> {
     const sourcePlatformId = sourceAccount.platformId as PlatformId;
     const targetPlatformId = targetAccount.platformId as PlatformId;
 
-    const provider = getPlatformApiProvider(targetPlatformId);
+    const provider =
+      targetProvider ||
+      (await getPlatformApiProviderForUser(task.userId, targetPlatformId));
     if (provider === 'native' && !GENERIC_TASK_SUPPORTED_TARGETS_NATIVE.has(targetPlatformId)) {
       throw new Error(
         `Generic task execution for target platform "${targetAccount.platformId}" is not implemented. Use platform-specific webhook automation for this route.`
@@ -100,8 +148,7 @@ export class TaskProcessor {
     }
 
     // الحصول على معالجات المنصات
-    getPlatformHandler(sourcePlatformId);
-    const targetHandler = getPlatformHandler(targetPlatformId);
+    const targetHandler = await getPlatformHandlerForUser(task.userId, targetPlatformId);
 
     const baseResponseData = {
       sourcePlatformId,
@@ -164,12 +211,7 @@ export class TaskProcessor {
       let postResponse;
       const publishToken =
         provider === 'outstanding'
-          ? JSON.stringify({
-              accountId: targetAccount.accountId,
-              accountUsername: targetAccount.accountUsername,
-              accountName: targetAccount.accountName,
-              accessToken: targetAccount.accessToken,
-            })
+          ? outstandPublishToken || createOutstandPublishToken({ userId: task.userId })
           : targetAccount.accessToken;
 
       if (task.executionType === 'scheduled' && task.scheduleTime) {

@@ -1,4 +1,5 @@
 import type { PlatformId } from './types';
+import { getOutstandUserSettings, isOutstandEnabledForPlatform } from '@/lib/outstand-user-settings';
 
 export type PlatformApiProvider = 'native' | 'outstanding';
 
@@ -76,4 +77,30 @@ export function getPlatformApiProvider(platformId: PlatformId): PlatformApiProvi
 
 export function isOutstandingProvider(platformId: PlatformId): boolean {
   return getPlatformApiProvider(platformId) === 'outstanding';
+}
+
+export async function getPlatformApiProviderForUser(
+  userId: string,
+  platformId: PlatformId
+): Promise<PlatformApiProvider> {
+  try {
+    const settings = await getOutstandUserSettings(userId);
+    if (isOutstandEnabledForPlatform(settings, platformId)) {
+      return 'outstanding';
+    }
+    if (settings.enabled && settings.platforms.length > 0) {
+      return 'native';
+    }
+  } catch {
+    // Fall back to environment provider resolution.
+  }
+
+  return getPlatformApiProvider(platformId);
+}
+
+export async function isOutstandingProviderForUser(
+  userId: string,
+  platformId: PlatformId
+): Promise<boolean> {
+  return (await getPlatformApiProviderForUser(userId, platformId)) === 'outstanding';
 }

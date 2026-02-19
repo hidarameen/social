@@ -12,9 +12,13 @@ import { executionQueue } from '@/lib/services/execution-queue';
 import { taskProcessor } from '@/lib/services/task-processor';
 import { debugError, debugLog } from '@/lib/debug';
 import { getOAuthClientCredentials } from '@/lib/platform-credentials';
-import { getPlatformApiProvider } from '@/lib/platforms/provider';
-import { getPlatformHandler } from '@/lib/platforms/handlers';
+import { getPlatformApiProviderForUser } from '@/lib/platforms/provider';
+import { getPlatformHandlerForUser } from '@/lib/platforms/handlers';
 import type { PlatformId, PostRequest } from '@/lib/platforms/types';
+import {
+  createOutstandPublishToken,
+  getOutstandUserSettings,
+} from '@/lib/outstand-user-settings';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 10;
 const MIN_POLL_INTERVAL_SECONDS = 5;
@@ -40,13 +44,23 @@ function asManagedPlatformId(platformId: string): PlatformId | null {
   return null;
 }
 
-function buildOutstandingPublishToken(target: PlatformAccount): string {
-  return JSON.stringify({
-    accountId: target.accountId,
-    accountUsername: target.accountUsername,
-    accountName: target.accountName,
-    accessToken: target.accessToken,
-    apiKey: (target.credentials as any)?.apiKey,
+const outstandSettingsCache = new Map<string, Promise<Awaited<ReturnType<typeof getOutstandUserSettings>>>>();
+
+async function resolveOutstandSettings(userId: string) {
+  const cached = outstandSettingsCache.get(userId);
+  if (cached) return cached;
+  const next = getOutstandUserSettings(userId);
+  outstandSettingsCache.set(userId, next);
+  return next;
+}
+
+async function buildOutstandingPublishToken(target: PlatformAccount): Promise<string> {
+  const settings = await resolveOutstandSettings(target.userId);
+  return createOutstandPublishToken({
+    userId: target.userId,
+    apiKey: settings.apiKey,
+    tenantId: settings.tenantId,
+    baseUrl: settings.baseUrl,
   });
 }
 
@@ -496,6 +510,34 @@ type DispatchContext = {
   sourceClient: MtprotoTelegramClient;
 };
 
+async function dedupeOutstandTargets(targets: PlatformAccount[]): Promise<PlatformAccount[]> {
+  const selected: PlatformAccount[] = [];
+  const seenOutstandTargets = new Set<string>();
+
+  for (const target of targets) {
+    const managedTargetPlatformId = asManagedPlatformId(target.platformId);
+    if (!managedTargetPlatformId) {
+      selected.push(target);
+      continue;
+    }
+
+    const provider = await getPlatformApiProviderForUser(target.userId, managedTargetPlatformId);
+    if (provider !== 'outstanding') {
+      selected.push(target);
+      continue;
+    }
+
+    const dedupeKey = `${target.userId}:${managedTargetPlatformId}`;
+    if (seenOutstandTargets.has(dedupeKey)) {
+      continue;
+    }
+    seenOutstandTargets.add(dedupeKey);
+    selected.push(target);
+  }
+
+  return selected;
+}
+
 async function processTelegramTaskMessage({
   task,
   source,
@@ -530,7 +572,8 @@ async function processTelegramTaskMessage({
   };
 
   try {
-    const targetResults = await Promise.allSettled(targets.map(async (target) => {
+    const normalizedTargets = await dedupeOutstandTargets(targets);
+    const targetResults = await Promise.allSettled(normalizedTargets.map(async (target) => {
       let status: 'success' | 'failed' = 'success';
       let errorMessage: string | undefined;
       let responseData: Record<string, any> | undefined;
@@ -584,10 +627,11 @@ async function processTelegramTaskMessage({
           },
         });
         const managedTargetPlatformId = asManagedPlatformId(target.platformId);
-        if (
-          managedTargetPlatformId &&
-          getPlatformApiProvider(managedTargetPlatformId) === 'outstanding'
-        ) {
+        const targetProvider =
+          managedTargetPlatformId
+            ? await getPlatformApiProviderForUser(target.userId, managedTargetPlatformId)
+            : 'native';
+        if (managedTargetPlatformId && targetProvider === 'outstanding') {
           if (mediaItems.length > 0) {
             debugLog('Telegram poller -> Outstand media fallback to text-only', {
               taskId: task.id,
@@ -596,11 +640,11 @@ async function processTelegramTaskMessage({
               mediaCount: mediaItems.length,
             });
           }
-          const handler = getPlatformHandler(managedTargetPlatformId);
+          const handler = await getPlatformHandlerForUser(target.userId, managedTargetPlatformId);
           const postRequest: PostRequest = { content: text };
           const outstandResponse = await handler.publishPost(
             postRequest,
-            buildOutstandingPublishToken(target)
+            await buildOutstandingPublishToken(target)
           );
           if (!outstandResponse.success) {
             throw new Error(outstandResponse.error || 'Outstand publish failed');

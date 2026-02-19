@@ -72,18 +72,39 @@ function createFetchMock() {
     }
 
     if (parsed.pathname.endsWith('/social-accounts') && method === 'GET') {
+      const network = parsed.searchParams.get('network') || 'x';
+      const data =
+        network === 'x'
+          ? [
+              {
+                id: 'acc_1',
+                network: 'x',
+                username: 'demo_x',
+                name: 'Demo X',
+                stats: { followers: 10, following: 5 },
+              },
+              {
+                id: 'acc_2',
+                network: 'x',
+                username: 'demo_x_2',
+                name: 'Demo X 2',
+                stats: { followers: 7, following: 3 },
+              },
+            ]
+          : [
+              {
+                id: `${network}_acc_1`,
+                network,
+                username: `demo_${network}`,
+                name: `Demo ${network}`,
+                stats: { followers: 10, following: 5 },
+              },
+            ];
+
       return new Response(
         JSON.stringify({
           success: true,
-          data: [
-            {
-              id: 'acc_1',
-              network: 'x',
-              username: 'demo_x',
-              name: 'Demo X',
-              stats: { followers: 10, following: 5 },
-            },
-          ],
+          data,
         }),
         { status: 200, headers: { 'content-type': 'application/json' } }
       );
@@ -212,7 +233,7 @@ async function testOutstandingHandlerPublishAndAccountInfo(): Promise<void> {
     const postCall = calls.find((item) => item.url.endsWith('/v1/posts'));
     assert.ok(postCall, 'Expected /posts call to be executed');
     const parsed = JSON.parse(postCall!.bodyText);
-    assert.deepEqual(parsed.accounts, ['acc_1']);
+    assert.deepEqual(parsed.accounts, ['acc_1', 'acc_2']);
   } finally {
     global.fetch = originalFetch;
     restoreEnv();

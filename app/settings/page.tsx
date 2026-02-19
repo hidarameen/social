@@ -105,6 +105,36 @@ const PLATFORM_FIELDS: Record<ManagedPlatformId, CredentialField[]> = {
   ],
 };
 
+const OUTSTAND_PLATFORM_OPTIONS = [
+  { id: 'facebook', label: 'Facebook' },
+  { id: 'instagram', label: 'Instagram' },
+  { id: 'twitter', label: 'Twitter / X' },
+  { id: 'tiktok', label: 'TikTok' },
+  { id: 'youtube', label: 'YouTube' },
+  { id: 'telegram', label: 'Telegram' },
+  { id: 'linkedin', label: 'LinkedIn' },
+] as const;
+
+type OutstandPlatformId = (typeof OUTSTAND_PLATFORM_OPTIONS)[number]['id'];
+
+type OutstandSettingsForm = {
+  enabled: boolean;
+  apiKey: string;
+  baseUrl: string;
+  tenantId: string;
+  platforms: OutstandPlatformId[];
+  applyToAllAccounts: boolean;
+};
+
+const EMPTY_OUTSTAND_SETTINGS: OutstandSettingsForm = {
+  enabled: false,
+  apiKey: '',
+  baseUrl: 'https://api.outstand.so/v1',
+  tenantId: '',
+  platforms: [],
+  applyToAllAccounts: true,
+};
+
 const THEME_PRESET_OPTIONS: Array<{
   id: ThemePreset;
   name: string;
@@ -198,6 +228,11 @@ export default function SettingsPage() {
   const [credentialMap, setCredentialMap] = useState<Record<ManagedPlatformId, PlatformCredentialForm>>(
     buildEmptyCredentialMap()
   );
+  const [outstandSettings, setOutstandSettings] = useState<OutstandSettingsForm>({
+    ...EMPTY_OUTSTAND_SETTINGS,
+  });
+  const [outstandLoading, setOutstandLoading] = useState(true);
+  const [outstandSaving, setOutstandSaving] = useState(false);
 
   const [settings, setSettings] = useState({
     email: '',
@@ -252,6 +287,51 @@ export default function SettingsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadOutstandSettings() {
+      try {
+        const res = await fetch('/api/outstand-settings', { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Failed to load Outstand settings');
+        }
+        if (cancelled) return;
+
+        const incoming = data.settings || {};
+        const selectedPlatforms = Array.isArray(incoming.platforms)
+          ? incoming.platforms.filter((value: string) =>
+              OUTSTAND_PLATFORM_OPTIONS.some((option) => option.id === value)
+            )
+          : [];
+
+        setOutstandSettings({
+          enabled: Boolean(incoming.enabled),
+          apiKey: typeof incoming.apiKey === 'string' ? incoming.apiKey : '',
+          baseUrl:
+            typeof incoming.baseUrl === 'string' && incoming.baseUrl.trim().length > 0
+              ? incoming.baseUrl
+              : 'https://api.outstand.so/v1',
+          tenantId: typeof incoming.tenantId === 'string' ? incoming.tenantId : '',
+          platforms: selectedPlatforms,
+          applyToAllAccounts:
+            typeof incoming.applyToAllAccounts === 'boolean' ? incoming.applyToAllAccounts : true,
+        });
+      } catch (error) {
+        if (!cancelled) {
+          toast.error(error instanceof Error ? error.message : 'Failed to load Outstand settings');
+        }
+      } finally {
+        if (!cancelled) setOutstandLoading(false);
+      }
+    }
+
+    loadOutstandSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const selectedTheme = mounted && resolvedTheme === 'dark' ? 'dark' : 'light';
   const nextTheme = selectedTheme === 'dark' ? 'light' : 'dark';
   const activeCredentials = useMemo(
@@ -294,6 +374,62 @@ export default function SettingsPage() {
       toast.error(error instanceof Error ? error.message : 'Failed to save credentials');
     } finally {
       setCredentialsSaving(false);
+    }
+  };
+
+  const toggleOutstandPlatform = (platformId: OutstandPlatformId) => {
+    setOutstandSettings((prev) => {
+      const has = prev.platforms.includes(platformId);
+      return {
+        ...prev,
+        platforms: has
+          ? prev.platforms.filter((id) => id !== platformId)
+          : [...prev.platforms, platformId],
+      };
+    });
+  };
+
+  const saveOutstandSettings = async () => {
+    try {
+      setOutstandSaving(true);
+      const res = await fetch('/api/outstand-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: outstandSettings.enabled,
+          apiKey: outstandSettings.apiKey,
+          baseUrl: outstandSettings.baseUrl,
+          tenantId: outstandSettings.tenantId,
+          platforms: outstandSettings.platforms,
+          applyToAllAccounts: outstandSettings.applyToAllAccounts,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to save Outstand settings');
+      }
+      const next = data.settings || {};
+      setOutstandSettings({
+        enabled: Boolean(next.enabled),
+        apiKey: typeof next.apiKey === 'string' ? next.apiKey : '',
+        baseUrl:
+          typeof next.baseUrl === 'string' && next.baseUrl.trim().length > 0
+            ? next.baseUrl
+            : 'https://api.outstand.so/v1',
+        tenantId: typeof next.tenantId === 'string' ? next.tenantId : '',
+        platforms: Array.isArray(next.platforms)
+          ? next.platforms.filter((value: string) =>
+              OUTSTAND_PLATFORM_OPTIONS.some((option) => option.id === value)
+            )
+          : [],
+        applyToAllAccounts:
+          typeof next.applyToAllAccounts === 'boolean' ? next.applyToAllAccounts : true,
+      });
+      toast.success('Outstand settings saved');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save Outstand settings');
+    } finally {
+      setOutstandSaving(false);
     }
   };
 
@@ -381,6 +517,135 @@ export default function SettingsPage() {
 
               <Button onClick={savePlatformCredentials} disabled={credentialsLoading || credentialsSaving}>
                 {credentialsSaving ? 'Saving...' : 'Save Platform Credentials'}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <KeyRound size={20} />
+                Outstand Integration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Configure one Outstand API key per user, choose which platforms use Outstand, and publish to all
+                Outstand accounts for each selected platform.
+              </p>
+
+              {outstandLoading ? (
+                <div className="rounded-lg border border-border/60 bg-card/40 p-4 text-sm text-muted-foreground">
+                  Loading Outstand settings...
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/35 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-medium text-foreground">Enable Outstand</p>
+                      <p className="text-sm text-muted-foreground">
+                        Use Outstand for the selected platforms only.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={outstandSettings.enabled}
+                      onCheckedChange={(checked) =>
+                        setOutstandSettings((prev) => ({
+                          ...prev,
+                          enabled: checked,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">Outstand API Key</label>
+                      <Input
+                        type="password"
+                        placeholder="outstand_api_key"
+                        value={outstandSettings.apiKey}
+                        onChange={(event) =>
+                          setOutstandSettings((prev) => ({
+                            ...prev,
+                            apiKey: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">Outstand Tenant ID</label>
+                      <Input
+                        placeholder="optional tenant id"
+                        value={outstandSettings.tenantId}
+                        onChange={(event) =>
+                          setOutstandSettings((prev) => ({
+                            ...prev,
+                            tenantId: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-foreground mb-2">Outstand API Base URL</label>
+                      <Input
+                        placeholder="https://api.outstand.so/v1"
+                        value={outstandSettings.baseUrl}
+                        onChange={(event) =>
+                          setOutstandSettings((prev) => ({
+                            ...prev,
+                            baseUrl: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-foreground">Platforms Using Outstand</label>
+                    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                      {OUTSTAND_PLATFORM_OPTIONS.map((platform) => {
+                        const active = outstandSettings.platforms.includes(platform.id);
+                        return (
+                          <button
+                            key={platform.id}
+                            type="button"
+                            onClick={() => toggleOutstandPlatform(platform.id)}
+                            className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                              active
+                                ? 'border-primary bg-primary/10 text-primary'
+                                : 'border-border/60 bg-card/45 text-foreground hover:border-primary/35'
+                            }`}
+                          >
+                            {platform.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/35 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-medium text-foreground">Apply to all accounts per platform</p>
+                      <p className="text-sm text-muted-foreground">
+                        When enabled, each selected platform publishes to all linked Outstand accounts.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={outstandSettings.applyToAllAccounts}
+                      onCheckedChange={(checked) =>
+                        setOutstandSettings((prev) => ({
+                          ...prev,
+                          applyToAllAccounts: checked,
+                        }))
+                      }
+                    />
+                  </div>
+                </>
+              )}
+
+              <Button onClick={saveOutstandSettings} disabled={outstandLoading || outstandSaving}>
+                {outstandSaving ? 'Saving...' : 'Save Outstand Settings'}
               </Button>
             </CardContent>
           </Card>

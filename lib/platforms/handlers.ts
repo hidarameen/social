@@ -10,7 +10,7 @@ import type {
   PostResponse,
 } from './types';
 import { facebookHandler, facebookConfig } from './facebook';
-import { getPlatformApiProvider } from './provider';
+import { getPlatformApiProvider, getPlatformApiProviderForUser } from './provider';
 import { outstandingPlatformHandlers } from './outstanding';
 
 // Instagram Handler
@@ -404,6 +404,17 @@ export const platformConfigs: Record<PlatformId, PlatformConfig> = {
 
 export function getPlatformHandler(platformId: PlatformId): BasePlatformHandler {
   const provider = getPlatformApiProvider(platformId);
+  if (provider === 'outstanding') {
+    return outstandingPlatformHandlers[platformId];
+  }
+  return nativePlatformHandlers[platformId];
+}
+
+export async function getPlatformHandlerForUser(
+  userId: string,
+  platformId: PlatformId
+): Promise<BasePlatformHandler> {
+  const provider = await getPlatformApiProviderForUser(userId, platformId);
   if (provider === 'outstanding') {
     return outstandingPlatformHandlers[platformId];
   }

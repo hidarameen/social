@@ -11,6 +11,7 @@ const DEFAULT_OUTSTAND_BASE_URL = 'https://api.outstand.so/v1';
 type RequestOptions = {
   apiKey?: string;
   allowMissingApiKey?: boolean;
+  baseUrl?: string;
 };
 
 type SocialNetworkRecord = {
@@ -36,8 +37,10 @@ function resolveApiKey(explicitApiKey?: string): string {
   return key;
 }
 
-function buildApiUrl(path: string): string {
-  const base = normalizeBaseUrl(process.env.OUTSTAND_API_BASE_URL || process.env.OUTSTANDING_API_BASE_URL);
+function buildApiUrl(path: string, explicitBaseUrl?: string): string {
+  const base = normalizeBaseUrl(
+    explicitBaseUrl || process.env.OUTSTAND_API_BASE_URL || process.env.OUTSTANDING_API_BASE_URL
+  );
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
   return `${base}${normalizedPath}`;
 }
@@ -93,7 +96,7 @@ export async function outstandRequest<T>(
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(buildApiUrl(path), {
+  const response = await fetch(buildApiUrl(path, options.baseUrl), {
     ...init,
     headers,
   });
@@ -126,8 +129,12 @@ export function getOutstandTenantId(): string | undefined {
   return tenantId || undefined;
 }
 
-export async function listOutstandSocialNetworks(apiKey?: string): Promise<SocialNetworkRecord[]> {
-  const response = await outstandRequest<OutstandingEnvelope<SocialNetworkRecord[]>>('/social-networks', { method: 'GET' }, { apiKey });
+export async function listOutstandSocialNetworks(apiKey?: string, baseUrl?: string): Promise<SocialNetworkRecord[]> {
+  const response = await outstandRequest<OutstandingEnvelope<SocialNetworkRecord[]>>(
+    '/social-networks',
+    { method: 'GET' },
+    { apiKey, baseUrl }
+  );
   if (Array.isArray(response?.data)) return response.data;
   return [];
 }
@@ -137,12 +144,13 @@ export async function ensureOutstandSocialNetworkConfigured(params: {
   clientKey: string;
   clientSecret: string;
   apiKey?: string;
+  baseUrl?: string;
 }): Promise<void> {
   const clientKey = trimString(params.clientKey);
   const clientSecret = trimString(params.clientSecret);
   if (!clientKey || !clientSecret) return;
 
-  const existing = (await listOutstandSocialNetworks(params.apiKey)).find(
+  const existing = (await listOutstandSocialNetworks(params.apiKey, params.baseUrl)).find(
     (network) => trimString(network.network).toLowerCase() === params.network
   );
 
@@ -153,7 +161,7 @@ export async function ensureOutstandSocialNetworkConfigured(params: {
         client_key: clientKey,
         client_secret: clientSecret,
       }),
-    }, { apiKey: params.apiKey });
+    }, { apiKey: params.apiKey, baseUrl: params.baseUrl });
     return;
   }
 
@@ -164,7 +172,7 @@ export async function ensureOutstandSocialNetworkConfigured(params: {
       client_key: clientKey,
       client_secret: clientSecret,
     }),
-  }, { apiKey: params.apiKey });
+  }, { apiKey: params.apiKey, baseUrl: params.baseUrl });
 }
 
 export async function getOutstandNetworkAuthUrl(params: {
@@ -172,6 +180,7 @@ export async function getOutstandNetworkAuthUrl(params: {
   redirectUri?: string;
   tenantId?: string;
   apiKey?: string;
+  baseUrl?: string;
 }): Promise<string | undefined> {
   const response = await outstandRequest<OutstandingEnvelope<{ authUrl?: string }>>(
     '/social-accounts/auth-url',
@@ -183,7 +192,7 @@ export async function getOutstandNetworkAuthUrl(params: {
         tenant_id: trimString(params.tenantId) || getOutstandTenantId(),
       }),
     },
-    { apiKey: params.apiKey }
+    { apiKey: params.apiKey, baseUrl: params.baseUrl }
   );
 
   return trimString(response?.data?.authUrl) || undefined;
@@ -194,6 +203,7 @@ export async function listOutstandSocialAccounts(params?: {
   limit?: number;
   tenantId?: string;
   apiKey?: string;
+  baseUrl?: string;
 }): Promise<OutstandingSocialAccount[]> {
   const query = new URLSearchParams();
   if (params?.network) query.set('network', params.network);
@@ -204,14 +214,19 @@ export async function listOutstandSocialAccounts(params?: {
   if (tenantId) query.set('tenant_id', tenantId);
 
   const endpoint = query.toString() ? `/social-accounts?${query.toString()}` : '/social-accounts';
-  const response = await outstandRequest<OutstandingEnvelope<OutstandingSocialAccount[]>>(endpoint, { method: 'GET' }, { apiKey: params?.apiKey });
+  const response = await outstandRequest<OutstandingEnvelope<OutstandingSocialAccount[]>>(
+    endpoint,
+    { method: 'GET' },
+    { apiKey: params?.apiKey, baseUrl: params?.baseUrl }
+  );
   if (Array.isArray(response?.data)) return response.data;
   return [];
 }
 
 export async function createOutstandPost(
   payload: OutstandingCreatePostPayload,
-  apiKey?: string
+  apiKey?: string,
+  baseUrl?: string
 ): Promise<OutstandingPost | undefined> {
   const response = await outstandRequest<OutstandingEnvelope<{ post?: OutstandingPost }> | OutstandingEnvelope<unknown>>(
     '/posts',
@@ -219,7 +234,7 @@ export async function createOutstandPost(
       method: 'POST',
       body: JSON.stringify(payload),
     },
-    { apiKey }
+    { apiKey, baseUrl }
   );
 
   const topLevel = (response as OutstandingEnvelope<unknown>)?.post;
@@ -231,14 +246,14 @@ export async function createOutstandPost(
   return undefined;
 }
 
-export async function getOutstandPost(postId: string, apiKey?: string): Promise<OutstandingPost | undefined> {
+export async function getOutstandPost(postId: string, apiKey?: string, baseUrl?: string): Promise<OutstandingPost | undefined> {
   const normalized = trimString(postId);
   if (!normalized) return undefined;
 
   const response = await outstandRequest<OutstandingEnvelope<{ post?: OutstandingPost }> | OutstandingEnvelope<unknown>>(
     `/posts/${encodeURIComponent(normalized)}`,
     { method: 'GET' },
-    { apiKey }
+    { apiKey, baseUrl }
   );
 
   const topLevel = (response as OutstandingEnvelope<unknown>)?.post;
@@ -250,17 +265,17 @@ export async function getOutstandPost(postId: string, apiKey?: string): Promise<
   return undefined;
 }
 
-export async function deleteOutstandPost(postId: string, apiKey?: string): Promise<boolean> {
+export async function deleteOutstandPost(postId: string, apiKey?: string, baseUrl?: string): Promise<boolean> {
   const normalized = trimString(postId);
   if (!normalized) return false;
 
-  await outstandRequest(`/posts/${encodeURIComponent(normalized)}`, { method: 'DELETE' }, { apiKey });
+  await outstandRequest(`/posts/${encodeURIComponent(normalized)}`, { method: 'DELETE' }, { apiKey, baseUrl });
   return true;
 }
 
 export async function getOutstandSocialAccountMetrics(
   socialAccountId: string,
-  params: { since?: Date; until?: Date; apiKey?: string } = {}
+  params: { since?: Date; until?: Date; apiKey?: string; baseUrl?: string } = {}
 ): Promise<any> {
   const normalizedId = trimString(socialAccountId);
   if (!normalizedId) return null;
@@ -277,7 +292,7 @@ export async function getOutstandSocialAccountMetrics(
   const response = await outstandRequest<OutstandingEnvelope<any>>(
     `/social-accounts/${encodeURIComponent(normalizedId)}/metrics${suffix}`,
     { method: 'GET' },
-    { apiKey: params.apiKey }
+    { apiKey: params.apiKey, baseUrl: params.baseUrl }
   );
 
   return response?.data ?? response;
@@ -285,7 +300,8 @@ export async function getOutstandSocialAccountMetrics(
 
 export async function deleteOutstandSocialAccount(
   socialAccountId: string,
-  apiKey?: string
+  apiKey?: string,
+  baseUrl?: string
 ): Promise<boolean> {
   const normalizedId = trimString(socialAccountId);
   if (!normalizedId) return false;
@@ -293,7 +309,7 @@ export async function deleteOutstandSocialAccount(
   await outstandRequest(
     `/social-accounts/${encodeURIComponent(normalizedId)}`,
     { method: 'DELETE' },
-    { apiKey }
+    { apiKey, baseUrl }
   );
   return true;
 }

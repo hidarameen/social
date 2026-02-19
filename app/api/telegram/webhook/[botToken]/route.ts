@@ -13,9 +13,13 @@ import { debugLog, debugError } from '@/lib/debug';
 import { getOAuthClientCredentials } from '@/lib/platform-credentials';
 import { executionQueue } from '@/lib/services/execution-queue';
 import { createVideoProgressLogger } from '@/lib/services/video-progress';
-import { getPlatformApiProvider } from '@/lib/platforms/provider';
-import { getPlatformHandler } from '@/lib/platforms/handlers';
+import { getPlatformApiProviderForUser } from '@/lib/platforms/provider';
+import { getPlatformHandlerForUser } from '@/lib/platforms/handlers';
 import type { PlatformId, PostRequest } from '@/lib/platforms/types';
+import {
+  createOutstandPublishToken,
+  getOutstandUserSettings,
+} from '@/lib/outstand-user-settings';
 import {
   buildTelegramBotFileUrl,
   buildTelegramBotMethodUrl,
@@ -106,13 +110,23 @@ function asManagedPlatformId(platformId: string): PlatformId | null {
   return null;
 }
 
-function buildOutstandingPublishToken(target: TelegramSourceAccount): string {
-  return JSON.stringify({
-    accountId: target.accountId,
-    accountUsername: target.accountUsername,
-    accountName: target.accountName,
-    accessToken: target.accessToken,
-    apiKey: (target.credentials as any)?.apiKey,
+const outstandSettingsCache = new Map<string, Promise<Awaited<ReturnType<typeof getOutstandUserSettings>>>>();
+
+async function resolveOutstandSettings(userId: string) {
+  const cached = outstandSettingsCache.get(userId);
+  if (cached) return cached;
+  const next = getOutstandUserSettings(userId);
+  outstandSettingsCache.set(userId, next);
+  return next;
+}
+
+async function buildOutstandingPublishToken(target: TelegramSourceAccount): Promise<string> {
+  const settings = await resolveOutstandSettings(target.userId);
+  return createOutstandPublishToken({
+    userId: target.userId,
+    apiKey: settings.apiKey,
+    tenantId: settings.tenantId,
+    baseUrl: settings.baseUrl,
   });
 }
 
@@ -532,6 +546,34 @@ type TelegramTaskDispatchContext = {
   mediaItems: PickedTelegramMedia[];
 };
 
+async function dedupeOutstandTargets(targets: TelegramSourceAccount[]): Promise<TelegramSourceAccount[]> {
+  const selected: TelegramSourceAccount[] = [];
+  const seenOutstandTargets = new Set<string>();
+
+  for (const target of targets) {
+    const managedTargetPlatformId = asManagedPlatformId(target.platformId);
+    if (!managedTargetPlatformId) {
+      selected.push(target);
+      continue;
+    }
+
+    const provider = await getPlatformApiProviderForUser(target.userId, managedTargetPlatformId);
+    if (provider !== 'outstanding') {
+      selected.push(target);
+      continue;
+    }
+
+    const dedupeKey = `${target.userId}:${managedTargetPlatformId}`;
+    if (seenOutstandTargets.has(dedupeKey)) {
+      continue;
+    }
+    seenOutstandTargets.add(dedupeKey);
+    selected.push(target);
+  }
+
+  return selected;
+}
+
 async function processTelegramTask({
   account,
   botToken,
@@ -545,10 +587,11 @@ async function processTelegramTask({
     .map((id: string) => accountsById.get(id))
     .filter((a: TelegramSourceAccount | undefined): a is TelegramSourceAccount => Boolean(a))
     .filter((a: TelegramSourceAccount) => a.isActive);
+  const normalizedTargets = await dedupeOutstandTargets(targets);
 
   let failures = 0;
 
-  const targetResults = await Promise.allSettled(targets.map(async (target) => {
+  const targetResults = await Promise.allSettled(normalizedTargets.map(async (target) => {
     let status: 'success' | 'failed' = 'success';
     let errorMessage: string | undefined;
     let responseData: any = undefined;
@@ -602,16 +645,17 @@ async function processTelegramTask({
         },
       });
       const managedTargetPlatformId = asManagedPlatformId(target.platformId);
-      if (
-        managedTargetPlatformId &&
-        getPlatformApiProvider(managedTargetPlatformId) === 'outstanding'
-      ) {
+      const targetProvider =
+        managedTargetPlatformId
+          ? await getPlatformApiProviderForUser(target.userId, managedTargetPlatformId)
+          : 'native';
+      if (managedTargetPlatformId && targetProvider === 'outstanding') {
         debugLog('Telegram -> Outstand start', {
           taskId: task.id,
           targetId: target.id,
           platformId: managedTargetPlatformId,
         });
-        const handler = getPlatformHandler(managedTargetPlatformId);
+        const handler = await getPlatformHandlerForUser(target.userId, managedTargetPlatformId);
         const postRequest: PostRequest = { content: text };
 
         const firstMedia = mediaItems[0];
@@ -644,7 +688,7 @@ async function processTelegramTask({
         transformedContent = text;
         const outstandResponse = await handler.publishPost(
           postRequest,
-          buildOutstandingPublishToken(target)
+          await buildOutstandingPublishToken(target)
         );
         if (!outstandResponse.success) {
           throw new Error(outstandResponse.error || 'Outstand publish failed');

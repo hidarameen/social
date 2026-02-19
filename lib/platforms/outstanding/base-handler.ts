@@ -23,6 +23,8 @@ import {
 
 type TokenHints = {
   apiKey?: string;
+  tenantId?: string;
+  baseUrl?: string;
   selectors: string[];
 };
 
@@ -73,12 +75,9 @@ function parseTokenHints(token?: string): TokenHints {
         }
 
         const fromStrings = [
-          parsed.account,
-          parsed.accountId,
-          parsed.accountUsername,
           parsed.outstandAccountId,
           parsed.selector,
-          parsed.username,
+          parsed.accountSelector,
         ];
         for (const item of fromStrings) {
           const value = trimString(item);
@@ -91,7 +90,19 @@ function parseTokenHints(token?: string): TokenHints {
           trimString(parsed.outstandingApiKey) ||
           undefined;
 
-        return { apiKey, selectors };
+        const tenantId =
+          trimString(parsed.tenantId) ||
+          trimString(parsed.outstandTenantId) ||
+          trimString(parsed.outstandingTenantId) ||
+          undefined;
+
+        const baseUrl =
+          trimString(parsed.baseUrl) ||
+          trimString(parsed.outstandBaseUrl) ||
+          trimString(parsed.outstandingBaseUrl) ||
+          undefined;
+
+        return { apiKey, tenantId, baseUrl, selectors };
       }
     } catch {
       // Keep fallback parsing below.
@@ -200,7 +211,14 @@ export class OutstandingPlatformHandler implements BasePlatformHandler {
   }
 
   private async getMatchingAccounts(token?: string, apiKey?: string): Promise<OutstandingSocialAccount[]> {
-    const accounts = await listOutstandSocialAccounts({ network: this.network, limit: 200, apiKey });
+    const hints = parseTokenHints(token);
+    const accounts = await listOutstandSocialAccounts({
+      network: this.network,
+      limit: 200,
+      apiKey: apiKey || hints.apiKey,
+      tenantId: hints.tenantId,
+      baseUrl: hints.baseUrl,
+    });
     if (accounts.length === 0) return [];
 
     const selectors = this.resolveSelectors(token);
@@ -210,7 +228,7 @@ export class OutstandingPlatformHandler implements BasePlatformHandler {
     return matched.length > 0 ? matched : accounts;
   }
 
-  private buildPostPayload(post: PostRequest, token?: string): {
+  private buildPostPayload(post: PostRequest, accountIds: string[]): {
     payload?: {
       content?: string;
       accounts: string[];
@@ -219,8 +237,7 @@ export class OutstandingPlatformHandler implements BasePlatformHandler {
     };
     error?: string;
   } {
-    const accounts = this.resolveSelectors(token);
-    if (accounts.length === 0) {
+    if (accountIds.length === 0) {
       return { error: 'No Outstand target accounts configured for this platform.' };
     }
 
@@ -236,7 +253,7 @@ export class OutstandingPlatformHandler implements BasePlatformHandler {
       scheduledAt?: string;
       containers?: Array<{ content?: string; media?: Array<{ url: string }> }>;
     } = {
-      accounts,
+      accounts: accountIds,
     };
 
     if (post.scheduleTime instanceof Date && !Number.isNaN(post.scheduleTime.getTime())) {
@@ -308,7 +325,7 @@ export class OutstandingPlatformHandler implements BasePlatformHandler {
       const results = await Promise.all(
         accountIds.map(async (accountId) => {
           try {
-            await deleteOutstandSocialAccount(accountId, hints.apiKey);
+            await deleteOutstandSocialAccount(accountId, hints.apiKey, hints.baseUrl);
             return true;
           } catch {
             return false;
@@ -324,12 +341,16 @@ export class OutstandingPlatformHandler implements BasePlatformHandler {
   async publishPost(post: PostRequest, token: string): Promise<PostResponse> {
     try {
       const hints = parseTokenHints(token);
-      const built = this.buildPostPayload(post, token);
+      const accounts = await this.getMatchingAccounts(token, hints.apiKey);
+      const accountIds = accounts
+        .map((account) => trimString(account.id))
+        .filter((value): value is string => value.length > 0);
+      const built = this.buildPostPayload(post, accountIds);
       if (!built.payload) {
         return { success: false, error: built.error || 'Failed to build Outstand post payload' };
       }
 
-      const created = await createOutstandPost(built.payload, hints.apiKey);
+      const created = await createOutstandPost(built.payload, hints.apiKey, hints.baseUrl);
       return this.postResponseFromOutstand(created);
     } catch (error) {
       return {
@@ -380,7 +401,7 @@ export class OutstandingPlatformHandler implements BasePlatformHandler {
   async deletePost(postId: string, token: string): Promise<boolean> {
     try {
       const hints = parseTokenHints(token);
-      return await deleteOutstandPost(postId, hints.apiKey);
+      return await deleteOutstandPost(postId, hints.apiKey, hints.baseUrl);
     } catch {
       return false;
     }
@@ -408,6 +429,7 @@ export class OutstandingPlatformHandler implements BasePlatformHandler {
             since: startDate,
             until: endDate,
             apiKey: hints.apiKey,
+            baseUrl: hints.baseUrl,
           });
 
           const metrics = collectNumericMetricValues(metricsPayload);
@@ -435,12 +457,18 @@ export class OutstandingPlatformHandler implements BasePlatformHandler {
     }
   }
 
-  async getAuthUrl(apiKey?: string, redirectUri?: string): Promise<string | undefined> {
+  async getAuthUrl(
+    apiKey?: string,
+    redirectUri?: string,
+    baseUrl?: string,
+    tenantId?: string
+  ): Promise<string | undefined> {
     return getOutstandNetworkAuthUrl({
       network: this.network,
-      tenantId: getOutstandTenantId(),
+      tenantId: tenantId || getOutstandTenantId(),
       apiKey,
       redirectUri,
+      baseUrl,
     });
   }
 }

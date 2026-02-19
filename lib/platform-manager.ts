@@ -5,9 +5,10 @@ import { InstagramClient } from '@/platforms/instagram/client'
 import { TikTokClient } from '@/platforms/tiktok/client'
 import { YouTubeClient } from '@/platforms/youtube/client'
 import { TelegramClient } from '@/platforms/telegram/client'
-import { getPlatformHandler } from './platforms/handlers'
-import { getPlatformApiProvider } from './platforms/provider'
+import { getPlatformHandler, getPlatformHandlerForUser } from './platforms/handlers'
+import { getPlatformApiProvider, getPlatformApiProviderForUser } from './platforms/provider'
 import type { PlatformId, PostRequest } from './platforms/types'
+import { createOutstandPublishToken, getOutstandUserSettings } from './outstand-user-settings'
 
 const MANAGED_PLATFORMS: ReadonlySet<PlatformId> = new Set([
   'facebook',
@@ -44,14 +45,21 @@ function mapContentToPostRequest(content: ContentItem): PostRequest {
   }
 }
 
-function buildOutstandingToken(account: PlatformAccount): string {
-  return JSON.stringify({
-    accountId: account.accountId,
-    accountUsername: account.username,
-    accountName: account.displayName,
-    accessToken: account.credentials.accessToken,
-    apiKey: account.credentials.apiKey,
-  })
+async function buildOutstandingToken(account: PlatformAccount): Promise<string> {
+  try {
+    const settings = await getOutstandUserSettings(account.userId)
+    return createOutstandPublishToken({
+      userId: account.userId,
+      apiKey: settings.apiKey || account.credentials.apiKey,
+      tenantId: settings.tenantId,
+      baseUrl: settings.baseUrl,
+    })
+  } catch {
+    return createOutstandPublishToken({
+      userId: account.userId,
+      apiKey: account.credentials.apiKey,
+    })
+  }
 }
 
 /**
@@ -73,7 +81,12 @@ export class PlatformManager {
 
     try {
       const platformId = asPlatformId(platform)
-      if (platformId && getPlatformApiProvider(platformId) === 'outstanding') {
+      if (
+        platformId &&
+        (account.userId
+          ? (await getPlatformApiProviderForUser(account.userId, platformId)) === 'outstanding'
+          : getPlatformApiProvider(platformId) === 'outstanding')
+      ) {
         return
       }
 
@@ -140,11 +153,18 @@ export class PlatformManager {
 
     try {
       const platformId = asPlatformId(platform)
-      if (platformId && getPlatformApiProvider(platformId) === 'outstanding') {
-        const handler = getPlatformHandler(platformId)
+      if (
+        platformId &&
+        (account.userId
+          ? (await getPlatformApiProviderForUser(account.userId, platformId)) === 'outstanding'
+          : getPlatformApiProvider(platformId) === 'outstanding')
+      ) {
+        const handler = account.userId
+          ? await getPlatformHandlerForUser(account.userId, platformId)
+          : getPlatformHandler(platformId)
         const result = await handler.publishPost(
           mapContentToPostRequest(content),
-          buildOutstandingToken(account)
+          await buildOutstandingToken(account)
         )
         return {
           success: result.success,
@@ -303,9 +323,16 @@ export class PlatformManager {
     for (const account of accounts) {
       try {
         const platformId = asPlatformId(account.platform)
-        if (platformId && getPlatformApiProvider(platformId) === 'outstanding') {
-          const handler = getPlatformHandler(platformId)
-          const info = await handler.getAccountInfo(buildOutstandingToken(account))
+        if (
+          platformId &&
+          (account.userId
+            ? (await getPlatformApiProviderForUser(account.userId, platformId)) === 'outstanding'
+            : getPlatformApiProvider(platformId) === 'outstanding')
+        ) {
+          const handler = account.userId
+            ? await getPlatformHandlerForUser(account.userId, platformId)
+            : getPlatformHandler(platformId)
+          const info = await handler.getAccountInfo(await buildOutstandingToken(account))
           results[account.id] = Boolean(info)
           continue
         }

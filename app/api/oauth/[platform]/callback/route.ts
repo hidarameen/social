@@ -7,6 +7,10 @@ import { getOAuthPlatform } from '@/lib/oauth/platforms';
 import { buildBasicAuth, decodeJwtPayload, safeJsonParse } from '@/lib/oauth/utils';
 import { triggerBackgroundServicesRefresh } from '@/lib/services/background-services';
 import { getOAuthClientCredentials, type ManagedPlatformId } from '@/lib/platform-credentials';
+import type { PlatformId } from '@/lib/platforms/types';
+import type { OutstandingNetworkId, OutstandingSocialAccount } from '@/lib/platforms/outstanding/types';
+import { listOutstandSocialAccounts } from '@/lib/platforms/outstanding/client';
+import { getOutstandUserSettings } from '@/lib/outstand-user-settings';
 
 export const runtime = 'nodejs';
 
@@ -21,6 +25,49 @@ type TokenResponse = {
   error?: string;
   error_description?: string;
 };
+
+type OAuthStateCookie = {
+  state: string;
+  codeVerifier?: string;
+  userId: string;
+  returnTo?: string;
+  provider?: 'native' | 'outstanding';
+};
+
+const OUTSTAND_NETWORK_BY_PLATFORM: Record<PlatformId, OutstandingNetworkId> = {
+  twitter: 'x',
+  facebook: 'facebook',
+  instagram: 'instagram',
+  youtube: 'youtube',
+  tiktok: 'tiktok',
+  telegram: 'telegram',
+  linkedin: 'linkedin',
+};
+
+function asOutstandPlatformId(value: string): PlatformId | null {
+  return value in OUTSTAND_NETWORK_BY_PLATFORM ? (value as PlatformId) : null;
+}
+
+function mapOutstandAccountInfo(account: OutstandingSocialAccount): {
+  accountId: string;
+  accountName: string;
+  accountUsername: string;
+  profileImageUrl?: string;
+} | null {
+  const accountId = String(account.id || '').trim();
+  if (!accountId) return null;
+
+  const accountUsername = String(account.username || '').trim();
+  const accountName = String(account.name || account.username || accountId).trim();
+  const profileImageUrl = String(account.avatarUrl || '').trim() || undefined;
+
+  return {
+    accountId,
+    accountName: accountName || accountId,
+    accountUsername: accountUsername || accountName || accountId,
+    profileImageUrl,
+  };
+}
 
 async function exchangeToken(
   userId: string,
@@ -335,6 +382,118 @@ export async function GET(
     if (!platform) {
       return NextResponse.json({ success: false, error: 'Unknown platform' }, { status: 400 });
     }
+
+    const cookieStore = await cookies();
+    const raw = cookieStore.get(`oauth_state_${platform.id}`)?.value;
+    if (!raw) {
+      return NextResponse.json({ success: false, error: 'Missing OAuth state cookie' }, { status: 400 });
+    }
+    const parsed = safeJsonParse<OAuthStateCookie>(raw);
+    if (!parsed || parsed.userId !== user.id) {
+      return NextResponse.json({ success: false, error: 'Invalid OAuth state' }, { status: 400 });
+    }
+
+    const search = request.nextUrl.searchParams;
+    const state = search.get('state');
+    if (state && parsed.state !== state) {
+      return NextResponse.json({ success: false, error: 'Invalid OAuth state' }, { status: 400 });
+    }
+    cookieStore.delete(`oauth_state_${platform.id}`);
+
+    const appBaseUrl = (process.env.APP_URL || request.nextUrl.origin).replace(/\/+$/, '');
+    const returnTo = parsed.returnTo && parsed.returnTo.startsWith('/') ? parsed.returnTo : '/accounts';
+    const provider = parsed.provider === 'outstanding' ? 'outstanding' : 'native';
+
+    if (provider === 'outstanding') {
+      const platformId = asOutstandPlatformId(platform.id);
+      if (!platformId) {
+        return NextResponse.json({ success: false, error: 'Unsupported Outstand platform' }, { status: 400 });
+      }
+
+      const outstandSettings = await getOutstandUserSettings(user.id);
+      if (!outstandSettings.apiKey) {
+        return NextResponse.json(
+          { success: false, error: 'Missing Outstand API key. Add it in Settings before connecting accounts.' },
+          { status: 400 }
+        );
+      }
+
+      const network = OUTSTAND_NETWORK_BY_PLATFORM[platformId];
+      const outstandAccounts = await listOutstandSocialAccounts({
+        network,
+        limit: 200,
+        tenantId: outstandSettings.tenantId,
+        apiKey: outstandSettings.apiKey,
+        baseUrl: outstandSettings.baseUrl,
+      });
+
+      if (outstandAccounts.length === 0) {
+        throw new Error(`No ${platform.name} accounts found in Outstand. Complete authorization and try again.`);
+      }
+
+      const userAccounts = await db.getUserAccounts(user.id);
+      let linkedCount = 0;
+      for (const outstandAccount of outstandAccounts) {
+        const mapped = mapOutstandAccountInfo(outstandAccount);
+        if (!mapped) continue;
+
+        const existing = userAccounts.find(
+          (item) => item.platformId === platform.id && String(item.accountId) === mapped.accountId
+        );
+
+        const nextCredentials = {
+          ...(existing?.credentials || {}),
+          authProvider: 'outstanding',
+          outstandManaged: true,
+          outstandAccount: {
+            id: mapped.accountId,
+            username: mapped.accountUsername,
+            name: mapped.accountName,
+            avatarUrl: mapped.profileImageUrl,
+            network,
+          },
+          profileImageUrl: mapped.profileImageUrl,
+        };
+
+        if (existing) {
+          await db.updateAccount(existing.id, {
+            accountName: mapped.accountName,
+            accountUsername: mapped.accountUsername,
+            accessToken: existing.accessToken || 'outstand',
+            refreshToken: existing.refreshToken,
+            credentials: nextCredentials,
+            isActive: true,
+          });
+        } else {
+          await db.createAccount({
+            id: randomUUID(),
+            userId: user.id,
+            platformId: platform.id,
+            accountName: mapped.accountName,
+            accountUsername: mapped.accountUsername,
+            accountId: mapped.accountId,
+            accessToken: 'outstand',
+            refreshToken: undefined,
+            credentials: nextCredentials,
+            isActive: true,
+          });
+        }
+
+        linkedCount += 1;
+      }
+
+      if (linkedCount === 0) {
+        throw new Error(`No valid ${platform.name} accounts were returned by Outstand.`);
+      }
+
+      triggerBackgroundServicesRefresh({ force: platform.id === 'twitter' });
+      const redirect = new URL(returnTo, appBaseUrl);
+      redirect.searchParams.set('oauth', 'success');
+      redirect.searchParams.set('platform', platform.id);
+      redirect.searchParams.set('provider', 'outstanding');
+      return NextResponse.redirect(redirect.toString());
+    }
+
     if (!platform.authUrl || !platform.tokenUrl) {
       return NextResponse.json(
         { success: false, error: `${platform.name} does not support OAuth in this app` },
@@ -342,25 +501,11 @@ export async function GET(
       );
     }
 
-    const search = request.nextUrl.searchParams;
     const code = search.get('code');
-    const state = search.get('state');
-    if (!code || !state) {
+    if (!code || !state || parsed.state !== state) {
       return NextResponse.json({ success: false, error: 'Missing code or state' }, { status: 400 });
     }
 
-    const cookieStore = await cookies();
-    const raw = cookieStore.get(`oauth_state_${platform.id}`)?.value;
-    if (!raw) {
-      return NextResponse.json({ success: false, error: 'Missing OAuth state cookie' }, { status: 400 });
-    }
-    const parsed = safeJsonParse<{ state: string; codeVerifier?: string; userId: string; returnTo?: string }>(raw);
-    if (!parsed || parsed.state !== state || parsed.userId !== user.id) {
-      return NextResponse.json({ success: false, error: 'Invalid OAuth state' }, { status: 400 });
-    }
-    cookieStore.delete(`oauth_state_${platform.id}`);
-
-    const appBaseUrl = (process.env.APP_URL || request.nextUrl.origin).replace(/\/+$/, '');
     const redirectUri = `${appBaseUrl}/api/oauth/${platform.id}/callback`;
     const tokenResponse = await exchangeToken(user.id, platform.id, code, redirectUri, parsed.codeVerifier);
     const accessToken = tokenResponse.access_token;
@@ -522,10 +667,10 @@ export async function GET(
 
     triggerBackgroundServicesRefresh({ force: platform.id === 'twitter' });
 
-    const returnTo = parsed.returnTo && parsed.returnTo.startsWith('/') ? parsed.returnTo : '/accounts';
     const redirect = new URL(returnTo, appBaseUrl);
     redirect.searchParams.set('oauth', 'success');
     redirect.searchParams.set('platform', platform.id);
+    redirect.searchParams.set('provider', 'native');
     return NextResponse.redirect(redirect.toString());
   } catch (error) {
     console.error('[OAuth Callback] Error:', error);
