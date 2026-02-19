@@ -44,18 +44,8 @@ function asManagedPlatformId(platformId: string): PlatformId | null {
   return null;
 }
 
-const outstandSettingsCache = new Map<string, Promise<Awaited<ReturnType<typeof getOutstandUserSettings>>>>();
-
-async function resolveOutstandSettings(userId: string) {
-  const cached = outstandSettingsCache.get(userId);
-  if (cached) return cached;
-  const next = getOutstandUserSettings(userId);
-  outstandSettingsCache.set(userId, next);
-  return next;
-}
-
 async function buildOutstandingPublishToken(target: PlatformAccount): Promise<string> {
-  const settings = await resolveOutstandSettings(target.userId);
+  const settings = await getOutstandUserSettings(target.userId);
   return createOutstandPublishToken({
     userId: target.userId,
     apiKey: settings.apiKey,
