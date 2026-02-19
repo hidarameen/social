@@ -7691,6 +7691,383 @@ class _SocialShellState extends State<SocialShell> {
     }
   }
 
+  Widget _buildHeaderActionButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onPressed,
+    bool showDot = false,
+    bool compact = false,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onPressed,
+          child: Container(
+            width: compact ? 34 : 38,
+            height: compact ? 34 : 38,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: Color.alphaBlend(
+                scheme.surface.withAlpha(isDark ? 105 : 188),
+                scheme.primary.withAlpha(isDark ? 12 : 5),
+              ),
+              border: Border.all(color: scheme.outline.withAlpha(82)),
+            ),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Center(
+                  child: Icon(
+                    icon,
+                    size: compact ? 16 : 17,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                if (showDot)
+                  Positioned(
+                    right: 9,
+                    top: 9,
+                    child: Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: scheme.secondary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShellHeader({
+    required I18n i18n,
+    required PanelSpec currentPanel,
+    required String panelLabel,
+    required String lastUpdated,
+    required bool wide,
+    required bool mobileMenuOpen,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final collapsed = widget.appState.sidebarCollapsed;
+    final caption =
+        i18n.t(currentPanel.captionKey, currentPanel.fallbackCaption);
+    final isDarkTheme = widget.appState.themeMode == AppThemeMode.dark;
+    final compact = !wide;
+    final crumbs = <String>[
+      i18n.t('breadcrumb.workspace', 'Workspace'),
+      panelLabel,
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: scheme.outline.withAlpha(95)),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color.alphaBlend(
+                    scheme.surface.withAlpha(isDark ? 118 : 235),
+                    scheme.primary.withAlpha(isDark ? 14 : 7),
+                  ),
+                  Color.alphaBlend(
+                    scheme.surface.withAlpha(isDark ? 100 : 225),
+                    scheme.secondary.withAlpha(isDark ? 10 : 6),
+                  ),
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                  color: Colors.black.withAlpha(isDark ? 48 : 16),
+                ),
+              ],
+            ),
+            padding: EdgeInsets.fromLTRB(
+                compact ? 10 : 12, 10, compact ? 10 : 12, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _buildHeaderActionButton(
+                      icon: wide
+                          ? (collapsed
+                              ? Icons.menu_open_rounded
+                              : Icons.menu_rounded)
+                          : (mobileMenuOpen
+                              ? Icons.close_rounded
+                              : Icons.menu_rounded),
+                      tooltip: wide
+                          ? (collapsed ? 'Expand sidebar' : 'Collapse sidebar')
+                          : (mobileMenuOpen
+                              ? 'Close navigation menu'
+                              : 'Open navigation menu'),
+                      onPressed: () => unawaited(_toggleSidebar(wide: wide)),
+                      compact: compact,
+                    ),
+                    const SizedBox(width: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(9),
+                      child: Image.asset(
+                        'assets/icon-192.png',
+                        width: compact ? 26 : 30,
+                        height: compact ? 26 : 30,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    if (wide) ...[
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'SocialFlow',
+                            style: TextStyle(
+                              fontSize: compact ? 13 : 14,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.1,
+                            ),
+                          ),
+                          Text(
+                            i18n.t('header.controlSuite', 'Control Suite'),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.8,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (wide)
+                            Wrap(
+                              spacing: 4,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                for (int i = 0; i < crumbs.length; i++) ...[
+                                  if (i > 0)
+                                    Icon(
+                                      Icons.chevron_right_rounded,
+                                      size: 14,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  Text(
+                                    crumbs[i],
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          Text(
+                            panelLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: compact ? 15 : 17,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.1,
+                            ),
+                          ),
+                          Text(
+                            lastUpdated,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (wide)
+                      _buildHeaderActionButton(
+                        icon: widget.appState.locale == 'ar'
+                            ? Icons.translate_rounded
+                            : Icons.g_translate_rounded,
+                        tooltip: i18n.t('settings.language', 'Language'),
+                        onPressed: () =>
+                            unawaited(widget.appState.toggleLocale()),
+                      ),
+                    if (wide) const SizedBox(width: 6),
+                    _buildHeaderActionButton(
+                      icon: isDarkTheme
+                          ? Icons.light_mode_rounded
+                          : Icons.dark_mode_rounded,
+                      tooltip: isDarkTheme
+                          ? i18n.t('auth.themeLight', 'Light mode')
+                          : i18n.t('auth.themeDark', 'Dark mode'),
+                      onPressed: () =>
+                          unawaited(widget.appState.toggleThemeMode()),
+                      compact: compact,
+                    ),
+                    const SizedBox(width: 6),
+                    _buildHeaderActionButton(
+                      icon: Icons.refresh_rounded,
+                      tooltip:
+                          i18n.t('common.refresh', 'Refresh current panel'),
+                      onPressed: () =>
+                          unawaited(_loadCurrentPanel(force: true)),
+                      compact: compact,
+                    ),
+                    const SizedBox(width: 6),
+                    _buildHeaderActionButton(
+                      icon: Icons.notifications_none_rounded,
+                      tooltip: i18n.t('header.notifications', 'Notifications'),
+                      onPressed: () => _toast(
+                          i18n.t('header.notifications', 'Notifications')),
+                      showDot: true,
+                      compact: compact,
+                    ),
+                    const SizedBox(width: 6),
+                    _buildHeaderActionButton(
+                      icon: Icons.person_outline_rounded,
+                      tooltip: i18n.t('settings.profile', 'Profile'),
+                      onPressed: () => _openProfilePanel(closeDrawer: !wide),
+                      compact: compact,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        height: compact ? 36 : 40,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          color: Color.alphaBlend(
+                            scheme.surface.withAlpha(isDark ? 112 : 210),
+                            scheme.primary.withAlpha(isDark ? 10 : 4),
+                          ),
+                          border:
+                              Border.all(color: scheme.outline.withAlpha(84)),
+                        ),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => _toast(
+                            i18n.t('header.quickSearch', 'Quick Search'),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.search_rounded,
+                                size: 16,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  i18n.t('header.searchPlaceholder',
+                                      'Search tasks, accounts, logs...'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                      color: scheme.outline.withAlpha(76)),
+                                  color: scheme.surface
+                                      .withAlpha(isDark ? 120 : 220),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.keyboard_command_key_rounded,
+                                      size: 12,
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      'K',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                        color: scheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      constraints: const BoxConstraints(maxWidth: 320),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: scheme.outline.withAlpha(70)),
+                        color: scheme.surface.withAlpha(isDark ? 108 : 208),
+                      ),
+                      child: Text(
+                        caption,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentPanel = kPanelSpecs[_selectedIndex];
@@ -7698,15 +8075,11 @@ class _SocialShellState extends State<SocialShell> {
     final panelLabel =
         i18n.t(currentPanel.labelKey, currentPanel.fallbackLabel);
     final lastUpdated = _buildLastUpdatedText(i18n, _currentKind);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final scheme = Theme.of(context).colorScheme;
-
     return LayoutBuilder(
       builder: (context, constraints) {
         // Material guidance: switch to rail for larger screens/tablets.
         final wide = constraints.maxWidth >= 840;
         final reducedMotion = widget.appState.reducedMotion;
-        final collapsed = widget.appState.sidebarCollapsed;
         if (wide && _mobileMenuOpen) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted || !_mobileMenuOpen) return;
@@ -7717,88 +8090,54 @@ class _SocialShellState extends State<SocialShell> {
 
         return Scaffold(
           key: _scaffoldKey,
-          extendBodyBehindAppBar: true,
-          appBar: AppBar(
-            automaticallyImplyLeading: false,
-            leading: IconButton(
-              icon: Icon(
-                wide
-                    ? (collapsed ? Icons.menu_open_rounded : Icons.menu_rounded)
-                    : (mobileMenuOpen
-                        ? Icons.close_rounded
-                        : Icons.menu_rounded),
-              ),
-              tooltip: wide
-                  ? (collapsed ? 'Expand sidebar' : 'Collapse sidebar')
-                  : (mobileMenuOpen ? 'Close menu' : 'Open menu'),
-              onPressed: () => unawaited(_toggleSidebar(wide: wide)),
-            ),
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(panelLabel),
-                Text(
-                  lastUpdated,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-            flexibleSpace: ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                child: Container(
-                  color: scheme.surface
-                      .withAlpha(((isDark ? 0.30 : 0.72) * 255).round()),
-                ),
-              ),
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.refresh_rounded),
-                tooltip: i18n.t('common.refresh', 'Refresh current panel'),
-                onPressed: () => unawaited(_loadCurrentPanel(force: true)),
-              ),
-            ],
-          ),
           body: SfAppBackground(
             child: SafeArea(
               child: Stack(
                 children: [
-                  Row(
+                  Column(
                     children: [
-                      if (wide) _buildRail(i18n),
+                      _buildShellHeader(
+                        i18n: i18n,
+                        currentPanel: currentPanel,
+                        panelLabel: panelLabel,
+                        lastUpdated: lastUpdated,
+                        wide: wide,
+                        mobileMenuOpen: mobileMenuOpen,
+                      ),
                       Expanded(
-                        child: AnimatedSwitcher(
-                          duration: reducedMotion
-                              ? Duration.zero
-                              : const Duration(milliseconds: 220),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
-                          transitionBuilder: (child, anim) {
-                            if (reducedMotion) {
-                              return FadeTransition(
-                                  opacity: anim, child: child);
-                            }
-                            return FadeTransition(
-                              opacity: anim,
-                              child: SlideTransition(
-                                position: Tween<Offset>(
-                                  begin: const Offset(0.02, 0),
-                                  end: Offset.zero,
-                                ).animate(anim),
-                                child: child,
+                        child: Row(
+                          children: [
+                            if (wide) _buildRail(i18n),
+                            Expanded(
+                              child: AnimatedSwitcher(
+                                duration: reducedMotion
+                                    ? Duration.zero
+                                    : const Duration(milliseconds: 220),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                transitionBuilder: (child, anim) {
+                                  if (reducedMotion) {
+                                    return FadeTransition(
+                                        opacity: anim, child: child);
+                                  }
+                                  return FadeTransition(
+                                    opacity: anim,
+                                    child: SlideTransition(
+                                      position: Tween<Offset>(
+                                        begin: const Offset(0.02, 0),
+                                        end: Offset.zero,
+                                      ).animate(anim),
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: KeyedSubtree(
+                                  key: ValueKey<PanelKind>(_currentKind),
+                                  child: _buildCurrentPanel(),
+                                ),
                               ),
-                            );
-                          },
-                          child: KeyedSubtree(
-                            key: ValueKey<PanelKind>(_currentKind),
-                            child: _buildCurrentPanel(),
-                          ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
