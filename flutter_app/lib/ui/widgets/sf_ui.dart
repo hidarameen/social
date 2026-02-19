@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
 class SfTokens {
-  static const double pagePadding = 14;
-  static const double cardPadding = 14;
-  static const double sectionGap = 12;
-  static const double itemGap = 10;
+  static const double pagePadding = 24;
+  static const double cardPadding = 20;
+  static const double sectionGap = 16;
+  static const double itemGap = 16;
 
-  static const double radiusLg = 18;
-  static const double radiusMd = 14;
+  static const double radiusLg = 24;
+  static const double radiusMd = 16;
 
   static BorderRadius get radiusLarge => BorderRadius.circular(radiusLg);
   static BorderRadius get radiusMedium => BorderRadius.circular(radiusMd);
@@ -50,11 +50,11 @@ class SfAppBackground extends StatelessWidget {
     final scheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    final bgStart = isDark ? const Color(0xFF1F232A) : const Color(0xFFFFFFFF);
-    final bgEnd = scheme.surface;
+    final bgStart = isDark ? const Color(0xFF191B2B) : const Color(0xFFF2F4F8);
+    final bgEnd = isDark ? const Color(0xFF101423) : const Color(0xFFEFF3FA);
 
-    final glowA = scheme.primary.withOpacity(isDark ? 0.14 : 0.10);
-    final glowB = scheme.secondary.withOpacity(isDark ? 0.10 : 0.08);
+    final glowA = const Color(0xFF9C2CF3).withOpacity(isDark ? 0.22 : 0.12);
+    final glowB = const Color(0xFF3A49F9).withOpacity(isDark ? 0.20 : 0.11);
 
     return Stack(
       children: [
@@ -95,7 +95,7 @@ class SfAppBackground extends StatelessWidget {
           child: IgnorePointer(
             child: CustomPaint(
               painter: _SfDotGridPainter(
-                color: scheme.outline.withOpacity(isDark ? 0.12 : 0.10),
+                color: scheme.outline.withOpacity(isDark ? 0.08 : 0.06),
               ),
             ),
           ),
@@ -157,15 +157,17 @@ class SfSectionHeader extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                style: const TextStyle(
+                    fontSize: 28, fontWeight: FontWeight.w700, height: 1.12),
               ),
               if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(
                   subtitle!,
                   style: TextStyle(
+                    fontSize: 15,
                     color: scheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
@@ -205,23 +207,18 @@ class SfPanelCard extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: SfTokens.radiusLarge,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            scheme.surface.withOpacity(isDark ? 0.82 : 1.0),
-            scheme.surfaceContainerHighest.withOpacity(isDark ? 0.46 : 0.40),
-          ],
-        ),
+        color:
+            isDark ? scheme.surface.withOpacity(0.95) : const Color(0xFFFFFFFF),
         boxShadow: [
           BoxShadow(
-            blurRadius: isDark ? 22 : 26,
-            spreadRadius: -18,
-            offset: const Offset(0, 18),
-            color: scheme.onSurface.withOpacity(isDark ? 0.22 : 0.14),
+            blurRadius: 20,
+            spreadRadius: 0,
+            offset: const Offset(0, 10),
+            color: Colors.black.withOpacity(isDark ? 0.20 : 0.06),
           ),
         ],
-        border: Border.all(color: scheme.outline.withOpacity(isDark ? 0.70 : 0.75)),
+        border:
+            Border.all(color: scheme.outline.withOpacity(isDark ? 0.34 : 0.45)),
       ),
       child: ClipRRect(
         borderRadius: SfTokens.radiusLarge,
@@ -263,7 +260,7 @@ class SfBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: tone.withOpacity(isDark ? 0.22 : 0.12),
         borderRadius: BorderRadius.circular(999),
@@ -327,13 +324,16 @@ class SfEmptyState extends StatelessWidget {
               Text(
                 title,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 8),
               Text(
                 subtitle,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700),
               ),
               if (primary != null || secondary != null) ...[
                 const SizedBox(height: 14),
@@ -377,23 +377,23 @@ class SfKpiTile extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(SfTokens.radiusMd),
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  resolved.withOpacity(0.22),
-                  resolved.withOpacity(0.10),
+                  resolved.withOpacity(0.18),
+                  resolved.withOpacity(0.08),
                 ],
               ),
-              border: Border.all(color: resolved.withOpacity(0.25)),
+              border: Border.all(color: resolved.withOpacity(0.22)),
             ),
-            child: Icon(icon, color: resolved),
+            child: Icon(icon, color: resolved, size: 22),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -401,19 +401,87 @@ class SfKpiTile extends StatelessWidget {
                 Text(
                   label,
                   style: TextStyle(
+                    fontSize: 14,
                     color: scheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Text(
                   value,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                  style: const TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.w700, height: 1.0),
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class SfPillSwitch extends StatelessWidget {
+  const SfPillSwitch({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.enabledColor = const Color(0xFF4CD964),
+    this.disabledColor = const Color(0xFFD4DBE7),
+  });
+
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  final Color enabledColor;
+  final Color disabledColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onChanged != null;
+    final bg = value
+        ? enabledColor
+        : Theme.of(context).brightness == Brightness.dark
+            ? disabledColor.withOpacity(0.35)
+            : disabledColor;
+
+    return Semantics(
+      toggled: value,
+      button: true,
+      child: GestureDetector(
+        onTap: enabled ? () => onChanged?.call(!value) : null,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 160),
+          opacity: enabled ? 1 : 0.55,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            width: 50,
+            height: 30,
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(999),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Align(
+              alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -503,13 +571,16 @@ class _SfBarChartPainter extends CustomPainter {
     const double topPad = 6;
     const double bottomPad = 34;
 
-    final chartWidth = (size.width - leftPad - rightPad).clamp(1.0, size.width).toDouble();
-    final chartHeight = (size.height - topPad - bottomPad).clamp(1.0, size.height).toDouble();
+    final chartWidth =
+        (size.width - leftPad - rightPad).clamp(1.0, size.width).toDouble();
+    final chartHeight =
+        (size.height - topPad - bottomPad).clamp(1.0, size.height).toDouble();
 
     // Grid lines (0/25/50/75/100)
     for (int i = 0; i <= 4; i++) {
       final y = topPad + chartHeight * (i / 4);
-      canvas.drawLine(Offset(leftPad, y), Offset(size.width - rightPad, y), grid);
+      canvas.drawLine(
+          Offset(leftPad, y), Offset(size.width - rightPad, y), grid);
     }
 
     final n = values.length <= labels.length ? values.length : labels.length;
@@ -546,7 +617,8 @@ class _SfBarChartPainter extends CustomPainter {
       // Value label (top)
       textPainter.text = TextSpan(text: v.toStringAsFixed(0), style: textStyle);
       textPainter.layout(maxWidth: barWidth);
-      textPainter.paint(canvas, Offset(x + (barWidth - textPainter.width) / 2, y - 14));
+      textPainter.paint(
+          canvas, Offset(x + (barWidth - textPainter.width) / 2, y - 14));
 
       // X label (bottom, truncated)
       final raw = labels[i];
@@ -555,7 +627,8 @@ class _SfBarChartPainter extends CustomPainter {
       textPainter.layout(maxWidth: barWidth + 6);
       textPainter.paint(
         canvas,
-        Offset(x + (barWidth - textPainter.width) / 2, topPad + chartHeight + 10),
+        Offset(
+            x + (barWidth - textPainter.width) / 2, topPad + chartHeight + 10),
       );
     }
   }

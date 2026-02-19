@@ -1591,6 +1591,7 @@ class _SocialShellState extends State<SocialShell> {
   Widget _buildDrawer(I18n i18n) {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final settingsIndex = kPanelSpecs.indexWhere((p) => p.kind == PanelKind.settings);
 
     return Drawer(
       child: SafeArea(
@@ -1658,7 +1659,6 @@ class _SocialShellState extends State<SocialShell> {
                     child: ListTile(
                       leading: Icon(panel.icon),
                       title: Text(i18n.t(panel.labelKey, panel.fallbackLabel)),
-                      subtitle: Text(i18n.t(panel.captionKey, panel.fallbackCaption)),
                       selected: selected,
                       selectedTileColor: scheme.primary.withOpacity(isDark ? 0.20 : 0.10),
                       onTap: () {
@@ -1671,6 +1671,16 @@ class _SocialShellState extends State<SocialShell> {
               ),
             ),
             const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.person_rounded),
+              title: Text(i18n.t('settings.profile', 'Profile')),
+              onTap: () {
+                Navigator.of(context).maybePop();
+                if (settingsIndex >= 0) {
+                  unawaited(_onPanelSelected(settingsIndex));
+                }
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.logout_rounded),
               title: Text(i18n.t('common.signOut', 'Sign out')),
@@ -1687,38 +1697,76 @@ class _SocialShellState extends State<SocialShell> {
 
   Widget _buildRail(I18n i18n) {
     final collapsed = widget.appState.sidebarCollapsed;
-    final scheme = Theme.of(context).colorScheme;
+    final settingsIndex = kPanelSpecs.indexWhere((p) => p.kind == PanelKind.settings);
     return NavigationRail(
       selectedIndex: _selectedIndex,
       extended: !collapsed,
       labelType: collapsed ? NavigationRailLabelType.selected : NavigationRailLabelType.none,
+      leading: Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: IconButton(
+          tooltip: collapsed ? 'Expand sidebar' : 'Collapse sidebar',
+          onPressed: () => unawaited(widget.appState.setSidebarCollapsed(!collapsed)),
+          icon: Icon(collapsed ? Icons.menu_open_rounded : Icons.menu_rounded),
+        ),
+      ),
+      trailing: Padding(
+        padding: const EdgeInsets.only(bottom: 12, left: 8, right: 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (collapsed) ...[
+              IconButton(
+                tooltip: i18n.t('settings.profile', 'Profile'),
+                onPressed: () {
+                  if (settingsIndex >= 0) {
+                    unawaited(_onPanelSelected(settingsIndex));
+                  }
+                },
+                icon: const Icon(Icons.person_rounded),
+              ),
+              IconButton(
+                tooltip: i18n.t('common.signOut', 'Sign out'),
+                onPressed: () async {
+                  await widget.onSignOut();
+                },
+                icon: const Icon(Icons.logout_rounded),
+              ),
+            ] else ...[
+              SizedBox(
+                width: 168,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    if (settingsIndex >= 0) {
+                      unawaited(_onPanelSelected(settingsIndex));
+                    }
+                  },
+                  icon: const Icon(Icons.person_rounded),
+                  label: Text(i18n.t('settings.profile', 'Profile')),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: 168,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    await widget.onSignOut();
+                  },
+                  icon: const Icon(Icons.logout_rounded),
+                  label: Text(i18n.t('common.signOut', 'Sign out')),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
       onDestinationSelected: (index) => unawaited(_onPanelSelected(index)),
       destinations: kPanelSpecs
           .map(
             (panel) => NavigationRailDestination(
               icon: Icon(panel.icon),
               selectedIcon: Icon(panel.icon),
-              label: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(i18n.t(panel.labelKey, panel.fallbackLabel)),
-                  if (!collapsed)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        i18n.t(panel.captionKey, panel.fallbackCaption),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: scheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+              label: Text(i18n.t(panel.labelKey, panel.fallbackLabel)),
             ),
           )
           .toList(),
@@ -4181,7 +4229,7 @@ class _SocialShellState extends State<SocialShell> {
                 ],
               ),
             ),
-            Switch(
+            SfPillSwitch(
               value: value,
               onChanged: onChanged,
             ),

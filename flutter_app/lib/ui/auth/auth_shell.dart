@@ -17,8 +17,8 @@ class AuthShell extends StatelessWidget {
   final String description;
   final Widget child;
 
-  static const _primary = Color(0xFF6366F1);
-  static const _accent = Color(0xFF06B6D4);
+  static const _primary = Color(0xFF9C2CF3);
+  static const _accent = Color(0xFF3A49F9);
 
   @override
   Widget build(BuildContext context) {
@@ -31,13 +31,13 @@ class AuthShell extends StatelessWidget {
         end: Alignment.bottomRight,
         colors: isDark
             ? const [
-                Color(0xFF070B14),
-                Color(0xFF0A1224),
-                Color(0xFF121D39),
+                Color(0xFF131725),
+                Color(0xFF151A2B),
+                Color(0xFF1D2438),
               ]
             : const [
-                Color(0xFFF5F7FF),
-                Color(0xFFF1F7FF),
+                Color(0xFFF2F4F8),
+                Color(0xFFEEF2F8),
                 Color(0xFFFFFFFF),
               ],
       ),
@@ -48,7 +48,7 @@ class AuthShell extends StatelessWidget {
         center: const Alignment(0.7, -0.85),
         radius: 1.1,
         colors: [
-          (isDark ? _primary : _accent).withOpacity(isDark ? 0.20 : 0.14),
+          (isDark ? _primary : _accent).withOpacity(isDark ? 0.22 : 0.12),
           Colors.transparent,
         ],
       ),
@@ -135,8 +135,8 @@ class _TopControls extends StatelessWidget {
     final isDark = state.themeMode == AppThemeMode.dark;
     return Material(
       color:
-          (isDark ? const Color(0xFF0F162A) : Colors.white).withOpacity(0.66),
-      elevation: 14,
+          (isDark ? const Color(0xFF1D2335) : Colors.white).withOpacity(0.84),
+      elevation: 8,
       borderRadius: BorderRadius.circular(999),
       child: Padding(
         padding: const EdgeInsets.all(6),
@@ -159,9 +159,9 @@ class _TopControls extends StatelessWidget {
               constraints: const BoxConstraints.tightFor(width: 38, height: 38),
               style: IconButton.styleFrom(
                 backgroundColor:
-                    isDark ? const Color(0xFFE9EEF9) : const Color(0xFF0D1422),
+                    isDark ? const Color(0xFFE9EEF9) : const Color(0xFF3A49F9),
                 foregroundColor:
-                    isDark ? const Color(0xFF0D1422) : const Color(0xFFE9EEF9),
+                    isDark ? const Color(0xFF0D1422) : const Color(0xFFFFFFFF),
               ),
             ),
           ],
@@ -180,9 +180,9 @@ class _IdentityPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final panelBg =
-        (isDark ? const Color(0xFF0F162A) : Colors.white).withOpacity(0.66);
-    final border = (isDark ? Colors.white : Colors.black).withOpacity(0.10);
-    final fg = isDark ? const Color(0xFFE9EEF9) : const Color(0xFF0D1422);
+        (isDark ? const Color(0xFF1D2335) : Colors.white).withOpacity(0.86);
+    final border = (isDark ? Colors.white : Colors.black).withOpacity(0.08);
+    final fg = isDark ? const Color(0xFFE9EEF9) : const Color(0xFF1D1D35);
     final muted = fg.withOpacity(0.68);
 
     return Container(
@@ -192,18 +192,18 @@ class _IdentityPanel extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             panelBg,
-            (isDark ? const Color(0xFF111C34) : const Color(0xFFF4F8FF))
-                .withOpacity(0.55),
+            (isDark ? const Color(0xFF262F45) : const Color(0xFFF8FAFF))
+                .withOpacity(0.68),
           ],
         ),
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: border),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            blurRadius: 40,
-            spreadRadius: 2,
-            offset: Offset(0, 14),
-            color: Color(0x33000000),
+            blurRadius: 20,
+            spreadRadius: 0,
+            offset: const Offset(0, 10),
+            color: Colors.black.withOpacity(isDark ? 0.20 : 0.06),
           ),
         ],
       ),
@@ -333,7 +333,7 @@ class _SignalStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         color: fg.withOpacity(0.06),
         border: Border.all(color: fg.withOpacity(0.10)),
       ),
@@ -425,7 +425,7 @@ class _FeatureCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg =
-        (isDark ? const Color(0xFF0B1020) : Colors.white).withOpacity(0.60);
+        (isDark ? const Color(0xFF131B30) : Colors.white).withOpacity(0.86);
     final border = fg.withOpacity(0.10);
     return Container(
       decoration: BoxDecoration(
@@ -478,9 +478,9 @@ class _AuthCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bg =
-        (isDark ? const Color(0xFF0F162A) : Colors.white).withOpacity(0.74);
-    final border = (isDark ? Colors.white : Colors.black).withOpacity(0.10);
-    final fg = isDark ? const Color(0xFFE9EEF9) : const Color(0xFF0D1422);
+        (isDark ? const Color(0xFF1D2335) : Colors.white).withOpacity(0.90);
+    final border = (isDark ? Colors.white : Colors.black).withOpacity(0.08);
+    final fg = isDark ? const Color(0xFFE9EEF9) : const Color(0xFF1D1D35);
     final muted = fg.withOpacity(0.68);
 
     return Container(
@@ -490,18 +490,18 @@ class _AuthCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             bg,
-            (isDark ? const Color(0xFF141F3A) : const Color(0xFFF8FBFF))
-                .withOpacity(0.78),
+            (isDark ? const Color(0xFF2A334A) : const Color(0xFFF8FBFF))
+                .withOpacity(0.84),
           ],
         ),
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: border),
-        boxShadow: const [
+        boxShadow: [
           BoxShadow(
-            blurRadius: 48,
-            spreadRadius: 4,
-            offset: Offset(0, 20),
-            color: Color(0x33000000),
+            blurRadius: 20,
+            spreadRadius: 0,
+            offset: const Offset(0, 10),
+            color: Colors.black.withOpacity(isDark ? 0.20 : 0.06),
           ),
         ],
       ),
@@ -524,7 +524,7 @@ class _AuthCard extends StatelessWidget {
             title,
             textAlign: TextAlign.center,
             style:
-                TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: fg),
+                TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: fg),
           ),
           const SizedBox(height: 8),
           Text(
