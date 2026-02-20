@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { signIn } from 'next-auth/react';
-import { Eye, EyeOff, MailWarning } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, MailWarning, Sparkles } from 'lucide-react';
 import { AuthShell } from '@/components/auth/auth-shell';
+import { SocialAuthButtons } from '@/components/auth/social-auth-buttons';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -40,8 +41,11 @@ function writeRememberPreferences(rememberEnabled: boolean, email: string) {
   try {
     if (rememberEnabled) {
       window.localStorage.setItem(REMEMBER_ENABLED_KEY, '1');
-      if (email.trim()) {
-        window.localStorage.setItem(REMEMBER_EMAIL_KEY, email.trim().toLowerCase());
+      const normalized = email.trim().toLowerCase();
+      if (normalized) {
+        window.localStorage.setItem(REMEMBER_EMAIL_KEY, normalized);
+      } else {
+        window.localStorage.removeItem(REMEMBER_EMAIL_KEY);
       }
       return;
     }
@@ -72,8 +76,10 @@ export default function LoginPageClient({
   const router = useRouter();
   const { locale, t } = useLanguage();
   const isArabic = locale === 'ar';
+
   const normalizedQueryEmail = String(queryEmail || '').trim().toLowerCase();
   const hasQueryEmail = Boolean(normalizedQueryEmail && isValidEmail(normalizedQueryEmail));
+
   const [email, setEmail] = useState(() => {
     if (hasQueryEmail) return normalizedQueryEmail;
     const { rememberEnabled, rememberedEmail } = readRememberPreferences();
@@ -94,6 +100,7 @@ export default function LoginPageClient({
   const [resendingVerification, setResendingVerification] = useState(false);
   const [loading, setLoading] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
+
   const creditLine = `${t('auth.creditLine', 'Programming & Design: Oday Algholy')} - ${t('auth.rightsReserved', 'All rights reserved')}`;
   const isBusy = loading || redirecting;
 
@@ -101,17 +108,17 @@ export default function LoginPageClient({
     const messages: string[] = [];
 
     if (loggedOut) {
-      messages.push(
-        isArabic
-          ? 'تم تسجيل الخروج بنجاح.'
-          : 'You signed out successfully.'
-      );
+      messages.push(isArabic ? 'تم تسجيل الخروج بنجاح.' : 'You signed out successfully.');
     }
     if (verified) {
       messages.push(isArabic ? 'تم التحقق من البريد الإلكتروني. يمكنك تسجيل الدخول الآن.' : 'Email verified. You can sign in now.');
     }
     if (reset) {
-      messages.push(isArabic ? 'تم تحديث كلمة المرور. سجّل الدخول بكلمة المرور الجديدة.' : 'Password updated. Sign in with your new password.');
+      messages.push(
+        isArabic
+          ? 'تم تحديث كلمة المرور. سجّل الدخول بكلمة المرور الجديدة.'
+          : 'Password updated. Sign in with your new password.'
+      );
     }
     if (registered) {
       messages.push(isArabic ? 'تم إنشاء الحساب بنجاح. يمكنك تسجيل الدخول الآن.' : 'Account created successfully. You can sign in now.');
@@ -121,6 +128,16 @@ export default function LoginPageClient({
       setInfoMessage(messages[0]);
     }
   }, [isArabic, loggedOut, registered, reset, verified]);
+
+  useEffect(() => {
+    if (!hasQueryEmail) return;
+    setRememberMe(true);
+    writeRememberPreferences(true, normalizedQueryEmail);
+  }, [hasQueryEmail, normalizedQueryEmail]);
+
+  useEffect(() => {
+    writeRememberPreferences(rememberMe, email);
+  }, [email, rememberMe]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -142,11 +159,13 @@ export default function LoginPageClient({
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isBusy) return;
+
     setError('');
     setInfoMessage('');
     setEmailError('');
     setPasswordError('');
     setNeedsVerification(false);
+
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail) {
       setEmailError(isArabic ? 'البريد الإلكتروني مطلوب.' : 'Email is required.');
@@ -196,6 +215,7 @@ export default function LoginPageClient({
     writeRememberPreferences(rememberMe, normalizedEmail);
     setLoading(false);
     setRedirecting(true);
+
     const redirectTarget = (() => {
       const fallback = callbackUrl || '/';
       const candidate = typeof res?.url === 'string' ? res.url : fallback;
@@ -207,6 +227,7 @@ export default function LoginPageClient({
         return fallback;
       }
     })();
+
     router.replace(redirectTarget);
     router.refresh();
   };
@@ -216,6 +237,7 @@ export default function LoginPageClient({
     flushSync(() => setResendingVerification(true));
     setError('');
     setInfoMessage('');
+
     try {
       const res = await fetch('/api/auth/resend-verification', {
         method: 'POST',
@@ -226,9 +248,7 @@ export default function LoginPageClient({
       if (!res.ok || !data.success) {
         throw new Error(data?.error || 'Unable to resend verification code.');
       }
-      setInfoMessage(
-        data?.message || (isArabic ? 'تم إرسال رمز التحقق.' : 'Verification code sent.')
-      );
+      setInfoMessage(data?.message || (isArabic ? 'تم إرسال رمز التحقق.' : 'Verification code sent.'));
     } catch (resendError) {
       setError(
         resendError instanceof Error
@@ -244,77 +264,87 @@ export default function LoginPageClient({
 
   return (
     <AuthShell
-      title={isArabic ? 'تسجيل الدخول' : 'Sign In'}
+      title={isArabic ? 'تسجيل الدخول' : 'Welcome Back'}
       description={
         isArabic
-          ? 'ادخل إلى مساحة العمل الموثقة وتابع الأتمتة الخاصة بك.'
-          : 'Access your verified workspace and continue your automation flow.'
+          ? 'ادخل إلى مساحة العمل وتابع مهام الأتمتة بثقة.'
+          : 'Sign in to continue managing your connected workflows.'
       }
-      logoSize={100}
+      logoSize={86}
       logoShowText={false}
     >
       <form onSubmit={onSubmit} className="space-y-5">
-        <div className="space-y-2">
-          <Label htmlFor="login-email">{isArabic ? 'البريد الإلكتروني' : 'Email'}</Label>
-          <Input
-            id="login-email"
-            type="email"
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              if (rememberMe) {
-                writeRememberPreferences(true, e.target.value);
-              }
-              if (emailError) setEmailError('');
-              if (error) setError('');
-            }}
-            placeholder={isArabic ? 'you@example.com' : 'you@example.com'}
-            autoComplete="email"
-            aria-invalid={Boolean(emailError)}
-            disabled={isBusy}
-            required
-          />
-          {emailError ? <p className="text-sm text-destructive">{emailError}</p> : null}
-        </div>
+        <SocialAuthButtons
+          callbackUrl={callbackUrl}
+          dividerLabel={isArabic ? 'أو أكمل باستخدام' : 'Or continue with'}
+          onError={(message) => {
+            setError(message);
+          }}
+        />
 
-        <div className="space-y-2">
-          <Label htmlFor="login-password">{isArabic ? 'كلمة المرور' : 'Password'}</Label>
-          <div className="relative">
-            <Input
-              id="login-password"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                if (passwordError) setPasswordError('');
-                if (error) setError('');
-              }}
-              onKeyUp={(e) => setCapsLockOn(e.getModifierState('CapsLock'))}
-              placeholder={isArabic ? '••••••••' : '••••••••'}
-              autoComplete="current-password"
-              aria-invalid={Boolean(passwordError)}
-              disabled={isBusy}
-              required
-              className="pr-11"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-1 top-1 h-8 w-8"
-              aria-label={showPassword ? (isArabic ? 'إخفاء كلمة المرور' : 'Hide password') : (isArabic ? 'إظهار كلمة المرور' : 'Show password')}
-              onClick={() => setShowPassword((prev) => !prev)}
-              disabled={isBusy}
-            >
-              {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-            </Button>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="login-email">{isArabic ? 'البريد الإلكتروني' : 'Email'}</Label>
+            <div className="relative">
+              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="login-email"
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (emailError) setEmailError('');
+                  if (error) setError('');
+                }}
+                placeholder="you@example.com"
+                autoComplete="email"
+                aria-invalid={Boolean(emailError)}
+                disabled={isBusy}
+                required
+                className="pl-9"
+              />
+            </div>
+            {emailError ? <p className="text-sm text-destructive">{emailError}</p> : null}
           </div>
-          {capsLockOn ? (
-            <p className="text-sm text-secondary-foreground">
-              {isArabic ? 'زر Caps Lock مفعل.' : 'Caps Lock is on.'}
-            </p>
-          ) : null}
-          {passwordError ? <p className="text-sm text-destructive">{passwordError}</p> : null}
+
+          <div className="space-y-2">
+            <Label htmlFor="login-password">{isArabic ? 'كلمة المرور' : 'Password'}</Label>
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="login-password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (passwordError) setPasswordError('');
+                  if (error) setError('');
+                }}
+                onKeyUp={(e) => setCapsLockOn(e.getModifierState('CapsLock'))}
+                placeholder="••••••••"
+                autoComplete="current-password"
+                aria-invalid={Boolean(passwordError)}
+                disabled={isBusy}
+                required
+                className="pl-9 pr-11"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1 h-8 w-8"
+                aria-label={showPassword ? (isArabic ? 'إخفاء كلمة المرور' : 'Hide password') : isArabic ? 'إظهار كلمة المرور' : 'Show password'}
+                onClick={() => setShowPassword((prev) => !prev)}
+                disabled={isBusy}
+              >
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </Button>
+            </div>
+            {capsLockOn ? (
+              <p className="text-xs text-muted-foreground">{isArabic ? 'زر Caps Lock مفعل.' : 'Caps Lock is on.'}</p>
+            ) : null}
+            {passwordError ? <p className="text-sm text-destructive">{passwordError}</p> : null}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -322,14 +352,13 @@ export default function LoginPageClient({
             <Switch
               id="login-remember-me"
               checked={rememberMe}
-              onCheckedChange={(checked) => {
-                const nextValue = Boolean(checked);
-                setRememberMe(nextValue);
-                writeRememberPreferences(nextValue, email);
-              }}
+              onCheckedChange={(checked) => setRememberMe(Boolean(checked))}
               disabled={isBusy}
             />
-            {isArabic ? 'تذكرني' : 'Remember me'}
+            <span className="inline-flex items-center gap-1.5">
+              <Sparkles size={13} className="text-primary" />
+              {isArabic ? 'تذكرني' : 'Remember me'}
+            </span>
           </label>
           <Link href="/forgot-password" className="text-sm font-medium text-primary underline-offset-4 hover:underline">
             {isArabic ? 'نسيت كلمة المرور؟' : 'Forgot password?'}
@@ -346,7 +375,7 @@ export default function LoginPageClient({
         </div>
 
         {needsVerification && (
-          <div className="rounded-xl border border-secondary/40 bg-secondary/20 p-3 text-sm">
+          <div className="rounded-xl border border-secondary/40 bg-secondary/15 p-3 text-sm">
             <p className="mb-2 inline-flex items-center gap-2 font-medium text-secondary-foreground">
               <MailWarning size={14} />
               {isArabic ? 'التحقق من البريد الإلكتروني مطلوب' : 'Email verification pending'}
@@ -354,13 +383,7 @@ export default function LoginPageClient({
             <p className="mb-3 text-secondary-foreground/90">
               {isArabic ? 'تحقق من بريدك الإلكتروني أولاً ثم سجّل الدخول مرة أخرى.' : 'Verify your email first, then sign in again.'}
             </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={resendVerification}
-              disabled={resendingVerification}
-            >
+            <Button type="button" variant="outline" size="sm" onClick={resendVerification} disabled={resendingVerification}>
               {resendingVerification
                 ? isArabic
                   ? 'جاري إعادة الإرسال...'
@@ -378,12 +401,12 @@ export default function LoginPageClient({
               ? 'جاري التحويل...'
               : 'Redirecting...'
             : loading
-            ? isArabic
-              ? 'جاري تسجيل الدخول...'
-              : 'Signing in...'
-            : isArabic
-              ? 'تسجيل الدخول'
-              : 'Sign In'}
+              ? isArabic
+                ? 'جاري تسجيل الدخول...'
+                : 'Signing in...'
+              : isArabic
+                ? 'تسجيل الدخول'
+                : 'Sign In'}
         </Button>
 
         <p className="text-center text-sm text-muted-foreground">

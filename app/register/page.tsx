@@ -4,8 +4,9 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, CheckCircle2, Eye, EyeOff, MailCheck } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Eye, EyeOff, Lock, Mail, MailCheck, User2 } from 'lucide-react';
 import { AuthShell } from '@/components/auth/auth-shell';
+import { SocialAuthButtons } from '@/components/auth/social-auth-buttons';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -58,12 +59,7 @@ export default function RegisterPage() {
     [password]
   );
   const passwordStrength = passwordChecks.filter((rule) => rule.pass).length;
-  const passwordStrengthLabel =
-    passwordStrength <= 2
-      ? 'Weak'
-      : passwordStrength <= 4
-        ? 'Medium'
-        : 'Strong';
+  const passwordStrengthLabel = passwordStrength <= 2 ? 'Weak' : passwordStrength <= 4 ? 'Medium' : 'Strong';
 
   const validate = (): FieldErrors => {
     const next: FieldErrors = {};
@@ -221,12 +217,7 @@ export default function RegisterPage() {
                 </p>
               ) : null}
               {debugVerificationUrl ? (
-                <a
-                  href={debugVerificationUrl}
-                  className="break-all text-primary underline"
-                  target="_blank"
-                  rel="noreferrer"
-                >
+                <a href={debugVerificationUrl} className="break-all text-primary underline" target="_blank" rel="noreferrer">
                   {debugVerificationUrl}
                 </a>
               ) : null}
@@ -241,126 +232,135 @@ export default function RegisterPage() {
     <AuthShell
       title="Create Account"
       description="Start securely with verified email access and strong credential requirements."
-      logoSize={100}
+      logoSize={86}
       logoShowText={false}
     >
       <form onSubmit={onSubmit} className="space-y-5">
-        <div className="space-y-2">
-          <Label htmlFor="register-name">Full Name</Label>
-          <Input
-            id="register-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Your full name"
-            autoComplete="name"
-            aria-invalid={Boolean(fieldErrors.name)}
-          />
-          {fieldErrors.name && <p className="text-xs text-destructive">{fieldErrors.name}</p>}
-        </div>
+        <SocialAuthButtons
+          dividerLabel="Or continue with"
+          onError={(message) => {
+            setError(message);
+          }}
+        />
 
-        <div className="space-y-2">
-          <Label htmlFor="register-email">Email</Label>
-          <Input
-            id="register-email"
-            type="email"
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              if (conflictEmail) setConflictEmail('');
-            }}
-            placeholder="you@example.com"
-            autoComplete="email"
-            aria-invalid={Boolean(fieldErrors.email)}
-          />
-          {fieldErrors.email && <p className="text-xs text-destructive">{fieldErrors.email}</p>}
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="register-password">Password</Label>
-          <div className="relative">
-            <Input
-              id="register-password"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Create a strong password"
-              autoComplete="new-password"
-              aria-invalid={Boolean(fieldErrors.password)}
-              className="pr-11"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-1 top-1 h-8 w-8"
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-              onClick={() => setShowPassword((prev) => !prev)}
-            >
-              {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-            </Button>
-          </div>
+        <div className="space-y-4">
           <div className="space-y-2">
-            <div className="h-2 overflow-hidden rounded-full bg-muted">
-              <div
-                className={`h-full transition-all ${
-                  passwordStrength <= 2
-                    ? 'bg-destructive'
-                    : passwordStrength <= 4
-                      ? 'bg-secondary'
-                      : 'bg-primary'
-                }`}
-                style={{ width: `${(passwordStrength / PASSWORD_RULES.length) * 100}%` }}
+            <Label htmlFor="register-name">Full Name</Label>
+            <div className="relative">
+              <User2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="register-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your full name"
+                autoComplete="name"
+                aria-invalid={Boolean(fieldErrors.name)}
+                className="pl-9"
               />
             </div>
-            <p className="text-xs text-muted-foreground">Password strength: {passwordStrengthLabel}</p>
-            <ul className="grid grid-cols-1 gap-1 text-xs text-muted-foreground sm:grid-cols-2">
-              {passwordChecks.map((rule) => (
-                <li
-                  key={rule.id}
-                  className={`inline-flex items-center gap-1.5 ${
-                    rule.pass ? 'text-primary' : ''
+            {fieldErrors.name && <p className="text-xs text-destructive">{fieldErrors.name}</p>}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="register-email">Email</Label>
+            <div className="relative">
+              <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="register-email"
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (conflictEmail) setConflictEmail('');
+                }}
+                placeholder="you@example.com"
+                autoComplete="email"
+                aria-invalid={Boolean(fieldErrors.email)}
+                className="pl-9"
+              />
+            </div>
+            {fieldErrors.email && <p className="text-xs text-destructive">{fieldErrors.email}</p>}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="register-password">Password</Label>
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="register-password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Create a strong password"
+                autoComplete="new-password"
+                aria-invalid={Boolean(fieldErrors.password)}
+                className="pl-9 pr-11"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1 h-8 w-8"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                onClick={() => setShowPassword((prev) => !prev)}
+              >
+                {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className={`h-full transition-all ${
+                    passwordStrength <= 2 ? 'bg-destructive' : passwordStrength <= 4 ? 'bg-secondary' : 'bg-primary'
                   }`}
-                >
-                  {rule.pass ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
-                  {rule.label}
-                </li>
-              ))}
-            </ul>
+                  style={{ width: `${(passwordStrength / PASSWORD_RULES.length) * 100}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">Password strength: {passwordStrengthLabel}</p>
+              <ul className="grid grid-cols-1 gap-1 text-xs text-muted-foreground sm:grid-cols-2">
+                {passwordChecks.map((rule) => (
+                  <li key={rule.id} className={`inline-flex items-center gap-1.5 ${rule.pass ? 'text-primary' : ''}`}>
+                    {rule.pass ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                    {rule.label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {fieldErrors.password && <p className="text-xs text-destructive">{fieldErrors.password}</p>}
           </div>
-          {fieldErrors.password && <p className="text-xs text-destructive">{fieldErrors.password}</p>}
+
+          <div className="space-y-2">
+            <Label htmlFor="register-confirm-password">Confirm Password</Label>
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="register-confirm-password"
+                type={showConfirmPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter your password"
+                autoComplete="new-password"
+                aria-invalid={Boolean(fieldErrors.confirmPassword)}
+                className="pl-9 pr-11"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1 h-8 w-8"
+                aria-label={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+              >
+                {showConfirmPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+              </Button>
+            </div>
+            {fieldErrors.confirmPassword && <p className="text-xs text-destructive">{fieldErrors.confirmPassword}</p>}
+          </div>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="register-confirm-password">Confirm Password</Label>
-          <div className="relative">
-            <Input
-              id="register-confirm-password"
-              type={showConfirmPassword ? 'text' : 'password'}
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Re-enter your password"
-              autoComplete="new-password"
-              aria-invalid={Boolean(fieldErrors.confirmPassword)}
-              className="pr-11"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-1 top-1 h-8 w-8"
-              aria-label={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
-              onClick={() => setShowConfirmPassword((prev) => !prev)}
-            >
-              {showConfirmPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-            </Button>
-          </div>
-          {fieldErrors.confirmPassword && (
-            <p className="text-xs text-destructive">{fieldErrors.confirmPassword}</p>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <div className="flex items-start gap-3 rounded-lg border border-border/70 bg-background/45 p-3 text-sm">
+          <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-background/45 p-3 text-sm">
             <input
               id="register-agree-terms"
               type="checkbox"
@@ -396,9 +396,7 @@ export default function RegisterPage() {
 
         {conflictEmail ? (
           <div className="rounded-xl border border-border/70 bg-muted/35 p-3 text-sm">
-            <p className="mb-3 text-muted-foreground">
-              This email is already registered. Try signing in, or reset your password.
-            </p>
+            <p className="mb-3 text-muted-foreground">This email is already registered. Try signing in, or reset your password.</p>
             <div className="grid gap-2 sm:grid-cols-2">
               <Link href={`/login?email=${encodeURIComponent(conflictEmail)}`} className="block">
                 <Button type="button" variant="outline" className="w-full">
