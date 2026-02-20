@@ -138,12 +138,12 @@ export default function AnalyticsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background control-app">
+    <div className="min-h-screen bg-background control-app dashboard-shell-bg">
       <Sidebar />
       <Header />
 
-      <main className="control-main">
-        <div className="page-header animate-fade-up">
+      <main className="control-main premium-main">
+        <div className="page-header premium-page-header animate-fade-up">
           <div>
             <p className="kpi-pill mb-3 inline-flex items-center gap-1.5">
               <Sparkles size={12} />
@@ -183,7 +183,7 @@ export default function AnalyticsPage() {
         </div>
 
         {isInitialLoading ? (
-          <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <div className="equal-grid mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
             {[0, 1, 2, 3, 4].map((idx) => (
               <Card key={idx} className="surface-card">
                 <CardContent className="pt-6">
@@ -196,7 +196,7 @@ export default function AnalyticsPage() {
             ))}
           </div>
         ) : (
-          <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <div className="equal-grid mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
             <StatCard
               title="Total Executions"
               value={stats.totalExecutions}

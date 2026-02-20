@@ -315,12 +315,12 @@ export default function DashboardPage() {
     stats.totalExecutions === 0;
 
   return (
-    <div className="min-h-screen bg-background control-app">
+    <div className="min-h-screen bg-background control-app dashboard-shell-bg">
       <Sidebar />
       <Header />
 
-      <main className="control-main">
-        <div className="page-header animate-fade-up">
+      <main className="control-main premium-main">
+        <div className="page-header premium-page-header animate-fade-up">
           <div>
             <p className="kpi-pill mb-3 inline-flex items-center gap-1.5">
               <Zap size={12} />
@@ -382,7 +382,7 @@ export default function DashboardPage() {
 
         {isLoading ? (
           <div className="space-y-4 animate-fade-up">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="equal-grid grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
               {[0, 1, 2, 3].map((index) => (
                 <Card key={index} className="surface-card">
                   <CardContent className="p-6">
@@ -423,7 +423,7 @@ export default function DashboardPage() {
           </Card>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="equal-grid grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
               <StatCard title="Total Tasks" value={stats?.totalTasks || 0} icon={Zap} color="primary" />
               <StatCard title="Active Tasks" value={stats?.activeTasksCount || 0} icon={PlayCircle} color="secondary" />
               <StatCard title="Connected Accounts" value={stats?.totalAccounts || 0} icon={Users} color="accent" />
@@ -435,8 +435,8 @@ export default function DashboardPage() {
               />
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-12">
-              <Card className="surface-card xl:col-span-6">
+            <div className="equal-grid mt-4 grid grid-cols-1 gap-4 xl:grid-cols-12">
+              <Card className="surface-card h-full xl:col-span-6">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center justify-between gap-2 text-lg font-semibold">
                     <span>Recent Automations</span>
@@ -558,7 +558,7 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
 
-              <Card className="surface-card xl:col-span-6">
+              <Card className="surface-card h-full xl:col-span-6">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg font-semibold">System Health</CardTitle>
                 </CardHeader>
@@ -624,8 +624,8 @@ export default function DashboardPage() {
               </Card>
             </div>
 
-            <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-12">
-              <Card className="surface-card xl:col-span-6">
+            <div className="equal-grid mt-4 grid grid-cols-1 gap-4 xl:grid-cols-12">
+              <Card className="surface-card h-full xl:col-span-6">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center justify-between text-lg font-semibold">
                     <span>Recent Executions</span>
@@ -680,7 +680,7 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
 
-              <Card className="surface-card xl:col-span-6">
+              <Card className="surface-card h-full xl:col-span-6">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg font-semibold">Top Performing Tasks</CardTitle>
                 </CardHeader>

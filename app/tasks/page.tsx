@@ -342,12 +342,12 @@ function TasksPageContent() {
   const isInitialLoading = isLoadingTasks && tasks.length === 0;
 
   return (
-    <div className="min-h-screen bg-background control-app">
+    <div className="min-h-screen bg-background control-app dashboard-shell-bg">
       <Sidebar />
       <Header />
 
-      <main className="control-main">
-        <div className="page-header animate-fade-up">
+      <main className="control-main premium-main">
+        <div className="page-header premium-page-header animate-fade-up">
           <div>
             <p className="kpi-pill mb-3 inline-flex items-center gap-1.5">
               <Sparkles size={12} />
@@ -389,7 +389,7 @@ function TasksPageContent() {
             <CardTitle>Task Search & Filters</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+            <div className="equal-grid grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
               <div className="relative">
                 <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -523,7 +523,7 @@ function TasksPageContent() {
           </Card>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+            <div className="equal-grid grid grid-cols-1 gap-3 xl:grid-cols-2">
               {filteredTasks.map((task) => {
                 const normalizedStatus = normalizeTaskStatus(task.status);
                 const statusMeta = STATUS_META[normalizedStatus] || STATUS_META.paused;

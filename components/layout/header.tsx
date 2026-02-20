@@ -413,8 +413,8 @@ function HeaderContent() {
   };
 
   return (
-    <header className="glass-toolbar fixed left-0 right-0 top-0 z-20 md:[inset-inline-start:var(--shell-sidebar-width)]">
-      <div className="flex h-[var(--shell-header-height)] items-center gap-2 px-3 sm:px-5 lg:px-8">
+    <header className="glass-toolbar shell-header fixed left-0 right-0 top-0 z-20 md:[inset-inline-start:var(--shell-sidebar-width)]">
+      <div className="shell-header-inner flex h-[var(--shell-header-height)] items-center gap-2 px-3 sm:px-5 lg:px-8">
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
@@ -467,7 +467,7 @@ function HeaderContent() {
           />
           <Input
             placeholder={t('header.searchPlaceholder', 'Search tasks, accounts, logs...')}
-            className="h-10 rounded-2xl border-border/70 bg-card/75 pl-9 pr-16"
+            className="shell-header-search h-10 rounded-2xl border-border/70 bg-card/75 pl-9 pr-16"
             readOnly
             onFocus={() => {
               window.dispatchEvent(new CustomEvent('open-global-command-palette'));
@@ -488,7 +488,7 @@ function HeaderContent() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-10 w-10 rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            className="shell-icon-btn h-10 w-10 rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-foreground"
             title={isDarkTheme ? t('auth.themeLight', 'Light mode') : t('auth.themeDark', 'Dark mode')}
             aria-label={isDarkTheme ? t('auth.themeLight', 'Light mode') : t('auth.themeDark', 'Dark mode')}
             onClick={() => setTheme(isDarkTheme ? 'light' : 'dark')}
@@ -498,7 +498,7 @@ function HeaderContent() {
           <Button
             variant="ghost"
             size="icon"
-            className="hidden h-10 w-10 rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-foreground xl:inline-flex"
+            className="shell-icon-btn hidden h-10 w-10 rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-foreground xl:inline-flex"
             title={t('header.quickSearch', 'Quick Search')}
             aria-label={t('header.quickSearch', 'Quick Search')}
             onClick={() => {
@@ -510,7 +510,7 @@ function HeaderContent() {
           <Button
             variant="ghost"
             size="icon"
-            className="relative h-10 w-10 rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-foreground max-[380px]:hidden"
+            className="shell-icon-btn relative h-10 w-10 rounded-xl text-muted-foreground hover:bg-muted/50 hover:text-foreground max-[380px]:hidden"
             title={t('header.notifications', 'Notifications')}
             aria-label={t('header.notifications', 'Notifications')}
           >
@@ -520,7 +520,7 @@ function HeaderContent() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-10 w-10 rounded-xl ring-1 ring-border/65 hover:bg-muted/50"
+            className="shell-icon-btn h-10 w-10 rounded-xl ring-1 ring-border/65 hover:bg-muted/50"
             title={userLabel}
             aria-label={userLabel}
             onClick={() => setProfileOpen(true)}
@@ -544,7 +544,7 @@ function HeaderContent() {
 
       {mobileMenuOpen && (
         <div className="fixed left-0 right-0 top-[var(--shell-header-height)] z-[70] md:hidden">
-          <div className="max-h-[calc(100vh-var(--shell-header-height))] overflow-y-auto border-t border-border/65 bg-card/95 px-3 pb-4 pt-3 shadow-2xl backdrop-blur-xl">
+          <div className="shell-mobile-sheet max-h-[calc(100vh-var(--shell-header-height))] overflow-y-auto border-t border-border/65 bg-card/95 px-3 pb-4 pt-3 shadow-2xl backdrop-blur-xl">
             <div className="mb-3 flex items-center justify-between">
               <div className="kpi-pill gap-2">
                 <Menu size={14} />

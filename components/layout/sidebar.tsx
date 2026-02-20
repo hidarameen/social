@@ -50,45 +50,48 @@ function SidebarContent() {
 
   return (
     <aside
-      className="shell-sidebar surface-card relative hidden h-screen w-[var(--shell-sidebar-width)] flex-col overflow-hidden border-r border-sidebar-border/80 md:fixed md:top-0 md:z-30 md:[inset-inline-start:0] md:flex"
+      className="shell-sidebar relative hidden h-screen w-[var(--shell-sidebar-width)] flex-col overflow-hidden border-r border-sidebar-border/80 md:fixed md:top-0 md:z-30 md:[inset-inline-start:0] md:flex"
       style={{ borderInlineEndWidth: 'var(--shell-sidebar-border-width)' }}
     >
-      <div className="border-b border-sidebar-border/80 px-6 py-6">
+      <div className="shell-sidebar__backdrop" />
+
+      <div className="shell-brand border-b border-sidebar-border/80 px-5 py-5">
         <div className="mb-4 flex items-center justify-between">
-          {sidebarCollapsed && (
+          {sidebarCollapsed ? (
             <AppLogo size={32} showText={false} />
-          )}
-          {!sidebarCollapsed && (
+          ) : (
             <div className="kpi-pill w-fit gap-2">
               <Sparkles size={14} />
               {t('sidebar.controlCenter', 'Control Center')}
             </div>
           )}
         </div>
-        {!sidebarCollapsed && (
+
+        {!sidebarCollapsed ? (
           <>
-            <AppLogo
-              size={34}
-              text={t('sidebar.orbitTitle', 'SocialFlow Orbit')}
-              textClassName="text-2xl font-semibold tracking-tight text-sidebar-foreground"
-              className="mb-1"
-            />
-            <p className="mt-1 text-sm text-sidebar-foreground/70">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="shell-brand-orb" aria-hidden />
+              <AppLogo
+                size={30}
+                text={t('sidebar.orbitTitle', 'SocialFlow Orbit')}
+                textClassName="text-xl font-semibold tracking-tight text-sidebar-foreground"
+              />
+            </div>
+            <p className="text-sm text-sidebar-foreground/70">
               {t('sidebar.orbitSubtitle', 'Next-gen multi-platform automation cockpit')}
             </p>
           </>
-        )}
+        ) : null}
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-4 py-5">
+      <nav className="flex-1 overflow-y-auto px-3 py-4">
         <div className="space-y-2">
           <button
             type="button"
             onClick={toggleSidebarCollapsed}
             className={cn(
-              'group relative flex w-full items-start gap-3 rounded-2xl border px-4 py-3 transition-all duration-300',
-              sidebarCollapsed && 'justify-center px-2',
-              'border-sidebar-border/70 bg-sidebar-accent/45 text-sidebar-foreground hover:border-sidebar-border hover:bg-sidebar-accent/75'
+              'shell-nav-link shell-nav-link--toggle group relative flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-sm transition-all duration-300',
+              sidebarCollapsed ? 'justify-center' : 'justify-start'
             )}
             title={
               sidebarCollapsed
@@ -101,27 +104,20 @@ function SidebarContent() {
                 : t('sidebar.collapseSidebar', 'Collapse sidebar')
             }
           >
-            <div
-              className={cn(
-                'mt-0.5 rounded-lg bg-sidebar-accent/30 p-2 transition-colors group-hover:bg-sidebar-accent',
-                sidebarCollapsed && 'mt-0'
-              )}
-            >
+            <span className="shell-nav-link__icon">
               {sidebarCollapsed ? <Menu size={16} /> : <PanelLeftClose size={16} />}
-            </div>
+            </span>
             {!sidebarCollapsed && (
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">
-                  {t('sidebar.toggleSidebar', 'Toggle Sidebar')}
-                </p>
-                <p className="truncate text-sm text-sidebar-foreground/65">
+              <span className="shell-nav-link__meta">
+                <span className="shell-nav-link__label">{t('sidebar.toggleSidebar', 'Toggle Sidebar')}</span>
+                <span className="shell-nav-link__caption">
                   {t('sidebar.toggleSidebarCaption', 'Collapse or expand navigation')}
-                </p>
-              </div>
+                </span>
+              </span>
             )}
           </button>
 
-          {NAV_ITEMS.map((item, index) => {
+          {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = isActiveItem(item.href);
             const itemContent = getNavItemContent(item, locale);
@@ -130,50 +126,30 @@ function SidebarContent() {
               <Link
                 key={item.href}
                 href={item.href}
+                data-active={isActive ? 'true' : 'false'}
                 className={cn(
-                  'group relative flex w-full items-start gap-3 rounded-2xl border px-4 py-3 transition-all duration-300 animate-fade-up',
-                  !sidebarCollapsed && 'min-h-[72px]',
-                  sidebarCollapsed && 'justify-center px-2',
-                  isActive
-                    ? 'border-sidebar-primary/38 bg-sidebar-primary/92 text-sidebar-primary-foreground shadow-lg shadow-primary/22'
-                    : 'border-transparent text-sidebar-foreground hover:border-sidebar-border hover:bg-sidebar-accent/75'
+                  'shell-nav-link group relative flex w-full items-start gap-3 rounded-2xl px-3 py-3 text-sm transition-all duration-300 animate-fade-up',
+                  sidebarCollapsed ? 'justify-center' : 'justify-start'
                 )}
-                style={{ animationDelay: `${index * 45}ms` }}
                 title={sidebarCollapsed ? itemContent.label : undefined}
               >
-                <div
-                  className={cn(
-                    'mt-0.5 rounded-lg p-2 transition-colors',
-                    sidebarCollapsed && 'mt-0',
-                    isActive
-                      ? 'bg-sidebar-primary-foreground/12'
-                      : 'bg-sidebar-accent/30 group-hover:bg-sidebar-accent'
-                  )}
-                >
+                <span className="shell-nav-link__icon">
                   <Icon size={16} />
-                </div>
-                {!sidebarCollapsed && (
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{itemContent.label}</p>
-                    <p
-                      className={cn(
-                        'truncate text-sm',
-                        isActive
-                          ? 'text-sidebar-primary-foreground/85'
-                          : 'text-sidebar-foreground/65'
-                      )}
-                    >
-                      {itemContent.caption}
-                    </p>
-                  </div>
-                )}
+                </span>
+                {!sidebarCollapsed ? (
+                  <span className="shell-nav-link__meta min-w-0">
+                    <span className="shell-nav-link__label truncate">{itemContent.label}</span>
+                    <span className="shell-nav-link__caption truncate">{itemContent.caption}</span>
+                  </span>
+                ) : null}
+                <span className="shell-nav-link__indicator" aria-hidden />
               </Link>
             );
           })}
         </div>
       </nav>
 
-      {!sidebarCollapsed && (
+      {!sidebarCollapsed ? (
         <div className="border-t border-sidebar-border/80 p-4">
           <div className="rounded-2xl border border-sidebar-border/70 bg-sidebar-accent/45 p-4">
             <div className="mb-2 flex items-center gap-2 text-sidebar-foreground">
@@ -190,9 +166,16 @@ function SidebarContent() {
             </p>
           </div>
         </div>
-      )}
+      ) : null}
 
-      <div className="border-t border-sidebar-border/80 p-4">
+      <div className="shell-sidebar-foot border-t border-sidebar-border/80 p-4">
+        <div className={cn('mb-2 flex items-center', sidebarCollapsed ? 'justify-center' : 'justify-between')}>
+          {!sidebarCollapsed ? (
+            <span className="truncate text-sm font-semibold text-sidebar-foreground">
+              {firstName || t('header.profile', 'Profile')}
+            </span>
+          ) : null}
+        </div>
         <div className={cn('flex items-center gap-2', sidebarCollapsed ? 'justify-center' : 'justify-start')}>
           <Button
             type="button"
@@ -242,7 +225,14 @@ export function Sidebar() {
   }
 
   return (
-    <Suspense fallback={<aside className="shell-sidebar surface-card hidden h-screen w-[var(--shell-sidebar-width)] overflow-hidden border-r border-sidebar-border/80 md:fixed md:top-0 md:z-30 md:[inset-inline-start:0] md:block" style={{ borderInlineEndWidth: 'var(--shell-sidebar-border-width)' }} />}>
+    <Suspense
+      fallback={
+        <aside
+          className="shell-sidebar hidden h-screen w-[var(--shell-sidebar-width)] overflow-hidden border-r border-sidebar-border/80 md:fixed md:top-0 md:z-30 md:[inset-inline-start:0] md:block"
+          style={{ borderInlineEndWidth: 'var(--shell-sidebar-border-width)' }}
+        />
+      }
+    >
       <SidebarContent />
     </Suspense>
   );

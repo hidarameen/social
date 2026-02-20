@@ -461,12 +461,12 @@ export default function AccountsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background control-app">
+    <div className="min-h-screen bg-background control-app dashboard-shell-bg">
       <Sidebar />
       <Header />
 
-      <main className="control-main">
-        <div className="page-header animate-fade-up">
+      <main className="control-main premium-main">
+        <div className="page-header premium-page-header animate-fade-up">
           <div>
             <p className="kpi-pill mb-3 inline-flex items-center gap-1.5">
               <Sparkles size={12} />
@@ -801,7 +801,7 @@ export default function AccountsPage() {
         </div>
         <Card className="mb-6 animate-fade-up sticky-toolbar surface-card">
           <CardContent className="pt-6">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="equal-grid grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
               <Input
                 placeholder="Search accounts..."
                 value={searchTerm}
@@ -869,7 +869,7 @@ export default function AccountsPage() {
         {isInitialLoading ? (
           <div className="space-y-4 animate-fade-up-delay">
             {[0, 1, 2].map((idx) => (
-              <Card key={idx}>
+              <Card key={idx} className="surface-card h-full">
                 <CardContent className="p-6">
                   <div className="animate-pulse space-y-3">
                     <div className="h-5 w-56 rounded bg-muted/60" />
@@ -881,7 +881,7 @@ export default function AccountsPage() {
             ))}
           </div>
         ) : accounts.length === 0 ? (
-          <Card className="animate-fade-up-delay">
+          <Card className="animate-fade-up-delay surface-card">
             <CardContent className="py-12 text-center">
               <p className="text-muted-foreground mb-4">
                 No accounts connected yet. Add your first account to get started.
@@ -912,7 +912,7 @@ export default function AccountsPage() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  <div className="equal-grid grid grid-cols-1 gap-4 xl:grid-cols-2">
                     {platformAccounts.map(account => (
                       <Card
                         key={account.id}
