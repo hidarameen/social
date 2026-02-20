@@ -3,13 +3,13 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 
 class SfTokens {
-  static const double pagePadding = 26;
+  static const double pagePadding = 24;
   static const double cardPadding = 20;
   static const double sectionGap = 16;
   static const double itemGap = 14;
 
-  static const double radiusLg = 22;
-  static const double radiusMd = 16;
+  static const double radiusLg = 24;
+  static const double radiusMd = 18;
 
   static BorderRadius get radiusLarge => BorderRadius.circular(radiusLg);
   static BorderRadius get radiusMedium => BorderRadius.circular(radiusMd);
@@ -55,13 +55,11 @@ class SfAppBackground extends StatelessWidget {
     final bgStart = isDark
         ? const Color(0xFF0D1524)
         : Color.alphaBlend(
-            scheme.primary.withAlpha(8), const Color(0xFFF4F7FC));
+            scheme.primary.withAlpha(8), const Color(0xFFF8FAFF));
     final bgEnd = isDark
         ? const Color(0xFF0A101B)
         : Color.alphaBlend(
-            scheme.secondary.withAlpha(8),
-            const Color(0xFFEEF3FA),
-          );
+            scheme.secondary.withAlpha(8), const Color(0xFFF1F5FD));
 
     final glowA = scheme.primary.withAlpha(isDark ? 64 : 36);
     final glowB = scheme.secondary.withAlpha(isDark ? 56 : 28);
@@ -117,7 +115,7 @@ class SfAppBackground extends StatelessWidget {
           child: IgnorePointer(
             child: CustomPaint(
               painter: _SfDotGridPainter(
-                color: scheme.outline.withAlpha(isDark ? 24 : 16),
+                color: scheme.outline.withAlpha(isDark ? 22 : 14),
               ),
             ),
           ),
@@ -170,59 +168,82 @@ class SfSectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: scheme.primary.withAlpha(26),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: scheme.primary.withAlpha(58)),
-                ),
-                child: Text(
-                  'SocialFlow',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: scheme.primary,
-                    letterSpacing: 0.6,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.w800,
-                  height: 1.06,
-                ),
-              ),
-              if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  subtitle!,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: scheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ],
-          ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outline.withAlpha(isDark ? 110 : 96)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.alphaBlend(
+              scheme.primary.withAlpha(isDark ? 26 : 16),
+              scheme.surface.withAlpha(isDark ? 190 : 246),
+            ),
+            Color.alphaBlend(
+              scheme.secondary.withAlpha(isDark ? 18 : 10),
+              scheme.surface.withAlpha(isDark ? 170 : 238),
+            ),
+          ],
         ),
-        if (trailing != null) ...[
-          const SizedBox(width: 10),
-          trailing!,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withAlpha(26),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: scheme.primary.withAlpha(58)),
+                  ),
+                  child: Text(
+                    'SocialFlow',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: scheme.primary,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                    height: 1.06,
+                  ),
+                ),
+                if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    subtitle!,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (trailing != null) ...[
+            const SizedBox(width: 10),
+            trailing!,
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -257,9 +278,9 @@ class _SfPanelCardState extends State<SfPanelCard> {
     final surfaceBase = isDark
         ? Color.alphaBlend(scheme.primary.withAlpha(9), scheme.surface)
         : Color.alphaBlend(scheme.primary.withAlpha(6), scheme.surface);
-    final elevatedOffset = _hovering ? const Offset(0, 10) : const Offset(0, 6);
+    final elevatedOffset = _hovering ? const Offset(0, 12) : const Offset(0, 7);
     final shadow =
-        isDark ? Colors.black.withAlpha(54) : Colors.black.withAlpha(26);
+        isDark ? Colors.black.withAlpha(58) : Colors.black.withAlpha(20);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
@@ -277,7 +298,7 @@ class _SfPanelCardState extends State<SfPanelCard> {
               borderRadius: SfTokens.radiusLarge,
               boxShadow: [
                 BoxShadow(
-                  blurRadius: _hovering ? 28 : 20,
+                  blurRadius: _hovering ? 30 : 18,
                   spreadRadius: 0,
                   offset: elevatedOffset,
                   color: shadow,
@@ -652,7 +673,8 @@ class SfBarChart extends StatelessWidget {
                 labels: labels,
                 maxValue: safeMax,
                 barColor: scheme.primary,
-                gridColor: scheme.outline.withValues(alpha: isDark ? 0.34 : 0.45),
+                gridColor:
+                    scheme.outline.withValues(alpha: isDark ? 0.34 : 0.45),
                 textColor: scheme.onSurfaceVariant,
               ),
               child: const SizedBox.expand(),

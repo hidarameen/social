@@ -1963,7 +1963,7 @@ class _SocialShellState extends State<SocialShell> {
     return Positioned.fill(
       child: Material(
         color: Color.alphaBlend(
-            scheme.primary.withAlpha(isDark ? 14 : 8), scheme.surface),
+            scheme.primary.withAlpha(isDark ? 20 : 10), scheme.surface),
         child: Column(
           children: [
             Container(
@@ -2023,6 +2023,11 @@ class _SocialShellState extends State<SocialShell> {
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 6),
                     child: ListTile(
+                      tileColor: Color.alphaBlend(
+                        scheme.surface.withAlpha(isDark ? 130 : 225),
+                        scheme.primary
+                            .withAlpha(selected ? (isDark ? 40 : 20) : 6),
+                      ),
                       leading: Icon(
                         panel.icon,
                         color: selected ? scheme.primary : null,
@@ -2048,7 +2053,12 @@ class _SocialShellState extends State<SocialShell> {
                           : null,
                       selected: selected,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(18),
+                        side: BorderSide(
+                          color: selected
+                              ? scheme.primary.withAlpha(isDark ? 115 : 88)
+                              : scheme.outline.withAlpha(70),
+                        ),
                       ),
                       selectedTileColor:
                           scheme.primary.withAlpha(isDark ? 60 : 28),
@@ -2088,9 +2098,9 @@ class _SocialShellState extends State<SocialShell> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
-        width: collapsed ? 92 : 230,
+        width: collapsed ? 94 : 234,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(24),
           border:
               Border.all(color: scheme.outline.withAlpha(isDark ? 104 : 116)),
           gradient: LinearGradient(
@@ -2110,13 +2120,13 @@ class _SocialShellState extends State<SocialShell> {
           boxShadow: [
             BoxShadow(
               color: Colors.black.withAlpha(isDark ? 54 : 18),
-              blurRadius: 18,
+              blurRadius: 20,
               offset: const Offset(0, 10),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(24),
           child: NavigationRail(
             backgroundColor: Colors.transparent,
             selectedIndex: _selectedIndex,
@@ -7847,16 +7857,26 @@ class _SocialShellState extends State<SocialShell> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           onTap: onPressed,
           child: Container(
             width: compact ? 34 : 38,
             height: compact ? 34 : 38,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: Color.alphaBlend(
-                scheme.surface.withAlpha(isDark ? 105 : 188),
-                scheme.primary.withAlpha(isDark ? 12 : 5),
+              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color.alphaBlend(
+                    scheme.surface.withAlpha(isDark ? 122 : 210),
+                    scheme.primary.withAlpha(isDark ? 18 : 10),
+                  ),
+                  Color.alphaBlend(
+                    scheme.surface.withAlpha(isDark ? 108 : 198),
+                    scheme.secondary.withAlpha(isDark ? 14 : 8),
+                  ),
+                ],
               ),
               border: Border.all(color: scheme.outline.withAlpha(82)),
             ),
@@ -7914,12 +7934,12 @@ class _SocialShellState extends State<SocialShell> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
           child: Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(20),
               border: Border.all(color: scheme.outline.withAlpha(95)),
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -7937,7 +7957,7 @@ class _SocialShellState extends State<SocialShell> {
               ),
               boxShadow: [
                 BoxShadow(
-                  blurRadius: 16,
+                  blurRadius: 18,
                   offset: const Offset(0, 8),
                   color: Colors.black.withAlpha(isDark ? 48 : 16),
                 ),
@@ -8110,7 +8130,7 @@ class _SocialShellState extends State<SocialShell> {
                         height: compact ? 36 : 40,
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(15),
                           color: Color.alphaBlend(
                             scheme.surface.withAlpha(isDark ? 112 : 210),
                             scheme.primary.withAlpha(isDark ? 10 : 4),
@@ -8147,7 +8167,7 @@ class _SocialShellState extends State<SocialShell> {
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(9),
                                   border: Border.all(
                                       color: scheme.outline.withAlpha(76)),
                                   color: scheme.surface
